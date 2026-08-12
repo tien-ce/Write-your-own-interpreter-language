@@ -1,2 +1,2 @@
 name = "van anh"
-print(name)
+print(name);

@@ -3,7 +3,7 @@
 #include "include/lexer.h"
 int main(int argc, char* argv[])
 {
-  lexer_t *lexer = init_lexer("name = \"van anh\"\nprint(name)");
+  lexer_t *lexer = init_lexer("name = \"van anh\"\nprint(name);");
   token_t *token = (void*)0;
   while((token = lexer_get_next_token(lexer)) != (void*)0)
   {
