@@ -1,5 +1,6 @@
 #include "include/lexer.h"
 #include "include/token.h"
+#include<stdio.h>
 #include <ctype.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -35,6 +36,7 @@ void lexer_skip_whitespace(lexer_t *lexer)
     lexer_advance(lexer);
   }
 }
+
 token_t *lexer_get_next_token(lexer_t *lexer)
 {
   while(lexer->c != '\0')
@@ -50,19 +52,27 @@ token_t *lexer_get_next_token(lexer_t *lexer)
       return lexer_collect_string(lexer);
     }
     
-    if (isalnum(lexer->c))
+    // If start with digit 
+    if (isdigit(lexer->c))
+    {
+      return lexer_collect_number(lexer);
+    }
+    
+    // If is alpla or _ (allowed for name)
+    if(isalpha(lexer->c))
     {
       return lexer_collect_id(lexer);
     }
-    
+
     switch (lexer->c) {
       case '=': return lexer_advance_with_token(lexer, init_token(TOKEN_EQUALS, lexer_get_current_char_as_string(lexer)));
       case '(': return lexer_advance_with_token(lexer, init_token(TOKEN_LPAREN, lexer_get_current_char_as_string(lexer)));
       case ')': return lexer_advance_with_token(lexer, init_token(TOKEN_RPAREN, lexer_get_current_char_as_string(lexer)));
       case ';': return lexer_advance_with_token(lexer, init_token(TOKEN_SEMI, lexer_get_current_char_as_string(lexer)));
+      case '+': return lexer_advance_with_token(lexer, init_token(TOKEN_PLUS, lexer_get_current_char_as_string(lexer)));
     }
   }
-  return (void*)0;
+  return init_token(TOKEN_EOF,'\0');
 }
 
 token_t *lexer_collect_string(lexer_t *lexer)
@@ -85,7 +95,7 @@ token_t *lexer_collect_string(lexer_t *lexer)
 token_t *lexer_collect_id(lexer_t *lexer)
 {
   char *value = calloc(1,sizeof(char));
-  while(isalnum(lexer->c)) // is alphanumeric
+  while(isalnum(lexer->c) || lexer->c == '_') // is alphanumeric or '_'
   {
      char *s = lexer_get_current_char_as_string(lexer);
      value =  realloc(value,strlen(value) + strlen(s) + 1); // allocate for concatnation 
@@ -93,7 +103,52 @@ token_t *lexer_collect_id(lexer_t *lexer)
      free(s);
      lexer_advance(lexer);
   }
+
+  // Check KEYWORDS
+  if (strcmp(value, "int") == 0)      return init_token(TOKEN_KW_INT, value);
+  if (strcmp(value, "float") == 0)    return init_token(TOKEN_KW_FLOAT, value);
+  if (strcmp(value, "string") == 0)   return init_token(TOKEN_KW_STRING, value);
+  if (strcmp(value, "if") == 0)       return init_token(TOKEN_KW_IF, value);
+  if (strcmp(value, "while") == 0)    return init_token(TOKEN_KW_WHILE, value);
+  if (strcmp(value, "return") == 0)   return init_token(TOKEN_KW_RETURN, value);
+  // If not keywork (variable or function)
   return init_token(TOKEN_ID, value);
+}
+
+token_t *lexer_collect_number(lexer_t *lexer)
+{
+  char *value = calloc(1,sizeof(char));
+  while(isdigit(lexer->c))
+  {
+    char *s = lexer_get_current_char_as_string(lexer);
+    value = realloc(value,strlen(value) + strlen(s) + 1);
+    strcat(value,s);
+    lexer_advance(lexer);
+  }
+  if(lexer->c == '.')
+  {
+    // Float number 
+    while(isdigit(lexer->c))
+    {
+      char *s = lexer_get_current_char_as_string(lexer);
+      value = realloc(value,strlen(value) + strlen(s) + 1);
+      strcat(value,s);
+      lexer_advance(lexer);
+    }
+    if (isalpha(lexer->c) || lexer->c == '_')
+    {
+        printf("[Lexer Error] Invalid suffix '%c' on float constant '%s'\n", lexer->c, value);
+        exit(1);
+    }
+    return init_token(TOKEN_FLOAT, value);
+  }
+  // Interger number
+  if (isalpha(lexer->c) || lexer->c == '_')
+  {
+    printf("[lexer error] invalid suffix '%c' on float constant '%s'\n", lexer->c, value);
+    exit(1);
+  } 
+  return init_token(TOKEN_INT, value);
 }
 
 char *lexer_get_current_char_as_string(lexer_t *lexer)
