@@ -65,14 +65,18 @@ token_t *lexer_get_next_token(lexer_t *lexer)
     }
 
     switch (lexer->c) {
-      case '=': return lexer_advance_with_token(lexer, init_token(TOKEN_EQUALS, lexer_get_current_char_as_string(lexer)));
-      case '(': return lexer_advance_with_token(lexer, init_token(TOKEN_LPAREN, lexer_get_current_char_as_string(lexer)));
-      case ')': return lexer_advance_with_token(lexer, init_token(TOKEN_RPAREN, lexer_get_current_char_as_string(lexer)));
-      case ';': return lexer_advance_with_token(lexer, init_token(TOKEN_SEMI, lexer_get_current_char_as_string(lexer)));
-      case '+': return lexer_advance_with_token(lexer, init_token(TOKEN_PLUS, lexer_get_current_char_as_string(lexer)));
+      case '=': return lexer_advance_with_token(lexer, init_token(TOKEN_EQUALS, NULL));
+      case '(': return lexer_advance_with_token(lexer, init_token(TOKEN_LPAREN, NULL));
+      case ')': return lexer_advance_with_token(lexer, init_token(TOKEN_RPAREN, NULL));
+      case ';': return lexer_advance_with_token(lexer, init_token(TOKEN_SEMI, NULL));
+      case '+': return lexer_advance_with_token(lexer, init_token(TOKEN_PLUS, NULL));
+      case ',': return lexer_advance_with_token(lexer, init_token(TOKEN_COMMA, NULL));
+      default:
+        printf("[Lexer Error] Unxepected character %c\n", lexer->c);
+        exit(1);
     }
   }
-  return init_token(TOKEN_EOF,'\0');
+  return init_token(TOKEN_EOF,(void*)0);
 }
 
 token_t *lexer_collect_string(lexer_t *lexer)
@@ -104,13 +108,14 @@ token_t *lexer_collect_id(lexer_t *lexer)
      lexer_advance(lexer);
   }
 
-  // Check KEYWORDS
-  if (strcmp(value, "int") == 0)      return init_token(TOKEN_KW_INT, value);
-  if (strcmp(value, "float") == 0)    return init_token(TOKEN_KW_FLOAT, value);
-  if (strcmp(value, "string") == 0)   return init_token(TOKEN_KW_STRING, value);
-  if (strcmp(value, "if") == 0)       return init_token(TOKEN_KW_IF, value);
-  if (strcmp(value, "while") == 0)    return init_token(TOKEN_KW_WHILE, value);
-  if (strcmp(value, "return") == 0)   return init_token(TOKEN_KW_RETURN, value);
+  // Check KEYWORDS (type alone tells us the value, so don't keep it)
+  if (strcmp(value, "int") == 0)      { free(value); return init_token(TOKEN_KW_INT, NULL); }
+  if (strcmp(value, "float") == 0)    { free(value); return init_token(TOKEN_KW_FLOAT, NULL); }
+  if (strcmp(value, "string") == 0)   { free(value); return init_token(TOKEN_KW_STRING, NULL); }
+  if (strcmp(value, "if") == 0)       { free(value); return init_token(TOKEN_KW_IF, NULL); }
+  if (strcmp(value, "while") == 0)    { free(value); return init_token(TOKEN_KW_WHILE, NULL); }
+  if (strcmp(value, "return") == 0)   { free(value); return init_token(TOKEN_KW_RETURN, NULL); }
+
   // If not keywork (variable or function)
   return init_token(TOKEN_ID, value);
 }

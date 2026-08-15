@@ -2,18 +2,20 @@
 #define AST_H
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 typedef struct AST_STRUCT {
   enum {
     /* 1. LITERALS & IDENTIFIERS */
     AST_INT_LITERAL,          // 10
     AST_FLOAT_LITERAL,        // 3.14
     AST_STRING_LITERAL,       // "hello"
+    AST_BOOLEAN,                 // bool 
     AST_IDENTIFIER,           // x, my_var (variable/function reference)
 
     /* 2. EXPRESSIONS */
     AST_BINARY_EXPR,          // x + y, a == b
     AST_UNARY_EXPR,           // -x, !flag
-    AST_FUNCTION_CALL,        // foo(a, b)
+    AST_FUNCTION_CALL,        // mylove("van anh")
     AST_ARRAY_ACCESS,         // arr[0]
 
     /* 3. STATEMENTS */
@@ -23,8 +25,9 @@ typedef struct AST_STRUCT {
     AST_FOR_STATEMENT,        // for (init; cond; post) { ... }
     AST_RETURN_STATEMENT,     // return expr;
     AST_VARIABLE_DEFINITION,  // int x = 5;
-    AST_FUNCITON_CALL,        // mylove("van anh")
     AST_ASSIGNMENT,      // x = 10
+
+    AST_NOOP,
 
     /* 5. ROOT / PROGRAM */
     AST_PROGRAM, 
@@ -34,6 +37,7 @@ typedef struct AST_STRUCT {
     /* 1. LITERALS and IDENTIFIERS */
     int int_value;
     double float_value;
+    bool bool_value;
     char *string_value;
     char *identifier; // Name of variable
 
@@ -58,11 +62,30 @@ typedef struct AST_STRUCT {
         struct AST_STRUCT *right;
     } binary_expr;
 
-    /* variable definition */ 
     struct {
-      char *variable_type;     
-      char *variable_name;     
-      struct AST_STRUCT *value;     
+      enum {
+        OP_NOT,   // !
+        OP_NEG,   // - (unary minus)
+        OP_POS,   // + (unary plus)
+        OP_BNOT   // ~ (bitwise not)
+      } op;
+      struct AST_STRUCT *operand;
+    } unary_expr;    /* variable definition */ 
+
+    struct {
+      char *id;
+      struct AST_STRUCT *index_expr;
+    } array_access;
+
+    /* Variable difinition statement */
+    struct {
+      enum {
+        VAR_TYPE_INT,
+        VAR_TYPE_FLOAT,
+        VAR_TYPE_STRING,
+      } variable_type;
+      char *variable_name;
+      struct AST_STRUCT *value;
     } variable_definition;
 
     /* Compound */ 

@@ -2,50 +2,47 @@
 #include <stdlib.h>
 #include "include/lexer.h"
 #include "include/parser.h"
+#include "include/visitor.h"
 
-/*
- * AST for name.ti:
- *
- *   print("I love" + get_my_love() + "\n");
- *
- * root
- * AST_COMPOUND (compound.compound_size = 1)
- * |
- * +--[0] AST_FUNCTION_CALL                          (statement 1)
- *        function_call.func ---> AST_IDENTIFIER, identifier = "print"
- *        function_call.num_arg = 1
- *        function_call.args[0] ---> AST_BINARY_EXPR (op = OP_ADD)
- *                                   |
- *                                   +-- left  ---> AST_BINARY_EXPR (op = OP_ADD)
- *                                   |             |
- *                                   |             +-- left  ---> AST_STRING_LITERAL
- *                                   |             |             string_value = "I love"
- *                                   |             |
- *                                   |             +-- right ---> AST_FUNCTION_CALL
- *                                   |                           function_call.func ---> AST_IDENTIFIER
- *                                   |                                                   identifier = "get_my_love"
- *                                   |                           function_call.num_arg = 0
- *                                   |
- *                                   +-- right ---> AST_STRING_LITERAL
- *                                                 string_value = "\n"
- *
- * ("I love" + get_my_love()) + "\n"  -- '+' is left-associative
- *
- * NOTE: this tree is the TARGET shape, not what the parser produces
- * today. parser_parse_expr() still has no case for TOKEN_PLUS / no
- * AST_BINARY_EXPR construction, so parsing this file currently stops
- * with a clean "Unexpected value +" error right after "I love" — that
- * is expected until binary-expression (precedence climbing) parsing
- * is added.
- */
+extern void ast_draw(ast_t *node);
+
+static char *read_string_from_file(const char *path)
+{
+  FILE *file = fopen(path, "rb");
+  if (!file)
+  {
+    printf("Could not open file: %s\n", path);
+    exit(1);
+  }
+
+  fseek(file, 0, SEEK_END);
+  long length = ftell(file);
+  fseek(file, 0, SEEK_SET);
+
+  char *contents = malloc(length + 1);
+  fread(contents, 1, length, file);
+  contents[length] = '\0';
+
+  fclose(file);
+  return contents;
+}
+
 int main(int argc, char* argv[])
 {
-  lexer_t *lexer = init_lexer("print(\"I love\" + get_my_love() + \"\\n\");");
-  token_t *token = (void*)0;
+  if (argc < 2)
+  {
+    printf("Usage: %s <file.ti>\n", argv[0]);
+    exit(1);
+  }
+
+  char *contents = read_string_from_file(argv[1]);
+  lexer_t *lexer = init_lexer(contents);
   parser_t *parser = init_parser(lexer);
   ast_t *root = parser_parse(parser);
-  printf("%d\n",root->type);
-  printf("%d\n",root->value.compound.compound_size);
+  context_t *context = init_interpreter_context();
+  visitor_visit(context,root);
+  //ast_draw(root);
   free((void*)lexer);
+  free(contents);
 	return 0;
 }

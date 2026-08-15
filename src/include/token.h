@@ -7,6 +7,7 @@ typedef  struct TOKEN_STRUCT{
         TOKEN_INT,          // 10, 42
         TOKEN_FLOAT,        // 3.14
         TOKEN_STRING,       // "hello"
+        TOKEN_BOOL,         // true,false 
 
         /* 2. KEYWORDS */
         TOKEN_KW_INT,       // int
@@ -28,6 +29,8 @@ typedef  struct TOKEN_STRUCT{
         TOKEN_RPAREN,       // )
         TOKEN_LBRACE,       // {
         TOKEN_RBRACE,       // }
+        TOKEN_LBRACKET,     // [
+        TOKEN_RBRACKET,     // ]
         TOKEN_COMMA,         // ,
         
         TOKEN_EOF           // End of file
