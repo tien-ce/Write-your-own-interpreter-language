@@ -20,6 +20,7 @@ typedef  struct TOKEN_STRUCT{
 
         /* 3. OPERATORS & DELIMITERS */
         TOKEN_EQUALS,       // =
+        TOKEN_NOT_EQUALS,   // !=
         TOKEN_PLUS,         // +
         TOKEN_MINUS,        // -
         TOKEN_STAR,         // *
@@ -31,8 +32,11 @@ typedef  struct TOKEN_STRUCT{
         TOKEN_RBRACE,       // }
         TOKEN_LBRACKET,     // [
         TOKEN_RBRACKET,     // ]
-        TOKEN_COMMA,         // ,
-        
+        TOKEN_COMMA,        // ,
+        TOKEN_LT,         // <
+        TOKEN_LTE,        // <= 
+        TOKEN_GT,      // >
+        TOKEN_GTE,     // >
         TOKEN_EOF           // End of file
   } type;
   char *value;

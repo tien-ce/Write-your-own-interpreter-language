@@ -20,6 +20,16 @@ lexer_t *init_lexer(char *str)
   lexer->c = lexer->contents[lexer->i];
   return lexer;
 }
+
+void lexer_go_back(lexer_t *lexer)
+{
+  if(lexer->i != 0)
+  {
+    lexer->i --;
+    lexer->c = lexer->contents[lexer->i];
+  }
+}
+
 void lexer_advance(lexer_t *lexer)
 {
   uint32_t lenght = strlen(lexer->contents); 
@@ -29,6 +39,7 @@ void lexer_advance(lexer_t *lexer)
       lexer->c = lexer->contents[lexer->i];
   }
 }
+
 void lexer_skip_whitespace(lexer_t *lexer)
 {
   while(lexer->c == ' ' || lexer->c == '\n')
@@ -72,6 +83,28 @@ token_t *lexer_get_next_token(lexer_t *lexer)
       case ';': return lexer_advance_with_token(lexer, init_token(TOKEN_SEMI, NULL));
       case '+': return lexer_advance_with_token(lexer, init_token(TOKEN_PLUS, NULL));
       case ',': return lexer_advance_with_token(lexer, init_token(TOKEN_COMMA, NULL));
+      case '<':
+      {
+        lexer_advance(lexer);
+        if (lexer->c == '=')
+        {
+          return lexer_advance_with_token(lexer,  init_token(TOKEN_LTE,NULL));
+        }
+        lexer_go_back(lexer);
+        return lexer_advance_with_token(lexer,  init_token(TOKEN_LT,NULL));
+      }
+      case '>':
+      {
+        lexer_advance(lexer);
+        if (lexer->c == '=')
+        {
+          return lexer_advance_with_token(lexer,  init_token(TOKEN_GTE,NULL));
+        }
+        lexer_go_back(lexer);
+        return lexer_advance_with_token(lexer,  init_token(TOKEN_GT,NULL));
+      }
+      case '{': return lexer_advance_with_token(lexer, init_token(TOKEN_LBRACE, NULL));
+      case '}': return lexer_advance_with_token(lexer, init_token(TOKEN_RBRACE, NULL));
       default:
         printf("[Lexer Error] Unexpected character %c\n", lexer->c);
         exit(1);

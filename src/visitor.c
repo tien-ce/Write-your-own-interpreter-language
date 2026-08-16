@@ -1,5 +1,6 @@
 #include "include/visitor.h"
 #include "include/AST.h"
+#include <algorithm>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,16 +29,214 @@ static void built_in_print(value_t **argv, int argc)
   }
 }
 
+static value_t *binary_add(value_t *left, value_t *right)
+{
+  value_t *value = init_val(left->type);
+  switch (left->type)
+  {
+    case VAL_INT:
+      value->int_val = left->int_val + right->int_val;
+      break;
+    case VAL_FLOAT:
+      value->float_val = left->float_val + right->float_val;
+      break;
+    case VAL_STRING:
+    {
+      int length = strlen(left->string_val) + strlen(right->string_val) + 1;
+      value->string_val = calloc(1, sizeof(char) * length);
+      strcat(value->string_val, left->string_val);
+      strcat(value->string_val, right->string_val);
+      break;
+    }
+    default:
+      printf("Unexpected operands %d, %d\n", left->type, right->type);
+      break;
+  }
+  return value;
+}
+
+static value_t *binary_sub(value_t *left, value_t *right)
+{
+  value_t *value = init_val(left->type);
+  switch (left->type)
+  {
+    case VAL_INT:
+      value->int_val = left->int_val - right->int_val;
+      break;
+    case VAL_FLOAT:
+      value->float_val = left->float_val - right->float_val;
+      break;
+    default:
+      printf("Unexpected operands %d, %d\n", left->type, right->type);
+      break;
+  }
+  return value;
+}
+
+static value_t *binary_mul(value_t *left, value_t *right)
+{
+  value_t *value = init_val(left->type);
+  switch (left->type)
+  {
+    case VAL_INT:
+      value->int_val = left->int_val * right->int_val;
+      break;
+    case VAL_FLOAT:
+      value->float_val = left->float_val * right->float_val;
+      break;
+    default:
+      printf("Unexpected operands %d, %d\n", left->type, right->type);
+      break;
+  }
+  return value;
+}
+
+static value_t *binary_div(value_t *left, value_t *right)
+{
+  value_t *value = init_val(left->type);
+  switch (left->type)
+  {
+    case VAL_INT:
+      if (right->int_val == 0)
+      {
+        printf("Division by zero error\n");
+        break;
+      }
+      value->int_val = left->int_val / right->int_val;
+      break;
+    case VAL_FLOAT:
+      if (right->float_val == 0.0f)
+      {
+        printf("Division by zero error\n");
+        break;
+      }
+      value->float_val = left->float_val / right->float_val;
+      break;
+    default:
+      printf("Unexpected operands %d, %d\n", left->type, right->type);
+      break;
+  }
+  return value;
+}
+
+// Comparison functions
+static value_t *binary_equal(value_t *left, value_t *right)
+{
+  value_t *value = init_val(VAL_BOOL);
+  switch (left->type)
+  {
+    case VAL_INT:
+      value->bool_val = (left->int_val == right->int_val);
+      break;
+    case VAL_FLOAT:
+      value->float_val = (left->float_val == right->float_val);
+      break;
+    case VAL_STRING:
+      value->bool_val = (strcmp(left->string_val, right->string_val) == 0);
+      break;
+    case VAL_BOOL:
+      value->bool_val = (left->bool_val == right->bool_val);
+      break;
+    default:
+      printf("Unexpected operands %d, %d\n", left->type, right->type);
+      break;
+  }
+  return value;
+}
+
+static value_t *binary_greater(value_t *left, value_t *right)
+{
+  value_t *value = init_val(VAL_BOOL);
+  switch (left->type)
+  {
+    case VAL_INT:
+      value->bool_val = (left->int_val > right->int_val);
+      break;
+    case VAL_FLOAT:
+      value->bool_val = (left->float_val > right->float_val);
+      break;
+    case VAL_STRING:
+      value->bool_val = (strcmp(left->string_val, right->string_val) > 0);
+      break;
+    default:
+      printf("Unexpected operands %d, %d\n", left->type, right->type);
+      break;
+  }
+  return value;
+}
+
+static value_t *binary_less(value_t *left, value_t *right)
+{
+  value_t *value = init_val(VAL_BOOL);
+  switch (left->type)
+  {
+    case VAL_INT:
+      value->bool_val = (left->int_val < right->int_val);
+      break;
+    case VAL_FLOAT:
+      value->bool_val = (left->float_val < right->float_val);
+      break;
+    case VAL_STRING:
+      value->bool_val = (strcmp(left->string_val, right->string_val) < 0);
+      break;
+    default:
+      printf("Unexpected operands %d, %d\n", left->type, right->type);
+      break;
+  }
+  return value;
+}
+
+static value_t *binary_greater_equal(value_t *left, value_t *right)
+{
+  value_t *value = init_val(VAL_BOOL);
+  switch (left->type)
+  {
+    case VAL_INT:
+      value->bool_val = (left->int_val >= right->int_val);
+      break;
+    case VAL_FLOAT:
+      value->bool_val = (left->float_val >= right->float_val);
+      break;
+    case VAL_STRING:
+      value->bool_val = (strcmp(left->string_val, right->string_val) >= 0);
+      break;
+    default:
+      printf("Unexpected operands %d, %d\n", left->type, right->type);
+      break;
+  }
+  return value;
+}
+
+static value_t *binary_less_equal(value_t *left, value_t *right)
+{
+  value_t *value = init_val(VAL_BOOL);
+  switch (left->type)
+  {
+    case VAL_INT:
+      value->bool_val = (left->int_val <= right->int_val);
+      break;
+    case VAL_FLOAT:
+      value->bool_val = (left->float_val <= right->float_val);
+      break;
+    case VAL_STRING:
+      value->bool_val = (strcmp(left->string_val, right->string_val) <= 0);
+      break;
+    default:
+      printf("Unexpected operands %d, %d\n", left->type, right->type);
+      break;
+  }
+  return value;
+}
 static variable_t *find_variable_from_context(context_t *ctx, char *variable_name)
 {
   context_t *current_ctx = ctx;
   while(current_ctx != NULL)
   {
-    for(int i = 0; i < ctx->variable_size; i ++)
+    for(int i = 0; i < current_ctx->variable_size; i ++)
     {
-      if(strcmp(ctx->variables[i]->name, variable_name) == 0)
+      if(strcmp(current_ctx->variables[i]->name, variable_name) == 0)
       {
-        return ctx->variables[i];
+        return current_ctx->variables[i];
       }
     }
     current_ctx = current_ctx->parent;
@@ -163,18 +362,24 @@ value_t *visitor_visit(InterpreterContext *ctx, ast_t *node)
       return visitor_visit_compound(ctx,node);
     case AST_VARIABLE_DEFINITION:
       return visitor_visit_variable_definition(ctx, node);
+    case AST_ASSIGNMENT:
+      return visitor_visit_assignment(ctx, node);
     case AST_STRING_LITERAL:
       return visitor_visit_string_literal(ctx,node);
+    case AST_INT_LITERAL:
+      return visitor_visit_int_literal(ctx,node);
     case AST_IDENTIFIER:
       return visitor_visit_identifier(ctx,node);
     case AST_BINARY_EXPR:
       return visitor_visit_binary_expr(ctx, node);
     case AST_UNARY_EXPR:
         return visitor_visit_unary_expr(ctx, node);
+    case AST_WHILE_STATEMENT:
+        return visitor_visit_while_statement(ctx,node);
     default:
         break;
   }
-  return init_val(VAL_NULL);
+  return NULL;
 }
 
 value_t *visitor_visit_expr(InterpreterContext *ctx, ast_t *node)
@@ -197,32 +402,39 @@ value_t *visitor_visit_binary_expr(InterpreterContext *ctx, ast_t *node)
         exit(1);
     }
 
-    result = init_val(left->type);
-
-    switch (left->type)
-    {
-        case VAL_INT:
-            result->int_val = left->int_val + right->int_val;
-            break;
-
-        case VAL_STRING:
-        {
-            int length = strlen(left->string_val) + strlen(right->string_val) + 1;
-            result->string_val = calloc(1, length * sizeof(char));
-            strcat(result->string_val, left->string_val);
-            strcat(result->string_val, right->string_val);
-            break;
-        }
-
-        case VAL_FLOAT:
-            result->float_val = left->float_val + right->float_val;
-            break;
-
-        default:
-            free(result);
-            result = NULL;
-            break;
-    }
+  switch (node->value.binary_expr.op)
+  {
+    case OP_ADD:
+      result = binary_add(left, right);
+      break;
+    case OP_SUB:
+      result = binary_sub(left, right);
+      break;
+    case OP_MUL:
+      result = binary_mul(left, right);
+      break;
+    case OP_DIV:
+      result = binary_div(left, right);
+      break;
+    case OP_EQ:
+      result = binary_equal(left, right);
+      break;
+    case OP_GT:
+      result = binary_greater(left, right);
+      break;
+    case OP_LT:
+      result = binary_less(left, right);
+      break;
+    case OP_GTE:
+      result = binary_greater_equal(left, right);
+      break;
+    case OP_LTE:
+      result = binary_less_equal(left, right);
+      break;
+    default:
+      printf("Unknown operator: %d\n", node->value.binary_expr.op);
+      break;
+  }
 
 out:
     free_internal_value(left);
@@ -247,11 +459,15 @@ value_t *visitor_visit_variable_definition(InterpreterContext *ctx, ast_t *node)
 
 value_t *visitor_visit_assignment(InterpreterContext *ctx, ast_t *node)
 {
+  printf("Visitor assignment\n");
+  variable_t *variable = find_variable_from_context(ctx, node->value.identifier);
+  // ------------------ Here ---------------------------------
   return NULL;
 }
 
 value_t *visitor_visit_while_statement(InterpreterContext *ctx, ast_t *node)
 {
+  printf("Visit while statement\n");
   value_t *value = visitor_visit(ctx, node->value.while_statement.condition);
   if(value->type != VAL_BOOL)
   {
@@ -325,6 +541,20 @@ value_t *visitor_visit_string_literal(InterpreterContext *ctx, ast_t *node)
 {
   value_t *value = init_val(VAL_STRING);
   value->string_val = strdup(node->value.string_value);
+  return value;
+}
+
+value_t *visitor_visit_int_literal(InterpreterContext *ctx, ast_t *node)
+{
+  value_t *value = init_val(VAL_INT);
+  value->int_val = node->value.int_value;
+  return value;
+}
+
+value_t *visitor_visit_float_literal(InterpreterContext *ctx, ast_t *node)
+{
+  value_t *value = init_val(VAL_FLOAT);
+  value->float_val = node->value.float_value;
   return value;
 }
 

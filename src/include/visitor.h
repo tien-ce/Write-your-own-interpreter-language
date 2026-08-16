@@ -47,6 +47,8 @@ value_t *visitor_visit_for_statement(InterpreterContext *ctx, ast_t *node);
 value_t *visitor_visit_function_call(InterpreterContext *ctx, ast_t *node);
 value_t *visitor_visit_compound(InterpreterContext *ctx, ast_t *node);
 value_t *visitor_visit_string_literal(InterpreterContext *ctx, ast_t *node);
+value_t *visitor_visit_int_literal(InterpreterContext *ctx, ast_t *node);
+value_t *visitor_visit_float_literal(InterpreterContext *ctx, ast_t *node);
 value_t *visitor_visit_identifier(InterpreterContext *ctx, ast_t *node);
 value_t *visitor_visit(InterpreterContext *ctx, ast_t *node);
 

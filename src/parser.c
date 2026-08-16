@@ -16,13 +16,13 @@ static int token_type_to_op(int token_type)
     case TOKEN_MINUS:       return OP_SUB;
     case TOKEN_STAR:        return OP_MUL;
     case TOKEN_SLASH:       return OP_DIV;
-    //case TOKEN_PERCENT:     return OP_MOD;
-    //case TOKEN_EQUALS_EQ:   return OP_EQ;
-    //case TOKEN_NOT_EQ:      return OP_NEQ;
-    //case TOKEN_LT:          return OP_LT;
-    //case TOKEN_GT:          return OP_GT;
-    //case TOKEN_LTE:         return OP_LTE;
-    //case TOKEN_GTE:         return OP_GTE;
+    //case TOKEN_PERCENT:   return OP_MOD;
+    case TOKEN_EQUALS:      return OP_EQ;
+    case TOKEN_NOT_EQUALS:  return OP_NEQ;
+    case TOKEN_LT:          return OP_LT;
+    case TOKEN_GT:          return OP_GT;
+    case TOKEN_LTE:         return OP_LTE;
+    case TOKEN_GTE:         return OP_GTE;
     //case TOKEN_LOGICAL_AND: return OP_LOGICAL_AND;
     //case TOKEN_LOGICAL_OR:  return OP_LOGICAL_OR;
     default:
@@ -125,7 +125,11 @@ ast_t *parser_parse_expr(parser_t *parser)
   // Expression1
   ast_t *left = parser_parse_term(parser);  // Call to level 2
   while (parser->current_token->type == TOKEN_PLUS ||
-        parser->current_token->type == TOKEN_MINUS 
+        parser->current_token->type == TOKEN_MINUS ||
+        parser->current_token->type == TOKEN_LT ||
+        parser->current_token->type == TOKEN_LTE ||
+        parser->current_token->type == TOKEN_GT ||
+        parser->current_token->type == TOKEN_GTE
       )
   {
     int op = parser->current_token->type;
@@ -255,7 +259,7 @@ ast_t *parser_parse_primary(parser_t *parser)
               parser->current_token->value,
               parser->current_token->type 
               );
-      return NULL;
+      exit(1);
     }
   }
 }
