@@ -102,7 +102,7 @@ typedef struct AST_STRUCT {
 
     /* Function call */
     struct {
-      struct AST_STRUCT *func; // Point to fuction name (id)
+      char *func; // Point to fuction name (id)
       struct AST_STRUCT **args; // An array constains pointers point to args (exprs)
       int num_arg;
     }function_call;
@@ -116,4 +116,5 @@ typedef struct AST_STRUCT {
 }ast_t;  // Abstract syntax tree
 
 ast_t *init_ast(int type);
+void free_ast(ast_t *ast);
 #endif // !AST_H

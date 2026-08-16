@@ -39,11 +39,12 @@ void lexer_skip_whitespace(lexer_t *lexer)
 
 token_t *lexer_get_next_token(lexer_t *lexer)
 {
-  while(lexer->c != '\0')
+  while(lexer->c != '\0' && lexer->c != EOF && lexer->c != '\000')
   {
     if (lexer->c == ' ' || lexer ->c == '\n')
     {
       lexer_skip_whitespace(lexer);
+      continue;
     }
     
     // If get the start of string
@@ -72,7 +73,7 @@ token_t *lexer_get_next_token(lexer_t *lexer)
       case '+': return lexer_advance_with_token(lexer, init_token(TOKEN_PLUS, NULL));
       case ',': return lexer_advance_with_token(lexer, init_token(TOKEN_COMMA, NULL));
       default:
-        printf("[Lexer Error] Unxepected character %c\n", lexer->c);
+        printf("[Lexer Error] Unexpected character %c\n", lexer->c);
         exit(1);
     }
   }
@@ -86,6 +87,22 @@ token_t *lexer_collect_string(lexer_t *lexer)
   value[0] = '\0';
   while(lexer->c != '"')
   {
+     if (lexer->c == '\\')
+     {
+       lexer_advance(lexer);
+       switch(lexer->c)
+       {
+         case 'n':
+           lexer->c = '\n';
+           break; 
+        case 't':
+           lexer->c = '\t';
+           break;
+         case 'r':
+           lexer->c = '\r';
+           break;
+       }
+     }
      char *s = lexer_get_current_char_as_string(lexer);
      value =  realloc(value,strlen(value) + strlen(s) + 1); // allocate for s 
      strcat(value,s);
@@ -127,7 +144,7 @@ token_t *lexer_collect_number(lexer_t *lexer)
   {
     char *s = lexer_get_current_char_as_string(lexer);
     value = realloc(value,strlen(value) + strlen(s) + 1);
-    strcat(value,s);
+    strcat(value,s);;
     lexer_advance(lexer);
   }
   if(lexer->c == '.')

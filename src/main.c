@@ -42,7 +42,10 @@ int main(int argc, char* argv[])
   context_t *context = init_interpreter_context();
   visitor_visit(context,root);
   //ast_draw(root);
+  free(parser);
+  free_context(context);
   free((void*)lexer);
+  free_ast(root); 
   free(contents);
 	return 0;
 }

@@ -32,6 +32,7 @@ static int token_type_to_op(int token_type)
     }
   }
 }
+
 parser_t *init_parser(lexer_t *lexer)
 {
   parser_t *parser = calloc(1, sizeof(struct PARSER_STRUCT));
@@ -39,9 +40,10 @@ parser_t *init_parser(lexer_t *lexer)
   parser->current_token= lexer_get_next_token(parser->lexer);
   return parser;
 }
+
 void parser_eat(parser_t *parser, int expected_type)
 {
-  if (parser->current_token->type == expected_type)
+  if ((int)parser->current_token->type == expected_type)
   {
     token_t *old_token = parser->current_token;
     parser->current_token = lexer_get_next_token(parser->lexer);
@@ -315,8 +317,7 @@ ast_t *parser_parse_function_call(parser_t *parser, char *func_name)
   parser_eat(parser, TOKEN_LPAREN);
   ast_t **args = NULL;
   int num_arg = 0;
-  ast_t *func = init_ast(AST_IDENTIFIER);
-  func->value.identifier = func_name;
+  char *func = func_name;
   /* fuc_name(arg1,arg2,...) */
   if(parser->current_token->type != TOKEN_RPAREN)
   {

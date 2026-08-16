@@ -51,7 +51,7 @@ static void print_node_label(ast_t *node)
       printf("WHILE\n");
       break;
     case AST_FUNCTION_CALL:
-      printf("CALL\n");
+      printf("CALL %s\n", node->value.function_call.func);
       break;
     case AST_COMPOUND:
       printf("COMPOUND (%d stmts)\n", node->value.compound.compound_size);
@@ -123,9 +123,7 @@ static void draw_ast_internal(ast_t *node, bool is_last, bool is_root, bool has_
 
     case AST_FUNCTION_CALL:
     {
-      int total_children = 1 + node->value.function_call.num_arg;
       // Draw Callee
-      draw_ast_internal(node->value.function_call.func, total_children == 1, false, has_next_sibling, depth + 1);
       // Draw Arguments
       for (int i = 0; i < node->value.function_call.num_arg; i++)
       {

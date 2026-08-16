@@ -34,7 +34,8 @@ typedef  struct TOKEN_STRUCT{
         TOKEN_COMMA,         // ,
         
         TOKEN_EOF           // End of file
-  } type;    char *value;
+  } type;
+  char *value;
 } token_t;
 
 token_t *init_token(int type, char* value);
