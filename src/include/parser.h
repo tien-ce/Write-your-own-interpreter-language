@@ -17,7 +17,7 @@ ast_t *parser_parse_variable_definition(parser_t *parser);
 ast_t *parser_parse_function_call(parser_t *parser, char *func_name);
 ast_t *parser_parse_assignment(parser_t *parser, ast_t *target);
 ast_t *parser_parse_while_statement(parser_t *parser);
-
+ast_t *parser_parse_if_statement(parser_t *parser);
 ast_t *parser_parse_primary(parser_t *parser); // Litterals,identifier,function_call, grouping
 ast_t *parser_parse_term(parser_t *parser); // Multiplicative expression (*,/)
 ast_t *parser_parse_expr(parser_t *parser); // Additive Expressions (+,-)

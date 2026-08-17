@@ -1,10 +1,15 @@
 #include "include/lexer.h"
 #include "include/token.h"
+#include "include/tracked_memory.h"
+#include "include/platform.h"
 #include<stdio.h>
 #include <ctype.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+
+/* Forward declarations of static functions */
+static token_t *lexer_advance_with_token(lexer_t *lexer, token_t *token);
 
 static token_t *lexer_advance_with_token(lexer_t *lexer, token_t *token)
 {
@@ -14,7 +19,7 @@ static token_t *lexer_advance_with_token(lexer_t *lexer, token_t *token)
 
 lexer_t *init_lexer(char *str) 
 {
-  lexer_t *lexer = calloc(1, sizeof(struct LEXER_STRUCT));
+  lexer_t *lexer = tracked_calloc(1, sizeof(struct LEXER_STRUCT));
   lexer->contents = str;
   lexer->i = 0;
   lexer->c = lexer->contents[lexer->i];
@@ -106,8 +111,8 @@ token_t *lexer_get_next_token(lexer_t *lexer)
       case '{': return lexer_advance_with_token(lexer, init_token(TOKEN_LBRACE, NULL));
       case '}': return lexer_advance_with_token(lexer, init_token(TOKEN_RBRACE, NULL));
       default:
-        printf("[Lexer Error] Unexpected character %c\n", lexer->c);
-        exit(1);
+        ti_log("[Lexer Error] Unexpected character %c\n", lexer->c);
+        ti_fatal();
     }
   }
   return init_token(TOKEN_EOF,(void*)0);
@@ -116,7 +121,7 @@ token_t *lexer_get_next_token(lexer_t *lexer)
 token_t *lexer_collect_string(lexer_t *lexer)
 {        
   lexer_advance(lexer); // go thorugh open quote
-  char *value = calloc(1, sizeof(char));
+  char *value = tracked_calloc(1, sizeof(char));
   value[0] = '\0';
   while(lexer->c != '"')
   {
@@ -127,7 +132,7 @@ token_t *lexer_collect_string(lexer_t *lexer)
        {
          case 'n':
            lexer->c = '\n';
-           break; 
+           break;
         case 't':
            lexer->c = '\t';
            break;
@@ -137,9 +142,9 @@ token_t *lexer_collect_string(lexer_t *lexer)
        }
      }
      char *s = lexer_get_current_char_as_string(lexer);
-     value =  realloc(value,strlen(value) + strlen(s) + 1); // allocate for s 
+     value =  tracked_realloc(value,strlen(value) + strlen(s) + 1); // allocate for s
      strcat(value,s);
-     free(s);
+     tracked_free(s);
      lexer_advance(lexer);
   }
   lexer_advance(lexer); // Skip close quote
@@ -148,23 +153,24 @@ token_t *lexer_collect_string(lexer_t *lexer)
 
 token_t *lexer_collect_id(lexer_t *lexer)
 {
-  char *value = calloc(1,sizeof(char));
+  char *value = tracked_calloc(1,sizeof(char));
   while(isalnum(lexer->c) || lexer->c == '_') // is alphanumeric or '_'
   {
      char *s = lexer_get_current_char_as_string(lexer);
-     value =  realloc(value,strlen(value) + strlen(s) + 1); // allocate for concatnation 
+     value =  tracked_realloc(value,strlen(value) + strlen(s) + 1); // allocate for concatnation
      strcat(value,s);
-     free(s);
+     tracked_free(s);
      lexer_advance(lexer);
   }
 
   // Check KEYWORDS (type alone tells us the value, so don't keep it)
-  if (strcmp(value, "int") == 0)      { free(value); return init_token(TOKEN_KW_INT, NULL); }
-  if (strcmp(value, "float") == 0)    { free(value); return init_token(TOKEN_KW_FLOAT, NULL); }
-  if (strcmp(value, "string") == 0)   { free(value); return init_token(TOKEN_KW_STRING, NULL); }
-  if (strcmp(value, "if") == 0)       { free(value); return init_token(TOKEN_KW_IF, NULL); }
-  if (strcmp(value, "while") == 0)    { free(value); return init_token(TOKEN_KW_WHILE, NULL); }
-  if (strcmp(value, "return") == 0)   { free(value); return init_token(TOKEN_KW_RETURN, NULL); }
+  if (strcmp(value, "int") == 0)      { tracked_free(value); return init_token(TOKEN_KW_INT, NULL); }
+  if (strcmp(value, "float") == 0)    { tracked_free(value); return init_token(TOKEN_KW_FLOAT, NULL); }
+  if (strcmp(value, "string") == 0)   { tracked_free(value); return init_token(TOKEN_KW_STRING, NULL); }
+  if (strcmp(value, "if") == 0)       { tracked_free(value); return init_token(TOKEN_KW_IF, NULL); }
+  if (strcmp(value, "else") == 0)     { tracked_free(value); return init_token(TOKEN_KW_ELSE, NULL); }
+  if (strcmp(value, "while") == 0)    { tracked_free(value); return init_token(TOKEN_KW_WHILE, NULL); }
+  if (strcmp(value, "return") == 0)   { tracked_free(value); return init_token(TOKEN_KW_RETURN, NULL); }
 
   // If not keywork (variable or function)
   return init_token(TOKEN_ID, value);
@@ -172,43 +178,43 @@ token_t *lexer_collect_id(lexer_t *lexer)
 
 token_t *lexer_collect_number(lexer_t *lexer)
 {
-  char *value = calloc(1,sizeof(char));
+  char *value = tracked_calloc(1,sizeof(char));
   while(isdigit(lexer->c))
   {
     char *s = lexer_get_current_char_as_string(lexer);
-    value = realloc(value,strlen(value) + strlen(s) + 1);
+    value = tracked_realloc(value,strlen(value) + strlen(s) + 1);
     strcat(value,s);;
     lexer_advance(lexer);
   }
   if(lexer->c == '.')
   {
-    // Float number 
+    // Float number
     while(isdigit(lexer->c))
     {
       char *s = lexer_get_current_char_as_string(lexer);
-      value = realloc(value,strlen(value) + strlen(s) + 1);
+      value = tracked_realloc(value,strlen(value) + strlen(s) + 1);
       strcat(value,s);
       lexer_advance(lexer);
     }
     if (isalpha(lexer->c) || lexer->c == '_')
     {
-        printf("[Lexer Error] Invalid suffix '%c' on float constant '%s'\n", lexer->c, value);
-        exit(1);
+        ti_log("[Lexer Error] Invalid suffix '%c' on float constant '%s'\n", lexer->c, value);
+        ti_fatal();
     }
     return init_token(TOKEN_FLOAT, value);
   }
   // Interger number
   if (isalpha(lexer->c) || lexer->c == '_')
   {
-    printf("[lexer error] invalid suffix '%c' on float constant '%s'\n", lexer->c, value);
-    exit(1);
+    ti_log("[lexer error] invalid suffix '%c' on float constant '%s'\n", lexer->c, value);
+    ti_fatal();
   } 
   return init_token(TOKEN_INT, value);
 }
 
 char *lexer_get_current_char_as_string(lexer_t *lexer)
 {
-  char *str = calloc(2,sizeof(char));
+  char *str = tracked_calloc(2,sizeof(char));
   str[0] = lexer->c;
   str[1] = '\0';
   return str;

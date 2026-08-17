@@ -17,6 +17,7 @@ typedef  struct TOKEN_STRUCT{
         TOKEN_KW_ELSE,      // else
         TOKEN_KW_WHILE,     // while
         TOKEN_KW_RETURN,    // return
+        TOKEN_KW_BREAK,
 
         /* 3. OPERATORS & DELIMITERS */
         TOKEN_EQUALS,       // =

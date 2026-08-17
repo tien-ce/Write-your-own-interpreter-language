@@ -2,9 +2,15 @@
 #include "include/AST.h"
 #include "include/lexer.h"
 #include "include/token.h"
+#include "include/tracked_memory.h"
+#include "include/platform.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+/* Forward declarations of static functions */
+static int token_type_to_op(int token_type);
+
 /*
  * Convert token type to binary operator enum
  */
@@ -27,15 +33,15 @@ static int token_type_to_op(int token_type)
     //case TOKEN_LOGICAL_OR:  return OP_LOGICAL_OR;
     default:
     {
-      printf("Unknown operator token type: %d\n", token_type);
-      exit(1);
+      ti_log("Unknown operator token type: %d\n", token_type);
+      ti_fatal();
     }
   }
 }
 
 parser_t *init_parser(lexer_t *lexer)
 {
-  parser_t *parser = calloc(1, sizeof(struct PARSER_STRUCT));
+  parser_t *parser = tracked_calloc(1, sizeof(struct PARSER_STRUCT));
   parser->lexer = lexer;
   parser->current_token= lexer_get_next_token(parser->lexer);
   return parser;
@@ -47,17 +53,17 @@ void parser_eat(parser_t *parser, int expected_type)
   {
     token_t *old_token = parser->current_token;
     parser->current_token = lexer_get_next_token(parser->lexer);
-    free(old_token);
+    tracked_free(old_token);
     old_token = (void*)0;
   }
   else
   {
-      printf(
+      ti_log(
           "Unexpected value %s with type %d",
           parser->current_token->value,
           parser->current_token->type
       );
-      exit(1);
+      ti_fatal();
   }
 }
 
@@ -83,6 +89,8 @@ ast_t *parser_parse_statement(parser_t *parser)
     }
     case TOKEN_KW_WHILE:
       return parser_parse_while_statement(parser);
+    case TOKEN_KW_IF:
+      return parser_parse_if_statement(parser);
     default:
       return NULL;
   }
@@ -90,7 +98,7 @@ ast_t *parser_parse_statement(parser_t *parser)
 
 ast_t *parser_parse_statements(parser_t *parser)
 {
-  ast_t **compound_value = calloc(1, sizeof(struct AST_STRUCT*));
+  ast_t **compound_value = tracked_calloc(1, sizeof(struct AST_STRUCT*));
   ast_t *compound = init_ast(AST_COMPOUND);
   compound->value.compound.compound_value = compound_value;
   // Parse first statement
@@ -108,7 +116,7 @@ ast_t *parser_parse_statements(parser_t *parser)
       break;
     int size = compound->value.compound.compound_size;
     // Add new statement 
-    compound->value.compound.compound_value = realloc(
+    compound->value.compound.compound_value = tracked_realloc(
      compound->value.compound.compound_value,
      (size + 1) * sizeof(struct AST_STRUCT*)
     );
@@ -259,7 +267,7 @@ ast_t *parser_parse_primary(parser_t *parser)
               parser->current_token->value,
               parser->current_token->type 
               );
-      exit(1);
+      ti_fatal();
     }
   }
 }
@@ -274,8 +282,8 @@ ast_t *parser_parse_variable_definition(parser_t *parser)
     case TOKEN_KW_FLOAT:  variable_type = VAR_TYPE_FLOAT;  break;
     case TOKEN_KW_STRING: variable_type = VAR_TYPE_STRING; break;
     default:
-      printf("Unexpected type keyword with type %d\n", parser->current_token->type);
-      exit(1);
+      ti_log("Unexpected type keyword with type %d\n", parser->current_token->type);
+      ti_fatal();
   }
   parser_eat(parser, parser->current_token->type);
   // a
@@ -315,6 +323,46 @@ ast_t *parser_parse_while_statement(parser_t *parser)
   return while_node;
 }
 
+ast_t *parser_parse_if_statement(parser_t *parser)
+{
+  /* if(expression) { compound } */
+  // if 
+  parser_eat(parser, TOKEN_KW_IF);
+  // ( left parenthesis
+  parser_eat(parser, TOKEN_LPAREN);
+  // expression
+  ast_t *condition = parser_parse_expr(parser);
+  // ) right parenthesis
+  parser_eat(parser, TOKEN_RPAREN);
+  // { left brace 
+  parser_eat(parser, TOKEN_LBRACE);
+  // compound 
+  ast_t *body = parser_parse_statements(parser);
+  // } Right brace
+  parser_eat(parser, TOKEN_RBRACE);
+  ast_t * if_node = init_ast(AST_IF_STATEMENT);
+  if_node->value.if_statement.condition = condition;
+  if_node->value.if_statement.body = body;
+  if(parser->current_token->type == TOKEN_KW_ELSE)
+  {
+      /* else {compound} */
+      // else
+      parser_eat(parser, TOKEN_KW_ELSE);
+      // {
+      parser_eat(parser, TOKEN_LBRACE);
+      // compound
+      ast_t *else_branch = parser_parse_statements(parser);
+      // }
+      parser_eat(parser, TOKEN_RBRACE); 
+      if_node->value.if_statement.else_branch = else_branch;
+  }
+  else
+  {
+      if_node->value.if_statement.else_branch = NULL;
+  }
+  return if_node;
+}
+
 ast_t *parser_parse_function_call(parser_t *parser, char *func_name)
 {
   // ( 
@@ -325,7 +373,7 @@ ast_t *parser_parse_function_call(parser_t *parser, char *func_name)
   /* fuc_name(arg1,arg2,...) */
   if(parser->current_token->type != TOKEN_RPAREN)
   {
-    args = calloc(1, sizeof(struct AST_STRUCT*));
+    args = tracked_calloc(1, sizeof(struct AST_STRUCT*));
     ast_t *arg_node = parser_parse_expr(parser);
     args[num_arg] = arg_node;
     num_arg++;
@@ -334,7 +382,7 @@ ast_t *parser_parse_function_call(parser_t *parser, char *func_name)
   {
     //','
     parser_eat(parser,TOKEN_COMMA);
-    args = realloc(args, (num_arg + 1) * sizeof(struct AST_STRUCT*));
+    args = tracked_realloc(args, (num_arg + 1) * sizeof(struct AST_STRUCT*));
     ast_t *arg_node = parser_parse_expr(parser);
     args[num_arg] = arg_node;
     num_arg++;

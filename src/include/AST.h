@@ -100,6 +100,12 @@ typedef struct AST_STRUCT {
       struct AST_STRUCT *body;  // Point to compound node
     }while_statement;
 
+    struct {
+      struct AST_STRUCT *condition; // Point to expression node
+      struct AST_STRUCT *body;  // Point to compound node
+      struct AST_STRUCT *else_branch; // Point to compound node
+    }if_statement;
+
     /* Function call */
     struct {
       char *func; // Point to fuction name (id)

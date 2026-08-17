@@ -5,6 +5,10 @@
 
 #define MAX_DEPTH 256
 
+/* Forward declarations of static functions */
+static void print_node_label(ast_t *node);
+static void draw_ast_internal(ast_t *node, bool is_last, bool is_root, bool has_next_sibling[], int depth);
+
 static void print_node_label(ast_t *node)
 {
   if (!node)

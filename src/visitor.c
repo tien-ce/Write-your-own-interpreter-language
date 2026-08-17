@@ -1,32 +1,87 @@
 #include "include/visitor.h"
 #include "include/AST.h"
-#include <algorithm>
+#include "include/tracked_memory.h"
+#include "include/platform.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+/* Forward declarations of static functions */
+static void built_in_print(value_t **argv, int argc);
+static bool eval_boolean_condition(InterpreterContext *ctx, ast_t *cond_node);
+static void visitor_execute_body(InterpreterContext *parent_ctx, ast_t *body_node);
+static value_t *binary_add(value_t *left, value_t *right);
+static value_t *binary_sub(value_t *left, value_t *right);
+static value_t *binary_mul(value_t *left, value_t *right);
+static value_t *binary_div(value_t *left, value_t *right);
+static value_t *binary_equal(value_t *left, value_t *right);
+static value_t *binary_greater(value_t *left, value_t *right);
+static value_t *binary_less(value_t *left, value_t *right);
+static value_t *binary_greater_equal(value_t *left, value_t *right);
+static value_t *binary_less_equal(value_t *left, value_t *right);
+static variable_t *find_variable_from_context(context_t *ctx, char *variable_name);
+static void add_variable_to_context(context_t *ctx, char *name, value_t *value);
+static void free_internal_value(value_t *value);
+static void free_internal_context(context_t *ctx);
+
 static void built_in_print(value_t **argv, int argc)
 {
   if (argc == 0)
-    printf("\n");
+    ti_log("\n");
   for (int i = 0; i < argc; i++)
   {
     switch(argv[i]->type)
     {
       case VAL_STRING:
-        printf("%s",argv[i]->string_val);
+        ti_log("%s",argv[i]->string_val);
         break;
       case VAL_INT:
-        printf("%d",argv[i]->int_val);
+        ti_log("%d",argv[i]->int_val);
         break;
       case VAL_FLOAT:
-        printf("%.2f",argv[i]->float_val);
+        ti_log("%.2f",argv[i]->float_val);
         break;
       default:
-        printf("Unexpeted type %d", argv[i]->type);
+        ti_log("Unexpeted type %d", argv[i]->type);
         break;
     }
   }
+}
+static bool eval_boolean_condition(InterpreterContext *ctx, ast_t *cond_node)
+{
+    value_t *value = visitor_visit(ctx, cond_node);
+    if (!value || value->type != VAL_BOOL)
+    {
+        ti_log("[Error]: Unexpected type %d, only expect bool value\n", value ? value->type : -1);
+        ti_fatal();
+    }
+
+    bool res = value->bool_val;
+    free_internal_value(value);
+    tracked_free(value);
+    return res;
+}
+
+static void visitor_execute_body(InterpreterContext *parent_ctx, ast_t *body_node)
+{
+    if (!body_node) return;
+
+    // 1. Create new scope 
+    context_t *local_ctx = init_interpreter_context();
+    local_ctx->parent = parent_ctx;
+
+    // 2. Execute the statements 
+    value_t *capture = visitor_visit(local_ctx, body_node);
+    if (capture != NULL)
+    {
+        ti_log("[Warning]: Compound return value, please check it\n");
+        free_internal_value(capture);
+        tracked_free(capture);
+    }
+
+    // 3. Free the local scope
+    free_internal_context(local_ctx);
+    tracked_free(local_ctx);
 }
 
 static value_t *binary_add(value_t *left, value_t *right)
@@ -43,13 +98,13 @@ static value_t *binary_add(value_t *left, value_t *right)
     case VAL_STRING:
     {
       int length = strlen(left->string_val) + strlen(right->string_val) + 1;
-      value->string_val = calloc(1, sizeof(char) * length);
+      value->string_val = tracked_calloc(1, sizeof(char) * length);
       strcat(value->string_val, left->string_val);
       strcat(value->string_val, right->string_val);
       break;
     }
     default:
-      printf("Unexpected operands %d, %d\n", left->type, right->type);
+      ti_log("Unexpected operands %d, %d\n", left->type, right->type);
       break;
   }
   return value;
@@ -67,7 +122,7 @@ static value_t *binary_sub(value_t *left, value_t *right)
       value->float_val = left->float_val - right->float_val;
       break;
     default:
-      printf("Unexpected operands %d, %d\n", left->type, right->type);
+      ti_log("Unexpected operands %d, %d\n", left->type, right->type);
       break;
   }
   return value;
@@ -85,7 +140,7 @@ static value_t *binary_mul(value_t *left, value_t *right)
       value->float_val = left->float_val * right->float_val;
       break;
     default:
-      printf("Unexpected operands %d, %d\n", left->type, right->type);
+      ti_log("Unexpected operands %d, %d\n", left->type, right->type);
       break;
   }
   return value;
@@ -99,7 +154,7 @@ static value_t *binary_div(value_t *left, value_t *right)
     case VAL_INT:
       if (right->int_val == 0)
       {
-        printf("Division by zero error\n");
+        ti_log("Division by zero error\n");
         break;
       }
       value->int_val = left->int_val / right->int_val;
@@ -107,13 +162,13 @@ static value_t *binary_div(value_t *left, value_t *right)
     case VAL_FLOAT:
       if (right->float_val == 0.0f)
       {
-        printf("Division by zero error\n");
+        ti_log("Division by zero error\n");
         break;
       }
       value->float_val = left->float_val / right->float_val;
       break;
     default:
-      printf("Unexpected operands %d, %d\n", left->type, right->type);
+      ti_log("Unexpected operands %d, %d\n", left->type, right->type);
       break;
   }
   return value;
@@ -138,7 +193,7 @@ static value_t *binary_equal(value_t *left, value_t *right)
       value->bool_val = (left->bool_val == right->bool_val);
       break;
     default:
-      printf("Unexpected operands %d, %d\n", left->type, right->type);
+      ti_log("Unexpected operands %d, %d\n", left->type, right->type);
       break;
   }
   return value;
@@ -159,7 +214,7 @@ static value_t *binary_greater(value_t *left, value_t *right)
       value->bool_val = (strcmp(left->string_val, right->string_val) > 0);
       break;
     default:
-      printf("Unexpected operands %d, %d\n", left->type, right->type);
+      ti_log("Unexpected operands %d, %d\n", left->type, right->type);
       break;
   }
   return value;
@@ -180,7 +235,7 @@ static value_t *binary_less(value_t *left, value_t *right)
       value->bool_val = (strcmp(left->string_val, right->string_val) < 0);
       break;
     default:
-      printf("Unexpected operands %d, %d\n", left->type, right->type);
+      ti_log("Unexpected operands %d, %d\n", left->type, right->type);
       break;
   }
   return value;
@@ -201,7 +256,7 @@ static value_t *binary_greater_equal(value_t *left, value_t *right)
       value->bool_val = (strcmp(left->string_val, right->string_val) >= 0);
       break;
     default:
-      printf("Unexpected operands %d, %d\n", left->type, right->type);
+      ti_log("Unexpected operands %d, %d\n", left->type, right->type);
       break;
   }
   return value;
@@ -222,7 +277,7 @@ static value_t *binary_less_equal(value_t *left, value_t *right)
       value->bool_val = (strcmp(left->string_val, right->string_val) <= 0);
       break;
     default:
-      printf("Unexpected operands %d, %d\n", left->type, right->type);
+      ti_log("Unexpected operands %d, %d\n", left->type, right->type);
       break;
   }
   return value;
@@ -257,7 +312,7 @@ value_t *copy_value_from_variable(variable_t *variable)
             break;
         case VAL_STRING:
             if (variable->value->string_val)
-                value->string_val = strdup(variable->value->string_val);
+                value->string_val = tracked_strdup(variable->value->string_val);
             break;
         default:
             break;
@@ -272,22 +327,22 @@ static void add_variable_to_context(context_t *ctx, char *name, value_t *value)
   {
     if (strcmp(ctx->variables[i]->name, name) == 0)
     {
-      printf("Redefinition of variable: %s", name);
-      exit(1);
+      ti_log("Redefinition of variable: %s", name);
+      ti_fatal();
     }
   }
   variable_t *variable = init_variable(name);
   variable->value = value;
   if(ctx->variables == NULL)
   {
-    ctx->variables = calloc(1, sizeof(struct VARIABLE_STRUCT*));
+    ctx->variables = tracked_calloc(1, sizeof(struct VARIABLE_STRUCT*));
     ctx->variables[0] = variable;
     ctx->variable_size = 1;
   }
   else
   {
     // Allocate the new one
-    ctx->variables = realloc(ctx->variables, (ctx->variable_size + 1) * sizeof(struct VARIABLE_STRUCT*));
+    ctx->variables = tracked_realloc(ctx->variables, (ctx->variable_size + 1) * sizeof(struct VARIABLE_STRUCT*));
     ctx->variables[ctx->variable_size] = variable;
     ctx->variable_size += 1;
   }
@@ -296,7 +351,7 @@ static void add_variable_to_context(context_t *ctx, char *name, value_t *value)
 static void free_internal_value(value_t *value){
   if(value->type == VAL_STRING)
   {
-    free(value->string_val);
+    tracked_free(value->string_val);
   }
 }
 
@@ -312,42 +367,42 @@ static void free_internal_context(context_t *ctx)
             if (var->value)
             {
               free_internal_value(var->value);
-              free(var->value);
+              tracked_free(var->value);
             }
             if (var->name)
             {
-                free(var->name);
+                tracked_free(var->name);
             }
-            free(var);
+            tracked_free(var);
         }
     }
 
-    free(ctx->variables);
+    tracked_free(ctx->variables);
     ctx->variables = NULL;
     ctx->variable_size = 0;
 }
 
 context_t *init_interpreter_context(void)
 {
-  context_t *contex = calloc(1, sizeof(struct InterpreterContext));
+  context_t *contex = tracked_calloc(1, sizeof(struct InterpreterContext));
   return contex;
 }
 
 void free_context(context_t *ctx)
 {
   free_internal_context(ctx);
-  free(ctx);
+  tracked_free(ctx);
 }
 
 value_t *init_val(int type)
 {
-  value_t *value = calloc(1,sizeof(struct VALUE_STRUCT));
-  value->type = type; 
+  value_t *value = tracked_calloc(1,sizeof(struct VALUE_STRUCT));
+  value->type = type;
   return value;
 }
 
 variable_t *init_variable(char *variable_name){
-  variable_t *variable = calloc(1,sizeof(struct VARIABLE_STRUCT));
+  variable_t *variable = tracked_calloc(1,sizeof(struct VARIABLE_STRUCT));
   variable->name = variable_name;
   return variable;
 }
@@ -376,6 +431,8 @@ value_t *visitor_visit(InterpreterContext *ctx, ast_t *node)
         return visitor_visit_unary_expr(ctx, node);
     case AST_WHILE_STATEMENT:
         return visitor_visit_while_statement(ctx,node);
+    case AST_IF_STATEMENT:
+        return visitor_visit_if_statement(ctx, node);
     default:
         break;
   }
@@ -384,7 +441,7 @@ value_t *visitor_visit(InterpreterContext *ctx, ast_t *node)
 
 value_t *visitor_visit_expr(InterpreterContext *ctx, ast_t *node)
 {
-  printf("Visit expesstion\n");
+  ti_log("Visit expesstion\n");
   return NULL;
 }
 
@@ -396,10 +453,10 @@ value_t *visitor_visit_binary_expr(InterpreterContext *ctx, ast_t *node)
 
     if (left->type != right->type)
     {
-        printf("Error: Invalid operands to binary expression: %d and %d\n",
+        ti_log("Error: Invalid operands to binary expression: %d and %d\n",
                left->type,
                right->type);
-        exit(1);
+        ti_fatal();
     }
 
   switch (node->value.binary_expr.op)
@@ -432,15 +489,15 @@ value_t *visitor_visit_binary_expr(InterpreterContext *ctx, ast_t *node)
       result = binary_less_equal(left, right);
       break;
     default:
-      printf("Unknown operator: %d\n", node->value.binary_expr.op);
+      ti_log("Unknown operator: %d\n", node->value.binary_expr.op);
       break;
   }
 
 out:
     free_internal_value(left);
     free_internal_value(right);
-    free(left);
-    free(right);
+    tracked_free(left);
+    tracked_free(right);
     return result;
 }
 
@@ -451,7 +508,7 @@ value_t *visitor_visit_unary_expr(InterpreterContext *ctx, ast_t *node)
 
 value_t *visitor_visit_variable_definition(InterpreterContext *ctx, ast_t *node)
 {
-  char *variable_name = strdup(node->value.variable_definition.variable_name);
+  char *variable_name = tracked_strdup(node->value.variable_definition.variable_name);
   value_t *value = visitor_visit(ctx, node->value.variable_definition.value);
   add_variable_to_context(ctx, variable_name, value);
   return NULL;
@@ -459,55 +516,51 @@ value_t *visitor_visit_variable_definition(InterpreterContext *ctx, ast_t *node)
 
 value_t *visitor_visit_assignment(InterpreterContext *ctx, ast_t *node)
 {
-  printf("Visitor assignment\n");
-  variable_t *variable = find_variable_from_context(ctx, node->value.identifier);
-  // ------------------ Here ---------------------------------
+  ast_t *id_node = node->value.assignment.id;
+  ast_t *value_node = node->value.assignment.value;
+  variable_t *variable = find_variable_from_context(ctx, id_node->value.identifier);
+  if (variable != NULL)
+  {
+    value_t *val = visitor_visit(ctx, value_node); 
+    if (variable->value->type != val->type)
+    {
+      ti_log("[Error]: Type mismatch in assignment to '%s'. Expected %d, but got %d\n",
+          id_node->value.identifier,
+          variable->value->type,
+          val->type);
+      ti_fatal();
+    }
+    variable->value = val;
+  }
+  else
+  {
+    ti_log("[Error]: Undefined variable %s\n", id_node->value.identifier);
+    ti_fatal();
+  }
   return NULL;
 }
 
 value_t *visitor_visit_while_statement(InterpreterContext *ctx, ast_t *node)
 {
-  printf("Visit while statement\n");
-  value_t *value = visitor_visit(ctx, node->value.while_statement.condition);
-  if(value->type != VAL_BOOL)
+  while(eval_boolean_condition(ctx, node->value.while_statement.condition))
   {
-    printf("[Error]: Unexpeted type %d, only expect bool value\n", value->type);
-    exit(1);
+      visitor_execute_body(ctx, node->value.while_statement.body);
   }
-  while(value->bool_val)
-  {
-    context_t *local_ctx = init_interpreter_context();
-    local_ctx->parent = ctx;
-    // Remove the old value 
-    free_internal_value(value);
-    free(value);
-    value_t *capture = visitor_visit(local_ctx,node->value.while_statement.body);
-    if (capture != NULL)
-    {
-      printf("[Warning]: Compound return value, please check it\n");
-      free_internal_value(capture);
-      free(capture);
-    }
-    // Free local context 
-    free_internal_context(local_ctx);
-    free(local_ctx);
-    // Check condition agian
-    value = visitor_visit(ctx, node->value.while_statement.condition);
-    if(value->type != VAL_BOOL)
-    {
-      printf("[Error]: Unexpeted type %d, only expect bool value\n", value->type);
-      exit(1);
-    }
-  }
-  // Free final value (false condition)
-  free_internal_value(value);
-  free(value);
   return NULL;
 }
 
 value_t *visitor_visit_if_statement(InterpreterContext *ctx, ast_t *node)
 {
-  return NULL;
+    if(eval_boolean_condition(ctx, node->value.if_statement.condition))
+    {
+        visitor_execute_body(ctx, node->value.if_statement.body);
+    }
+    else 
+    {
+        ti_log("go to else branch\n");
+        visitor_execute_body(ctx, node->value.if_statement.else_branch);
+    }
+    return NULL;
 }
 
 value_t *visitor_visit_for_statement(InterpreterContext *ctx, ast_t *node)
@@ -518,7 +571,7 @@ value_t *visitor_visit_for_statement(InterpreterContext *ctx, ast_t *node)
 value_t *visitor_visit_function_call(InterpreterContext *ctx, ast_t *node)
 {
   value_t *ret = NULL;
-  value_t **argv = calloc(node->value.function_call.num_arg, sizeof(struct VALUE_STRUCT*));
+  value_t **argv = tracked_calloc(node->value.function_call.num_arg, sizeof(struct VALUE_STRUCT*));
   int argc = node->value.function_call.num_arg;
   if(strcmp(node->value.function_call.func, "print") == 0)
   {
@@ -531,16 +584,16 @@ value_t *visitor_visit_function_call(InterpreterContext *ctx, ast_t *node)
   }
   for (int i = 0; i < argc; i++){
     free_internal_value(argv[i]);
-    free(argv[i]);
+    tracked_free(argv[i]);
   }
-  free(argv);
+  tracked_free(argv);
   return ret;
 }
 
 value_t *visitor_visit_string_literal(InterpreterContext *ctx, ast_t *node)
 {
   value_t *value = init_val(VAL_STRING);
-  value->string_val = strdup(node->value.string_value);
+  value->string_val = tracked_strdup(node->value.string_value);
   return value;
 }
 
@@ -566,8 +619,8 @@ value_t *visitor_visit_compound(InterpreterContext *ctx, ast_t *node)
     value_t *value = visitor_visit(ctx,node->value.compound.compound_value[i]);
     if (value != NULL)
     {
-      printf("[Warning]: Still threre are statement return not NULL, please change it");
-      free(value);
+      ti_log("[Warning]: Still threre are statement return not NULL, please change it");
+      tracked_free(value);
     }
   }
   return NULL; 
@@ -581,6 +634,6 @@ value_t *visitor_visit_identifier(InterpreterContext *ctx, ast_t *node)
     value_t *value = copy_value_from_variable(variable);
     return value;
   }
-  printf("Undefined variabe: %s", node->value.identifier);
-  exit(1);
+  ti_log("Undefined variabe: %s", node->value.identifier);
+  ti_fatal();
 }

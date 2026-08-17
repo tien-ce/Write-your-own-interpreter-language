@@ -3,8 +3,11 @@
 #include "include/lexer.h"
 #include "include/parser.h"
 #include "include/visitor.h"
+#include "include/tracked_memory.h"
 
 extern void ast_draw(ast_t *node);
+
+static char *read_string_from_file(const char *path);
 
 static char *read_string_from_file(const char *path)
 {
@@ -19,7 +22,7 @@ static char *read_string_from_file(const char *path)
   long length = ftell(file);
   fseek(file, 0, SEEK_SET);
 
-  char *contents = malloc(length + 1);
+  char *contents = tracked_malloc(length + 1);
   fread(contents, 1, length, file);
   contents[length] = '\0';
 
@@ -42,10 +45,10 @@ int main(int argc, char* argv[])
   context_t *context = init_interpreter_context();
   visitor_visit(context,root);
   //ast_draw(root);
-  free(parser);
+  tracked_free(parser);
   free_context(context);
-  free((void*)lexer);
-  free_ast(root); 
-  free(contents);
+  tracked_free((void*)lexer);
+  free_ast(root);
+  tracked_free(contents);
 	return 0;
 }
