@@ -69,7 +69,7 @@ void parser_eat(parser_t *parser, int expected_type)
 
 ast_t *parser_parse(parser_t *parser)
 {
-  return parser_parse_statements(parser);
+  return parser_parse_main_program(parser);
 }
 
 ast_t *parser_parse_statement(parser_t *parser)
@@ -98,6 +98,8 @@ ast_t *parser_parse_statement(parser_t *parser)
 
 ast_t *parser_parse_statements(parser_t *parser)
 {
+  /* {Compound} */
+  parser_eat(parser, TOKEN_LBRACE);
   ast_t **compound_value = tracked_calloc(1, sizeof(struct AST_STRUCT*));
   ast_t *compound = init_ast(AST_COMPOUND);
   compound->value.compound.compound_value = compound_value;
@@ -106,10 +108,40 @@ ast_t *parser_parse_statements(parser_t *parser)
   compound->value.compound.compound_value[0] = statement; 
   compound->value.compound.compound_size = 1;
   
-  // When still end with semicolon 
-  while(parser->current_token->type == TOKEN_SEMI)
+  // When still end with right brace  
+  while(parser->current_token->type != TOKEN_RBRACE)
   {
-    parser_eat(parser, TOKEN_SEMI); // Eat ;
+    ast_t *statement = parser_parse_statement(parser);
+    // Might be end file 
+    if (!statement)
+      break;
+    int size = compound->value.compound.compound_size;
+    // Add new statement 
+    compound->value.compound.compound_value = tracked_realloc(
+     compound->value.compound.compound_value,
+     (size + 1) * sizeof(struct AST_STRUCT*)
+    );
+    compound->value.compound.compound_value[size] = statement; 
+    compound->value.compound.compound_size += 1;
+  }
+  parser_eat(parser, TOKEN_RBRACE);
+  return compound;
+}
+
+ast_t *parser_parse_main_program(parser_t *parser)
+{
+  // Main enrty point -> compound
+  ast_t **compound_value = tracked_calloc(1, sizeof(struct AST_STRUCT*));
+  ast_t *compound = init_ast(AST_COMPOUND);
+  compound->value.compound.compound_value = compound_value;
+  // Parse first statement
+  ast_t *statement = parser_parse_statement(parser);
+  compound->value.compound.compound_value[0] = statement; 
+  compound->value.compound.compound_size = 1;
+  
+  // When still end with end of file
+  while(parser->current_token->type != TOKEN_EOF)
+  {
     ast_t *statement = parser_parse_statement(parser);
     // Might be end file 
     if (!statement)
@@ -271,6 +303,7 @@ ast_t *parser_parse_primary(parser_t *parser)
     }
   }
 }
+
 ast_t *parser_parse_variable_definition(parser_t *parser)
 {
   /* int a = (expression); */
@@ -297,6 +330,7 @@ ast_t *parser_parse_variable_definition(parser_t *parser)
   var_def_node->value.variable_definition.variable_type = variable_type;
   var_def_node->value.variable_definition.variable_name = variable_name;
   var_def_node->value.variable_definition.value = value;
+  parser_eat(parser, TOKEN_SEMI);
   return var_def_node;
 }
 
@@ -311,12 +345,7 @@ ast_t *parser_parse_while_statement(parser_t *parser)
   ast_t *condition = parser_parse_expr(parser);
   // right parenthesis
   parser_eat(parser, TOKEN_RPAREN);
-  // { left brace 
-  parser_eat(parser, TOKEN_LBRACE);
-  // compound 
   ast_t *body = parser_parse_statements(parser);
-  // } Right brace
-  parser_eat(parser, TOKEN_RBRACE);
   ast_t * while_node = init_ast(AST_WHILE_STATEMENT);
   while_node->value.while_statement.condition = condition;
   while_node->value.while_statement.body = body;
@@ -334,31 +363,32 @@ ast_t *parser_parse_if_statement(parser_t *parser)
   ast_t *condition = parser_parse_expr(parser);
   // ) right parenthesis
   parser_eat(parser, TOKEN_RPAREN);
-  // { left brace 
-  parser_eat(parser, TOKEN_LBRACE);
-  // compound 
-  ast_t *body = parser_parse_statements(parser);
-  // } Right brace
-  parser_eat(parser, TOKEN_RBRACE);
+  ast_t *body = NULL;
+  if (parser->current_token->type == TOKEN_LBRACE)
+  {
+    /* {Compound body} */
+    body = parser_parse_statements(parser);
+  }
+  else {
+    /* Statement body */
+    body = parser_parse_statement(parser);
+  }
   ast_t * if_node = init_ast(AST_IF_STATEMENT);
   if_node->value.if_statement.condition = condition;
   if_node->value.if_statement.body = body;
+  if_node->value.if_statement.else_body = NULL;
   if(parser->current_token->type == TOKEN_KW_ELSE)
   {
-      /* else {compound} */
-      // else
-      parser_eat(parser, TOKEN_KW_ELSE);
-      // {
-      parser_eat(parser, TOKEN_LBRACE);
-      // compound
-      ast_t *else_branch = parser_parse_statements(parser);
-      // }
-      parser_eat(parser, TOKEN_RBRACE); 
-      if_node->value.if_statement.else_branch = else_branch;
-  }
-  else
-  {
-      if_node->value.if_statement.else_branch = NULL;
+    parser_eat(parser, TOKEN_KW_ELSE);
+    if (parser->current_token->type == TOKEN_LBRACE)
+    {
+      /* {Compound body} */
+      if_node->value.if_statement.else_body = parser_parse_statements(parser);
+    }
+    else {
+      /* Statement body - may recurse into parser_parse_if_statement for "else if" */
+      if_node->value.if_statement.else_body = parser_parse_statement(parser);
+    }
   }
   return if_node;
 }
@@ -393,6 +423,7 @@ ast_t *parser_parse_function_call(parser_t *parser, char *func_name)
   func_call_node->value.function_call.func = func;
   func_call_node->value.function_call.args = args;
   func_call_node->value.function_call.num_arg = num_arg;
+  parser_eat(parser, TOKEN_SEMI);
   return func_call_node;
 }
 
@@ -406,5 +437,6 @@ ast_t *parser_parse_assignment(parser_t *parser, ast_t *target)
   ast_t *assignment_node = init_ast(AST_ASSIGNMENT);
   assignment_node->value.assignment.id = target;
   assignment_node->value.assignment.value = value;
+  parser_eat(parser, TOKEN_SEMI);
   return assignment_node;
 }

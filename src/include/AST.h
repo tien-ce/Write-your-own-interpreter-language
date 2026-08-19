@@ -102,8 +102,8 @@ typedef struct AST_STRUCT {
 
     struct {
       struct AST_STRUCT *condition; // Point to expression node
-      struct AST_STRUCT *body;  // Point to compound node
-      struct AST_STRUCT *else_branch; // Point to compound node
+      struct AST_STRUCT *body;  // Point to compound or statement
+      struct AST_STRUCT *else_body; // Point to compound, statement, or nested if (else if) - NULL if no else
     }if_statement;
 
     /* Function call */

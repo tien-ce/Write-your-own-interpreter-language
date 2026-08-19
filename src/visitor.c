@@ -555,10 +555,9 @@ value_t *visitor_visit_if_statement(InterpreterContext *ctx, ast_t *node)
     {
         visitor_execute_body(ctx, node->value.if_statement.body);
     }
-    else 
+    else
     {
-        ti_log("go to else branch\n");
-        visitor_execute_body(ctx, node->value.if_statement.else_branch);
+        visitor_execute_body(ctx, node->value.if_statement.else_body);
     }
     return NULL;
 }
