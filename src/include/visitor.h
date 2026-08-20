@@ -11,7 +11,6 @@ typedef struct VALUE_STRUCT {
     VAL_FLOAT,
     VAL_STRING,
     VAL_BOOL,
-    VAL_FUNC,
   } type;
   union {
     int int_val;
@@ -21,6 +20,16 @@ typedef struct VALUE_STRUCT {
   };
 } value_t;
 
+/* Function pointer to function return value_t value */
+typedef value_t *(*native_fn_t)(value_t **args, int argc);
+typedef struct BULTIN_FUNC_STRUCT {
+    char *name; // Functio name
+    native_fn_t fn;
+} builtin_func_t;
+
+static builtin_func_t *g_builtins;
+static int g_builtin_count = 0;
+
 typedef struct VARIABLE_STRUCT {
   char *name;
   value_t *value;
@@ -28,8 +37,11 @@ typedef struct VARIABLE_STRUCT {
 
 typedef struct InterpreterContext {
   struct InterpreterContext *parent;
+  /* Variable */
   variable_t **variables;
   int variable_size;
+  /* Function */ 
+  int function_size;
 } context_t, InterpreterContext;
 
 value_t *init_val(int type);

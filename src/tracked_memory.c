@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdio.h>
 
+#ifndef CHECK_MEM_LEAK
 /* Forward declarations of static functions */
 static void list_insert_head(alloc_hdr_t *new_hdr);
 static void list_remove(alloc_hdr_t *hdr);
@@ -14,7 +15,7 @@ static void list_insert_head(alloc_hdr_t *new_hdr)
     new_hdr->next = g_alloc_list;
     if(g_alloc_list != NULL)
     {
-        // Already constain node 
+        // Already constain node
         g_alloc_list->previous = new_hdr;
     }
     g_alloc_list= new_hdr;
@@ -26,25 +27,28 @@ static void list_remove(alloc_hdr_t *hdr)
     {
         hdr->previous->next = hdr->next;
     }
-    else 
+    else
     {
         // First node
         g_alloc_list = hdr->next;
     }
-    
+
     if(hdr->next)
     {
         hdr->next->previous = hdr->previous;
     }
 }
+#endif
 
 void *tracked_malloc(size_t size)
 {
     alloc_hdr_t *hdr = (alloc_hdr_t *)malloc(sizeof(struct ALLOC_HDR_STRUCT) + size);
     if(hdr == NULL)
         return NULL;
-    // Inser to list 
+#ifndef CHECK_MEM_LEAK
+    // Inser to list
     list_insert_head(hdr);
+#endif
     return (void*)(hdr+1); // Return payload
 }
 
@@ -52,12 +56,14 @@ void *tracked_calloc(size_t num, size_t size)
 {
     size_t total_payload_size = num * size;
     size_t total_alloc_size = sizeof(struct ALLOC_HDR_STRUCT) + total_payload_size;
-    alloc_hdr_t *hdr = (alloc_hdr_t *)malloc(total_alloc_size); 
+    alloc_hdr_t *hdr = (alloc_hdr_t *)malloc(total_alloc_size);
     if(hdr == NULL)
         return NULL;
-    // Inser to list 
+#ifndef CHECK_MEM_LEAK
+    // Inser to list
     list_insert_head(hdr);
-    // Get address of payload 
+#endif
+    // Get address of payload
     void *payload = (void*)(hdr + 1); // payload += sizeof(hdr)
     // Return payload to all 0
     memset(payload,0,total_payload_size);
@@ -77,18 +83,20 @@ void *tracked_realloc(void *ptr, size_t new_size)
     alloc_hdr_t *new_ptr = (alloc_hdr_t*)realloc(hdr, sizeof(struct ALLOC_HDR_STRUCT) + new_size);
     if(new_ptr != NULL)
     {
+#ifndef CHECK_MEM_LEAK
         // Reassing link
         if (new_ptr->next != NULL) // Not the end
             new_ptr->next->previous = new_ptr;
         if (new_ptr->previous != NULL) // Not the head
         {
             new_ptr->previous->next = new_ptr;
-        }    
+        }
         else
         {
             // First node
             g_alloc_list = new_ptr;
         }
+#endif
     }
     else
     {
@@ -104,7 +112,9 @@ char *tracked_strdup(const char *s)
     alloc_hdr_t *hdr = (alloc_hdr_t*) malloc(sizeof(struct ALLOC_HDR_STRUCT) + total_payload_size);
     if(hdr == NULL)
         return NULL;
+#ifndef CHECK_MEM_LEAK
     list_insert_head(hdr);
+#endif
     char *payload = (char*)(hdr + 1);
     /* Dont't ask me how about with the string with none '\0', that's your falure*/
     memcpy(payload,s,total_payload_size);
@@ -118,12 +128,15 @@ void tracked_free(void *ptr)
         return;
     }
     alloc_hdr_t *hdr = (alloc_hdr_t*)(ptr) - 1; // ptr -= sizeof(hdr_t)
+#ifndef CHECK_MEM_LEAK
     list_remove(hdr);
+#endif
     free(hdr);
 }
 
 void free_all()
 {
+#ifndef CHECK_MEM_LEAK
     alloc_hdr_t *current = g_alloc_list;
     while(current != NULL)
     {
@@ -132,4 +145,5 @@ void free_all()
         current = next;
     }
     g_alloc_list = NULL;
+#endif
 }
