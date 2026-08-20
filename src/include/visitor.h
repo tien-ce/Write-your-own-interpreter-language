@@ -23,15 +23,13 @@ typedef struct VALUE_STRUCT {
 /* Function pointer to function return value_t value */
 typedef value_t *(*native_fn_t)(value_t **args, int argc);
 typedef struct BULTIN_FUNC_STRUCT {
-    char *name; // Functio name
+    const char *name; // Functio name
     native_fn_t fn;
 } builtin_func_t;
 
-static builtin_func_t *g_builtins;
-static int g_builtin_count = 0;
 
 typedef struct VARIABLE_STRUCT {
-  char *name;
+  const char *name;
   value_t *value;
 } variable_t;
 
@@ -40,8 +38,6 @@ typedef struct InterpreterContext {
   /* Variable */
   variable_t **variables;
   int variable_size;
-  /* Function */ 
-  int function_size;
 } context_t, InterpreterContext;
 
 value_t *init_val(int type);
@@ -64,7 +60,7 @@ value_t *visitor_visit_float_literal(InterpreterContext *ctx, ast_t *node);
 value_t *visitor_visit_identifier(InterpreterContext *ctx, ast_t *node);
 value_t *visitor_visit(InterpreterContext *ctx, ast_t *node);
 
-
+bool register_bultin_function(const char *name, native_fn_t function);
 context_t *init_interpreter_context(void);
 void free_context(context_t *ctx);
 #endif

@@ -7,6 +7,7 @@
 
 extern void ast_draw(ast_t *node);
 
+extern void init_builtin();
 static char *read_string_from_file(const char *path);
 
 static char *read_string_from_file(const char *path)
@@ -43,6 +44,7 @@ int main(int argc, char* argv[])
   parser_t *parser = init_parser(lexer);
   ast_t *root = parser_parse(parser);
   context_t *context = init_interpreter_context();
+  init_builtin();
   visitor_visit(context,root);
   //ast_draw(root);
   tracked_free(parser);

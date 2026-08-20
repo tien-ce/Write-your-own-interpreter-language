@@ -5,9 +5,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+ 
+static builtin_func_t *g_builtins;
+static int g_builtin_count = 0;
 
-/* Forward declarations of static functions */
-static void built_in_print(value_t **argv, int argc);
 static bool eval_boolean_condition(InterpreterContext *ctx, ast_t *cond_node);
 static void visitor_execute_body(InterpreterContext *parent_ctx, ast_t *body_node);
 static value_t *binary_add(value_t *left, value_t *right);
@@ -24,29 +25,7 @@ static void add_variable_to_context(context_t *ctx, char *name, value_t *value);
 static void free_internal_value(value_t *value);
 static void free_internal_context(context_t *ctx);
 
-static void built_in_print(value_t **argv, int argc)
-{
-  if (argc == 0)
-    ti_log("\n");
-  for (int i = 0; i < argc; i++)
-  {
-    switch(argv[i]->type)
-    {
-      case VAL_STRING:
-        ti_log("%s",argv[i]->string_val);
-        break;
-      case VAL_INT:
-        ti_log("%d",argv[i]->int_val);
-        break;
-      case VAL_FLOAT:
-        ti_log("%.2f",argv[i]->float_val);
-        break;
-      default:
-        ti_log("Unexpeted type %d", argv[i]->type);
-        break;
-    }
-  }
-}
+
 static bool eval_boolean_condition(InterpreterContext *ctx, ast_t *cond_node)
 {
     value_t *value = visitor_visit(ctx, cond_node);
@@ -570,16 +549,19 @@ value_t *visitor_visit_for_statement(InterpreterContext *ctx, ast_t *node)
 value_t *visitor_visit_function_call(InterpreterContext *ctx, ast_t *node)
 {
   value_t *ret = NULL;
-  value_t **argv = tracked_calloc(node->value.function_call.num_arg, sizeof(struct VALUE_STRUCT*));
   int argc = node->value.function_call.num_arg;
-  if(strcmp(node->value.function_call.func, "print") == 0)
+  value_t **argv = tracked_calloc(argc , sizeof(struct VALUE_STRUCT*));
+  for (int i = 0; i < argc; i ++)
   {
-    for (int i = 0; i < node->value.function_call.num_arg; i ++)
+    value_t *value = visitor_visit(ctx,node->value.function_call.args[i]);
+    argv[i] = value;
+  }
+  for (int i = 0; i < g_builtin_count; i++){
+    if(strcmp(node->value.function_call.func, g_builtins[i].name) == 0)
     {
-      value_t *value = visitor_visit(ctx,node->value.function_call.args[i]);
-      argv[i] = value;
+      g_builtins[i].fn(argv,argc);  
+      break;
     }
-    built_in_print(argv,argc);
   }
   for (int i = 0; i < argc; i++){
     free_internal_value(argv[i]);
@@ -635,4 +617,28 @@ value_t *visitor_visit_identifier(InterpreterContext *ctx, ast_t *node)
   }
   ti_log("Undefined variabe: %s", node->value.identifier);
   ti_fatal();
+  return NULL;
+}
+
+bool register_bultin_function(const char *name, native_fn_t function) 
+{
+  for (int i = 0; i < g_builtin_count; i ++)
+  {
+    if(strcmp(name,g_builtins[i].name) == 0)
+    {
+      ti_log("Function name already existed\n");
+      return false;
+    }
+  }
+  builtin_func_t *temp = realloc(g_builtins, sizeof(builtin_func_t) * (g_builtin_count + 1));
+  if(temp == NULL)
+  {
+    ti_log("Memory issue\n");
+    return false;
+  }
+  g_builtins = temp;
+  g_builtins[g_builtin_count].name = name;
+  g_builtins[g_builtin_count].fn = function;
+  g_builtin_count++;
+  return true;
 }
