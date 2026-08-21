@@ -1,13 +1,16 @@
 #ifndef TOKEN_H
 #define TOKEN_H
-typedef  struct TOKEN_STRUCT{
+
+/* -------------------- Token Types & Structure -------------------- */
+
+typedef struct TOKEN_STRUCT {
   enum {
         /* 1. IDENTIFIERS & LITERALS */
         TOKEN_ID,           // x, my_var, foo
         TOKEN_INT,          // 10, 42
         TOKEN_FLOAT,        // 3.14
         TOKEN_STRING,       // "hello"
-        TOKEN_BOOL,         // true,false 
+        TOKEN_BOOL,         // true, false 
 
         /* 2. KEYWORDS */
         TOKEN_KW_INT,       // int
@@ -34,8 +37,8 @@ typedef  struct TOKEN_STRUCT{
         TOKEN_LBRACKET,     // [
         TOKEN_RBRACKET,     // ]
         TOKEN_COMMA,        // ,
-        TOKEN_LT,         // <
-        TOKEN_LTE,        // <= 
+        TOKEN_LT,           // <
+        TOKEN_LTE,          // <= 
         TOKEN_GT,           // >
         TOKEN_GTE,          // >=
         TOKEN_EOF           // End of file
@@ -43,5 +46,14 @@ typedef  struct TOKEN_STRUCT{
   char *value;
 } token_t;
 
-token_t *init_token(int type, char* value);
+/* -------------------- Public Functions -------------------- */
+
+/**
+ * @brief Allocate and initialize a new token.
+ * @param type Token type enum.
+ * @param value String payload of the token (or NULL).
+ * @return Pointer to newly allocated token_t.
+ */
+token_t *init_token(int type, char *value);
+
 #endif // !TOKEN_H

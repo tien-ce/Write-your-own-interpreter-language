@@ -3,13 +3,15 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+/* -------------------- AST Structure & Definitions -------------------- */
+
 typedef struct AST_STRUCT {
   enum {
     /* 1. LITERALS & IDENTIFIERS */
     AST_INT_LITERAL,          // 10
     AST_FLOAT_LITERAL,        // 3.14
     AST_STRING_LITERAL,       // "hello"
-    AST_BOOLEAN,                 // bool 
+    AST_BOOLEAN,              // bool 
     AST_IDENTIFIER,           // x, my_var (variable/function reference)
 
     /* 2. EXPRESSIONS */
@@ -25,13 +27,13 @@ typedef struct AST_STRUCT {
     AST_FOR_STATEMENT,        // for (init; cond; post) { ... }
     AST_RETURN_STATEMENT,     // return expr;
     AST_VARIABLE_DEFINITION,  // int x = 5;
-    AST_ASSIGNMENT,      // x = 10
+    AST_ASSIGNMENT,           // x = 10
 
     AST_NOOP,
 
-    /* 5. ROOT / PROGRAM */
+    /* 4. ROOT / PROGRAM */
     AST_PROGRAM, 
-  }type;              // Root node containing all file statements
+  } type;                     // Node type tag
 
   union {
     /* 1. LITERALS and IDENTIFIERS */
@@ -41,7 +43,7 @@ typedef struct AST_STRUCT {
     char *string_value;
     char *identifier; // Name of variable
 
-    /* 2.EXPRESSIONS */ 
+    /* 2. EXPRESSIONS */ 
     struct {
         enum {
           OP_ADD,             // +
@@ -57,7 +59,7 @@ typedef struct AST_STRUCT {
           OP_GTE,             // >=
           OP_LOGICAL_AND,     // &&
           OP_LOGICAL_OR,      // ||
-         }op; 
+         } op; 
         struct AST_STRUCT *left; 
         struct AST_STRUCT *right;
     } binary_expr;
@@ -92,35 +94,48 @@ typedef struct AST_STRUCT {
     struct {
       struct AST_STRUCT **compound_value; // Array contains ast_statements
       int compound_size;
-    }compound;
+    } compound;
   
     /* While statement */
     struct {
       struct AST_STRUCT *condition; // Point to expression node
-      struct AST_STRUCT *body;  // Point to compound node
-    }while_statement;
+      struct AST_STRUCT *body;      // Point to compound node
+    } while_statement;
 
     struct {
       struct AST_STRUCT *condition; // Point to expression node
-      struct AST_STRUCT *body;  // Point to compound or statement
+      struct AST_STRUCT *body;      // Point to compound or statement
       struct AST_STRUCT *else_body; // Point to compound, statement, or nested if (else if) - NULL if no else
-    }if_statement;
+    } if_statement;
 
     /* Function call */
     struct {
-      char *func; // Point to function name (id)
-      struct AST_STRUCT **args; // An array contains pointers pointing to args (exprs)
+      char *func;                   // Point to function name (id)
+      struct AST_STRUCT **args;     // An array contains pointers pointing to args (exprs)
       int num_arg;
-    }function_call;
+    } function_call;
 
     struct {
       struct AST_STRUCT *id;
-      struct AST_STRUCT *value; // Expression
-    }assignment;
+      struct AST_STRUCT *value;     // Expression
+    } assignment;
 
-  }value;
-}ast_t;  // Abstract syntax tree
+  } value;
+} ast_t;  // Abstract syntax tree
 
+/* -------------------- Public Functions -------------------- */
+
+/**
+ * @brief Allocate and initialize an AST node with the given type.
+ * @param type Node type enum.
+ * @return Pointer to newly allocated ast_t.
+ */
 ast_t *init_ast(int type);
+
+/**
+ * @brief Recursively free an AST node and all its children.
+ * @param ast Root AST node to free.
+ */
 void free_ast(ast_t *ast);
+
 #endif // !AST_H

@@ -2,8 +2,13 @@
 #include <stdlib.h>
 #include "../src/TienInterpreter.h"
 
-extern void ast_draw(ast_t *node);
+/* -------------------- Static Functions -------------------- */
 
+/**
+ * @brief Read entire file into a null-terminated dynamically allocated string.
+ * @param path Path to source file.
+ * @return Tracked buffer containing file contents.
+ */
 static char *read_string_from_file(const char *path)
 {
   FILE *file = fopen(path, "rb");
@@ -25,7 +30,9 @@ static char *read_string_from_file(const char *path)
   return contents;
 }
 
-int main(int argc, char* argv[])
+/* -------------------- Main Entry Point -------------------- */
+
+int main(int argc, char *argv[])
 {
   if (argc < 2)
   {

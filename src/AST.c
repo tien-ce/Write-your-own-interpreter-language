@@ -1,14 +1,15 @@
 #include "include/AST.h"
 #include "include/tracked_memory.h"
-#include "include/platform.h"
+#include "TienInterpreter.h"
 #include <stdlib.h>
 #include <stdio.h>
+
+/* -------------------- Public Functions -------------------- */
 
 ast_t *init_ast(int type)
 {
   ast_t *ast = tracked_calloc(1, sizeof(struct AST_STRUCT));
   ast->type = type;
-  /* AST_VARIABLE_DEFINITION */ 
   return ast;
 }
 

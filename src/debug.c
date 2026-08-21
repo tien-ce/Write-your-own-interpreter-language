@@ -2,6 +2,8 @@
 #include "include/token.h"
 #include "include/AST.h"
 
+/* -------------------- Public Functions -------------------- */
+
 const char *token_type_to_str(int type)
 {
   switch (type)

@@ -5,10 +5,11 @@
 
 #define MAX_DEPTH 256
 
-/* Forward declarations of static functions */
-static void print_node_label(ast_t *node);
-static void draw_ast_internal(ast_t *node, bool is_last, bool is_root, bool has_next_sibling[], int depth);
+/* -------------------- Static Functions -------------------- */
 
+/**
+ * @brief Print node label and payload info.
+ */
 static void print_node_label(ast_t *node)
 {
   if (!node)
@@ -66,6 +67,9 @@ static void print_node_label(ast_t *node)
   }
 }
 
+/**
+ * @brief Recursive internal tree renderer using Unicode branch characters.
+ */
 static void draw_ast_internal(ast_t *node, bool is_last, bool is_root, bool has_next_sibling[], int depth)
 {
   if (!node)
@@ -93,7 +97,8 @@ static void draw_ast_internal(ast_t *node, bool is_last, bool is_root, bool has_
   print_node_label(node);
 
   // Mark whether the current level still has siblings below it
-  has_next_sibling[depth - 1] = !is_last;
+  if (depth > 0)
+    has_next_sibling[depth - 1] = !is_last;
 
   // Dispatch and render children
   switch (node->type)
@@ -152,6 +157,8 @@ static void draw_ast_internal(ast_t *node, bool is_last, bool is_root, bool has_
       break;
   }
 }
+
+/* -------------------- Public Functions -------------------- */
 
 void ast_draw(ast_t *root)
 {

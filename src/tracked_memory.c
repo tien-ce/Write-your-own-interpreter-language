@@ -1,14 +1,18 @@
 #include "include/tracked_memory.h"
-#include "include/platform.h"
+#include "TienInterpreter.h"
 #include <string.h>
 #include <stdio.h>
 
 #ifndef CHECK_MEM_LEAK
-/* Forward declarations of static functions */
-static void list_insert_head(alloc_hdr_t *new_hdr);
-static void list_remove(alloc_hdr_t *hdr);
+/* -------------------- Variables -------------------- */
 
 static alloc_hdr_t *g_alloc_list = NULL;
+
+/* -------------------- Static Functions -------------------- */
+
+/**
+ * @brief Insert allocation header to head of doubly linked tracking list.
+ */
 static void list_insert_head(alloc_hdr_t *new_hdr)
 {
     new_hdr->previous = NULL;
@@ -18,9 +22,12 @@ static void list_insert_head(alloc_hdr_t *new_hdr)
         // Already contains node
         g_alloc_list->previous = new_hdr;
     }
-    g_alloc_list= new_hdr;
+    g_alloc_list = new_hdr;
 }
 
+/**
+ * @brief Remove allocation header from doubly linked tracking list.
+ */
 static void list_remove(alloc_hdr_t *hdr)
 {
     if(hdr->previous != NULL)
@@ -39,6 +46,8 @@ static void list_remove(alloc_hdr_t *hdr)
     }
 }
 #endif
+
+/* -------------------- Public Functions -------------------- */
 
 void *tracked_malloc(size_t size)
 {

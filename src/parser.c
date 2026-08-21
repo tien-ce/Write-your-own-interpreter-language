@@ -3,16 +3,17 @@
 #include "include/lexer.h"
 #include "include/token.h"
 #include "include/tracked_memory.h"
-#include "include/platform.h"
+#include "TienInterpreter.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-/* Forward declarations of static functions */
-static int token_type_to_op(int token_type);
+/* -------------------- Static Functions -------------------- */
 
-/*
- * Convert token type to binary operator enum
+/**
+ * @brief Convert token type to binary operator enum.
+ * @param token_type Token type enum value.
+ * @return Corresponding binary operator enum value.
  */
 static int token_type_to_op(int token_type)
 {
@@ -39,6 +40,8 @@ static int token_type_to_op(int token_type)
     }
   }
 }
+
+/* -------------------- Public Functions -------------------- */
 
 parser_t *init_parser(lexer_t *lexer)
 {

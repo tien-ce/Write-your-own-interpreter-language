@@ -1,13 +1,17 @@
 #include "include/visitor.h"
 #include "include/AST.h"
 #include "include/tracked_memory.h"
-#include "include/platform.h"
+#include "TienInterpreter.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
- 
+
+/* -------------------- Variables -------------------- */
+
 static builtin_func_t *g_builtins;
 static int g_builtin_count = 0;
+
+/* -------------------- Static Function Prototypes -------------------- */
 
 static bool eval_boolean_condition(InterpreterContext *ctx, ast_t *cond_node);
 static void visitor_execute_body(InterpreterContext *parent_ctx, ast_t *body_node);
@@ -21,11 +25,16 @@ static value_t *binary_less(value_t *left, value_t *right);
 static value_t *binary_greater_equal(value_t *left, value_t *right);
 static value_t *binary_less_equal(value_t *left, value_t *right);
 static variable_t *find_variable_from_context(context_t *ctx, char *variable_name);
+static value_t *copy_value_from_variable(variable_t *variable);
 static void add_variable_to_context(context_t *ctx, char *name, value_t *value);
 static void free_internal_value(value_t *value);
 static void free_internal_context(context_t *ctx);
 
+/* -------------------- Static Functions -------------------- */
 
+/**
+ * @brief Evaluate condition expression node and ensure boolean result.
+ */
 static bool eval_boolean_condition(InterpreterContext *ctx, ast_t *cond_node)
 {
     value_t *value = visitor_visit(ctx, cond_node);
@@ -41,6 +50,9 @@ static bool eval_boolean_condition(InterpreterContext *ctx, ast_t *cond_node)
     return res;
 }
 
+/**
+ * @brief Execute a child compound block in a newly created local scope.
+ */
 static void visitor_execute_body(InterpreterContext *parent_ctx, ast_t *body_node)
 {
     if (!body_node) return;
@@ -63,6 +75,9 @@ static void visitor_execute_body(InterpreterContext *parent_ctx, ast_t *body_nod
     tracked_free(local_ctx);
 }
 
+/**
+ * @brief Evaluate binary addition for integers, floats, or strings (concatenation).
+ */
 static value_t *binary_add(value_t *left, value_t *right)
 {
   value_t *value = init_val(left->type);
@@ -89,6 +104,9 @@ static value_t *binary_add(value_t *left, value_t *right)
   return value;
 }
 
+/**
+ * @brief Evaluate binary subtraction for integers or floats.
+ */
 static value_t *binary_sub(value_t *left, value_t *right)
 {
   value_t *value = init_val(left->type);
@@ -107,6 +125,9 @@ static value_t *binary_sub(value_t *left, value_t *right)
   return value;
 }
 
+/**
+ * @brief Evaluate binary multiplication for integers or floats.
+ */
 static value_t *binary_mul(value_t *left, value_t *right)
 {
   value_t *value = init_val(left->type);
@@ -125,6 +146,9 @@ static value_t *binary_mul(value_t *left, value_t *right)
   return value;
 }
 
+/**
+ * @brief Evaluate binary division for integers or floats (with division-by-zero check).
+ */
 static value_t *binary_div(value_t *left, value_t *right)
 {
   value_t *value = init_val(left->type);
@@ -153,7 +177,9 @@ static value_t *binary_div(value_t *left, value_t *right)
   return value;
 }
 
-// Comparison functions
+/**
+ * @brief Evaluate equality comparison (==) between two values.
+ */
 static value_t *binary_equal(value_t *left, value_t *right)
 {
   value_t *value = init_val(VAL_BOOL);
@@ -178,6 +204,9 @@ static value_t *binary_equal(value_t *left, value_t *right)
   return value;
 }
 
+/**
+ * @brief Evaluate greater-than comparison (>) between two values.
+ */
 static value_t *binary_greater(value_t *left, value_t *right)
 {
   value_t *value = init_val(VAL_BOOL);
@@ -199,6 +228,9 @@ static value_t *binary_greater(value_t *left, value_t *right)
   return value;
 }
 
+/**
+ * @brief Evaluate less-than comparison (<) between two values.
+ */
 static value_t *binary_less(value_t *left, value_t *right)
 {
   value_t *value = init_val(VAL_BOOL);
@@ -220,6 +252,9 @@ static value_t *binary_less(value_t *left, value_t *right)
   return value;
 }
 
+/**
+ * @brief Evaluate greater-than-or-equal comparison (>=) between two values.
+ */
 static value_t *binary_greater_equal(value_t *left, value_t *right)
 {
   value_t *value = init_val(VAL_BOOL);
@@ -241,6 +276,9 @@ static value_t *binary_greater_equal(value_t *left, value_t *right)
   return value;
 }
 
+/**
+ * @brief Evaluate less-than-or-equal comparison (<=) between two values.
+ */
 static value_t *binary_less_equal(value_t *left, value_t *right)
 {
   value_t *value = init_val(VAL_BOOL);
@@ -261,6 +299,10 @@ static value_t *binary_less_equal(value_t *left, value_t *right)
   }
   return value;
 }
+
+/**
+ * @brief Look up a variable by name in current and ancestor scopes.
+ */
 static variable_t *find_variable_from_context(context_t *ctx, char *variable_name)
 {
   context_t *current_ctx = ctx;
@@ -278,7 +320,10 @@ static variable_t *find_variable_from_context(context_t *ctx, char *variable_nam
   return NULL;
 }
 
-value_t *copy_value_from_variable(variable_t *variable)
+/**
+ * @brief Create a deep copy of a variable's value_t.
+ */
+static value_t *copy_value_from_variable(variable_t *variable)
 {
   value_t *value = init_val(variable->value->type);
   switch (variable->value->type)
@@ -299,6 +344,9 @@ value_t *copy_value_from_variable(variable_t *variable)
   return value;
 }
 
+/**
+ * @brief Add a newly defined variable to the given context scope.
+ */
 static void add_variable_to_context(context_t *ctx, char *name, value_t *value)
 {
   int size = ctx->variable_size;
@@ -327,13 +375,20 @@ static void add_variable_to_context(context_t *ctx, char *name, value_t *value)
   }
 }
 
-static void free_internal_value(value_t *value){
+/**
+ * @brief Free dynamically allocated payload inside value_t (e.g. string_val).
+ */
+static void free_internal_value(value_t *value)
+{
   if(value->type == VAL_STRING)
   {
     tracked_free(value->string_val);
   }
 }
 
+/**
+ * @brief Free all variables and internal structures inside a context scope.
+ */
 static void free_internal_context(context_t *ctx)
 {
     if (!ctx) return;
@@ -360,6 +415,8 @@ static void free_internal_context(context_t *ctx)
     ctx->variables = NULL;
     ctx->variable_size = 0;
 }
+
+/* -------------------- Public Functions -------------------- */
 
 context_t *init_interpreter_context(void)
 {

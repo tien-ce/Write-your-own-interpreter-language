@@ -1,21 +1,25 @@
 #include "include/lexer.h"
 #include "include/token.h"
 #include "include/tracked_memory.h"
-#include "include/platform.h"
-#include<stdio.h>
+#include "TienInterpreter.h"
+#include <stdio.h>
 #include <ctype.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
 
-/* Forward declarations of static functions */
-static token_t *lexer_advance_with_token(lexer_t *lexer, token_t *token);
+/* -------------------- Static Functions -------------------- */
 
+/**
+ * @brief Advance the lexer and return the given token.
+ */
 static token_t *lexer_advance_with_token(lexer_t *lexer, token_t *token)
 {
   lexer_advance(lexer);
   return token;
 }
+
+/* -------------------- Public Functions -------------------- */
 
 lexer_t *init_lexer(char *str) 
 {
