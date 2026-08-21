@@ -19,7 +19,6 @@ void ti_run_string(const char *source_code)
   ast_t *root = parser_parse(parser);
   context_t *context = init_interpreter_context();
 
-  init_builtin();
   visitor_visit(context, root);
 
   tracked_free(parser);

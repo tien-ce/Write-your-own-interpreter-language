@@ -34,6 +34,7 @@ int main(int argc, char* argv[])
   }
 
   char *contents = read_string_from_file(argv[1]);
+  init_builtin();
   ti_run_string(contents);
   tracked_free(contents);
   return 0;
