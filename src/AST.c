@@ -8,7 +8,7 @@ ast_t *init_ast(int type)
 {
   ast_t *ast = tracked_calloc(1, sizeof(struct AST_STRUCT));
   ast->type = type;
-  /* AST_VARIABLE_DEFINITON */ 
+  /* AST_VARIABLE_DEFINITION */ 
   return ast;
 }
 

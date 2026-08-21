@@ -70,14 +70,14 @@ typedef struct AST_STRUCT {
         OP_BNOT   // ~ (bitwise not)
       } op;
       struct AST_STRUCT *operand;
-    } unary_expr;    /* variable definition */ 
+    } unary_expr;
 
     struct {
       char *id;
       struct AST_STRUCT *index_expr;
     } array_access;
 
-    /* Variable difinition statement */
+    /* Variable definition statement */
     struct {
       enum {
         VAR_TYPE_INT,
@@ -108,8 +108,8 @@ typedef struct AST_STRUCT {
 
     /* Function call */
     struct {
-      char *func; // Point to fuction name (id)
-      struct AST_STRUCT **args; // An array constains pointers point to args (exprs)
+      char *func; // Point to function name (id)
+      struct AST_STRUCT **args; // An array contains pointers pointing to args (exprs)
       int num_arg;
     }function_call;
 

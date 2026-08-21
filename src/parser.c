@@ -131,7 +131,7 @@ ast_t *parser_parse_statements(parser_t *parser)
 
 ast_t *parser_parse_main_program(parser_t *parser)
 {
-  // Main enrty point -> compound
+  // Main entry point -> compound
   ast_t **compound_value = tracked_calloc(1, sizeof(struct AST_STRUCT*));
   ast_t *compound = init_ast(AST_COMPOUND);
   compound->value.compound.compound_value = compound_value;
@@ -193,7 +193,7 @@ ast_t *parser_parse_expr(parser_t *parser)
 ast_t *parser_parse_term(parser_t *parser)
 {
   /* Expression1 in main entry: (a + b) * c / d */
-  // Expreession 0: a + b
+  // Expression 0: a + b
   ast_t *left = parser_parse_primary(parser); // Call to level 3
   while (parser->current_token->type == TOKEN_STAR ||
         parser->current_token->type == TOKEN_SLASH
@@ -209,7 +209,7 @@ ast_t *parser_parse_term(parser_t *parser)
       binary_node->value.binary_expr.left = left;
       binary_node->value.binary_expr.right = right;
       left = binary_node;
-      // Go back to while lopp with left is (a+b)*c, op is / and right is d
+      // Go back to while loop with left is (a+b)*c, op is / and right is d
   }
   return left;
 }
@@ -296,10 +296,9 @@ ast_t *parser_parse_primary(parser_t *parser)
     default:
     {
       // Leave group, ID, and function call branches to be implemented
-      printf ("Unexpected value %s, with type %d",
-              parser->current_token->value,
-              parser->current_token->type 
-              );
+      ti_log("Unexpected value %s, with type %d\n",
+             parser->current_token->value,
+             parser->current_token->type);
       ti_fatal();
       return NULL;
     }
@@ -402,7 +401,7 @@ ast_t *parser_parse_function_call(parser_t *parser, char *func_name)
   ast_t **args = NULL;
   int num_arg = 0;
   char *func = func_name;
-  /* fuc_name(arg1,arg2,...) */
+  /* func_name(arg1,arg2,...) */
   if(parser->current_token->type != TOKEN_RPAREN)
   {
     args = tracked_calloc(1, sizeof(struct AST_STRUCT*));

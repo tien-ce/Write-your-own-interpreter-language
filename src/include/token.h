@@ -36,8 +36,8 @@ typedef  struct TOKEN_STRUCT{
         TOKEN_COMMA,        // ,
         TOKEN_LT,         // <
         TOKEN_LTE,        // <= 
-        TOKEN_GT,      // >
-        TOKEN_GTE,     // >
+        TOKEN_GT,           // >
+        TOKEN_GTE,          // >=
         TOKEN_EOF           // End of file
   } type;
   char *value;

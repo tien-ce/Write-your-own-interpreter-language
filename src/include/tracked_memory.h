@@ -13,6 +13,6 @@ void *tracked_calloc (size_t num, size_t size);
 void *tracked_realloc (void *ptr, size_t new_size);
 void tracked_free (void *ptr);
 char *tracked_strdup(const char *s);
-void free_all();
+void free_all(void);
 
 #endif

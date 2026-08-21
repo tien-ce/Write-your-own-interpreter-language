@@ -1,46 +1,33 @@
 #include "include/platform.h"
 #include "include/tracked_memory.h"
-#include <stdarg.h>
 #include <stdio.h>
-#include <stdlib.h>
+ti_fatal_callback_t ti_fatal_cb = NULL;
+ti_log_callback_t ti_log_cb = NULL;
 
-#if defined(ARDUINO)
+void ti_register_fatal(ti_fatal_callback_t func)
+{
+    ti_fatal_cb = func;
+}
 
-#include <Arduino.h>
+void ti_register_log(ti_log_callback_t func)
+{
+    ti_log_cb = func;
+}
 
 void ti_log(const char *fmt, ...)
 {
-  va_list args;
-  va_start(args, fmt);
-  vprintf(fmt, args);
-  va_end(args);
+    va_list args;
+    va_start(args, fmt);
+    if(ti_log_cb != NULL)
+        ti_log_cb(fmt, args);
+    va_end(args);
 }
 
 void ti_fatal(void)
 {
   free_all();
-  while (1)
+  if(ti_fatal_cb != NULL)
   {
-    delay(1000);
+    ti_fatal_cb();
   }
 }
-
-#else
-
-#define TI_PLATFORM_DESKTOP
-
-void ti_log(const char *fmt, ...)
-{
-  va_list args;
-  va_start(args, fmt);
-  vprintf(fmt, args);
-  va_end(args);
-}
-
-void ti_fatal(void)
-{
-  free_all();
-  exit(1);
-}
-
-#endif

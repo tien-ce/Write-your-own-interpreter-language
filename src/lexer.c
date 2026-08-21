@@ -37,8 +37,8 @@ void lexer_go_back(lexer_t *lexer)
 
 void lexer_advance(lexer_t *lexer)
 {
-  uint32_t lenght = strlen(lexer->contents); 
-  if(lexer->c != '\0' && lexer->i < lenght)
+  uint32_t length = strlen(lexer->contents); 
+  if(lexer->c != '\0' && lexer->i < length)
   {
       lexer->i ++;
       lexer->c = lexer->contents[lexer->i];
@@ -75,7 +75,7 @@ token_t *lexer_get_next_token(lexer_t *lexer)
       return lexer_collect_number(lexer);
     }
     
-    // If is alpla or _ (allowed for name)
+    // If is alpha or _ (allowed for name)
     if(isalpha(lexer->c))
     {
       return lexer_collect_id(lexer);
@@ -120,7 +120,7 @@ token_t *lexer_get_next_token(lexer_t *lexer)
 
 token_t *lexer_collect_string(lexer_t *lexer)
 {        
-  lexer_advance(lexer); // go thorugh open quote
+  lexer_advance(lexer); // go through open quote
   char *value = tracked_calloc(1, sizeof(char));
   value[0] = '\0';
   while(lexer->c != '"')
@@ -157,7 +157,7 @@ token_t *lexer_collect_id(lexer_t *lexer)
   while(isalnum(lexer->c) || lexer->c == '_') // is alphanumeric or '_'
   {
      char *s = lexer_get_current_char_as_string(lexer);
-     value =  tracked_realloc(value,strlen(value) + strlen(s) + 1); // allocate for concatnation
+     value =  tracked_realloc(value,strlen(value) + strlen(s) + 1); // allocate for concatenation
      strcat(value,s);
      tracked_free(s);
      lexer_advance(lexer);
@@ -172,7 +172,7 @@ token_t *lexer_collect_id(lexer_t *lexer)
   if (strcmp(value, "while") == 0)    { tracked_free(value); return init_token(TOKEN_KW_WHILE, NULL); }
   if (strcmp(value, "return") == 0)   { tracked_free(value); return init_token(TOKEN_KW_RETURN, NULL); }
 
-  // If not keywork (variable or function)
+  // If not keyword (variable or function)
   return init_token(TOKEN_ID, value);
 }
 
@@ -183,7 +183,7 @@ token_t *lexer_collect_number(lexer_t *lexer)
   {
     char *s = lexer_get_current_char_as_string(lexer);
     value = tracked_realloc(value,strlen(value) + strlen(s) + 1);
-    strcat(value,s);;
+    strcat(value,s);
     lexer_advance(lexer);
   }
   if(lexer->c == '.')
@@ -203,10 +203,10 @@ token_t *lexer_collect_number(lexer_t *lexer)
     }
     return init_token(TOKEN_FLOAT, value);
   }
-  // Interger number
+  // Integer number
   if (isalpha(lexer->c) || lexer->c == '_')
   {
-    ti_log("[lexer error] invalid suffix '%c' on float constant '%s'\n", lexer->c, value);
+    ti_log("[Lexer Error] Invalid suffix '%c' on integer constant '%s'\n", lexer->c, value);
     ti_fatal();
   } 
   return init_token(TOKEN_INT, value);

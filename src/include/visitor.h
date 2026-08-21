@@ -29,7 +29,7 @@ typedef struct VALUE_STRUCT {
 /* Function pointer to function return value_t value */
 typedef value_t *(*native_fn_t)(value_t **args, int argc);
 
-typedef struct BULTIN_FUNC_STRUCT {
+typedef struct BUILTIN_FUNC_STRUCT {
     const char *name; // Function name
     native_fn_t fn;
 } builtin_func_t;
@@ -75,7 +75,7 @@ value_t *visitor_visit_float_literal(InterpreterContext *ctx, ast_t *node);
 value_t *visitor_visit_identifier(InterpreterContext *ctx, ast_t *node);
 value_t *visitor_visit(InterpreterContext *ctx, ast_t *node);
 
-bool register_bultin_function(const char *name, native_fn_t function);
+bool register_builtin_function(const char *name, native_fn_t function);
 context_t *init_interpreter_context(void);
 void free_context(context_t *ctx);
 

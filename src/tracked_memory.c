@@ -15,7 +15,7 @@ static void list_insert_head(alloc_hdr_t *new_hdr)
     new_hdr->next = g_alloc_list;
     if(g_alloc_list != NULL)
     {
-        // Already constain node
+        // Already contains node
         g_alloc_list->previous = new_hdr;
     }
     g_alloc_list= new_hdr;
@@ -46,7 +46,7 @@ void *tracked_malloc(size_t size)
     if(hdr == NULL)
         return NULL;
 #ifndef CHECK_MEM_LEAK
-    // Inser to list
+    // Insert to list
     list_insert_head(hdr);
 #endif
     return (void*)(hdr+1); // Return payload
@@ -60,7 +60,7 @@ void *tracked_calloc(size_t num, size_t size)
     if(hdr == NULL)
         return NULL;
 #ifndef CHECK_MEM_LEAK
-    // Inser to list
+    // Insert to list
     list_insert_head(hdr);
 #endif
     // Get address of payload
@@ -84,7 +84,7 @@ void *tracked_realloc(void *ptr, size_t new_size)
     if(new_ptr != NULL)
     {
 #ifndef CHECK_MEM_LEAK
-        // Reassing link
+        // Reassign link
         if (new_ptr->next != NULL) // Not the end
             new_ptr->next->previous = new_ptr;
         if (new_ptr->previous != NULL) // Not the head
@@ -116,7 +116,7 @@ char *tracked_strdup(const char *s)
     list_insert_head(hdr);
 #endif
     char *payload = (char*)(hdr + 1);
-    /* Dont't ask me how about with the string with none '\0', that's your falure*/
+    /* Don't ask me how about with the string without '\0', that's your failure */
     memcpy(payload,s,total_payload_size);
     return payload;
 }
@@ -134,7 +134,7 @@ void tracked_free(void *ptr)
     free(hdr);
 }
 
-void free_all()
+void free_all(void)
 {
 #ifndef CHECK_MEM_LEAK
     alloc_hdr_t *current = g_alloc_list;

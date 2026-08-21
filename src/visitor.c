@@ -453,7 +453,7 @@ value_t *visitor_visit(InterpreterContext *ctx, ast_t *node)
 
 value_t *visitor_visit_expr(InterpreterContext *ctx, ast_t *node)
 {
-  ti_log("Visit expesstion\n");
+  ti_log("Visit expression\n");
   return NULL;
 }
 
@@ -505,7 +505,6 @@ value_t *visitor_visit_binary_expr(InterpreterContext *ctx, ast_t *node)
       break;
   }
 
-out:
     free_internal_value(left);
     free_internal_value(right);
     tracked_free(left);
@@ -633,7 +632,7 @@ value_t *visitor_visit_compound(InterpreterContext *ctx, ast_t *node)
     value_t *value = visitor_visit(ctx,node->value.compound.compound_value[i]);
     if (value != NULL)
     {
-      ti_log("[Warning]: Still threre are statement return not NULL, please change it");
+      ti_log("[Warning]: Still there are statements returning not NULL, please change it\n");
       tracked_free(value);
     }
   }
@@ -648,18 +647,18 @@ value_t *visitor_visit_identifier(InterpreterContext *ctx, ast_t *node)
     value_t *value = copy_value_from_variable(variable);
     return value;
   }
-  ti_log("Undefined variabe: %s", node->value.identifier);
+  ti_log("Undefined variable: %s\n", node->value.identifier);
   ti_fatal();
   return NULL;
 }
 
-bool register_bultin_function(const char *name, native_fn_t function) 
+bool register_builtin_function(const char *name, native_fn_t function) 
 {
   for (int i = 0; i < g_builtin_count; i ++)
   {
     if(strcmp(name,g_builtins[i].name) == 0)
     {
-      ti_log("Function name already existed\n");
+      ti_log("Function name already exists\n");
       return false;
     }
   }
