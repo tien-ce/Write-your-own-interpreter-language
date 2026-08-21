@@ -4,14 +4,20 @@
 #include "AST.h"
 #include <stdbool.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef enum {
+  VAL_NULL,
+  VAL_INT,
+  VAL_FLOAT,
+  VAL_STRING,
+  VAL_BOOL,
+} value_type_t;
+
 typedef struct VALUE_STRUCT {
-  enum {
-    VAL_NULL,
-    VAL_INT,
-    VAL_FLOAT,
-    VAL_STRING,
-    VAL_BOOL,
-  } type;
+  value_type_t type;
   union {
     int int_val;
     float float_val;
@@ -22,11 +28,11 @@ typedef struct VALUE_STRUCT {
 
 /* Function pointer to function return value_t value */
 typedef value_t *(*native_fn_t)(value_t **args, int argc);
+
 typedef struct BULTIN_FUNC_STRUCT {
-    const char *name; // Functio name
+    const char *name; // Function name
     native_fn_t fn;
 } builtin_func_t;
-
 
 typedef struct VARIABLE_STRUCT {
   const char *name;
@@ -40,9 +46,18 @@ typedef struct InterpreterContext {
   int variable_size;
 } context_t, InterpreterContext;
 
+/* Memory & Object Initializers */
 value_t *init_val(int type);
 variable_t *init_variable(char *variable_name);
 
+/* Value Helper Constructors (for easy built-in function creation) */
+value_t *val_new_null(void);
+value_t *val_new_int(int v);
+value_t *val_new_float(float v);
+value_t *val_new_string(const char *s);
+value_t *val_new_bool(bool b);
+
+/* AST Evaluator / Visitor */
 value_t *visitor_visit_expr(InterpreterContext *ctx, ast_t *node);
 value_t *visitor_visit_binary_expr(InterpreterContext *ctx, ast_t *node);
 value_t *visitor_visit_unary_expr(InterpreterContext *ctx, ast_t *node);
@@ -63,4 +78,9 @@ value_t *visitor_visit(InterpreterContext *ctx, ast_t *node);
 bool register_bultin_function(const char *name, native_fn_t function);
 context_t *init_interpreter_context(void);
 void free_context(context_t *ctx);
+
+#ifdef __cplusplus
+}
 #endif
+
+#endif // VISITOR_H

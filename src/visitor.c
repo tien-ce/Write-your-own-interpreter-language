@@ -380,6 +380,39 @@ value_t *init_val(int type)
   return value;
 }
 
+value_t *val_new_null(void)
+{
+  return init_val(VAL_NULL);
+}
+
+value_t *val_new_int(int v)
+{
+  value_t *val = init_val(VAL_INT);
+  val->int_val = v;
+  return val;
+}
+
+value_t *val_new_float(float v)
+{
+  value_t *val = init_val(VAL_FLOAT);
+  val->float_val = v;
+  return val;
+}
+
+value_t *val_new_string(const char *s)
+{
+  value_t *val = init_val(VAL_STRING);
+  val->string_val = s ? tracked_strdup(s) : NULL;
+  return val;
+}
+
+value_t *val_new_bool(bool b)
+{
+  value_t *val = init_val(VAL_BOOL);
+  val->bool_val = b;
+  return val;
+}
+
 variable_t *init_variable(char *variable_name){
   variable_t *variable = tracked_calloc(1,sizeof(struct VARIABLE_STRUCT));
   variable->name = variable_name;
