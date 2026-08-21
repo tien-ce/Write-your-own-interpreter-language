@@ -62,11 +62,9 @@ void parser_eat(parser_t *parser, int expected_type)
   }
   else
   {
-      ti_log(
-          "Unexpected value %s with type %d",
-          parser->current_token->value,
-          parser->current_token->type
-      );
+      ti_log("Unexpected value %s, with type %d\n",
+             parser->current_token->value ? parser->current_token->value : "<eof>",
+             parser->current_token->type);
       ti_fatal();
   }
 }
@@ -300,7 +298,7 @@ ast_t *parser_parse_primary(parser_t *parser)
     {
       // Leave group, ID, and function call branches to be implemented
       ti_log("Unexpected value %s, with type %d\n",
-             parser->current_token->value,
+             parser->current_token->value ? parser->current_token->value : "<eof>",
              parser->current_token->type);
       ti_fatal();
       return NULL;
