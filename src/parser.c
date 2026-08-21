@@ -35,6 +35,7 @@ static int token_type_to_op(int token_type)
     {
       ti_log("Unknown operator token type: %d\n", token_type);
       ti_fatal();
+      return -1;
     }
   }
 }
@@ -300,6 +301,7 @@ ast_t *parser_parse_primary(parser_t *parser)
               parser->current_token->type 
               );
       ti_fatal();
+      return NULL;
     }
   }
 }
