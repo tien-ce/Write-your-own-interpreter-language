@@ -598,6 +598,7 @@ value_t *visitor_visit_assignment(InterpreterContext *ctx, ast_t *node)
           val->type);
       ti_fatal();
     }
+    free_internal_value(val);
     variable->value = val;
   }
   else
@@ -642,13 +643,14 @@ value_t *visitor_visit_function_call(InterpreterContext *ctx, ast_t *node)
   value_t **argv = tracked_calloc(argc , sizeof(struct VALUE_STRUCT*));
   for (int i = 0; i < argc; i ++)
   {
+      /* If not, it can be funcitoncall staement */
     value_t *value = visitor_visit(ctx,node->value.function_call.args[i]);
     argv[i] = value;
   }
   for (int i = 0; i < g_builtin_count; i++){
     if(strcmp(node->value.function_call.func, g_builtins[i].name) == 0)
     {
-      g_builtins[i].fn(argv,argc);  
+      ret = g_builtins[i].fn(argv,argc);  
       break;
     }
   }
@@ -689,7 +691,7 @@ value_t *visitor_visit_compound(InterpreterContext *ctx, ast_t *node)
     value_t *value = visitor_visit(ctx,node->value.compound.compound_value[i]);
     if (value != NULL)
     {
-      ti_log("[Warning]: Still there are statements returning not NULL, please change it\n");
+      free_internal_value(value);
       tracked_free(value);
     }
   }

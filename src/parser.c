@@ -87,6 +87,8 @@ ast_t *parser_parse_statement(parser_t *parser)
       ast_t *expr = parser_parse_expr(parser);
       if (parser->current_token->type == TOKEN_EQUALS)
         return parser_parse_assignment(parser, expr);
+      /* If not, it can be funcitoncall staement */
+      parser_eat(parser, TOKEN_SEMI);
       return expr;
     }
     case TOKEN_KW_WHILE:
@@ -425,7 +427,6 @@ ast_t *parser_parse_function_call(parser_t *parser, char *func_name)
   func_call_node->value.function_call.func = func;
   func_call_node->value.function_call.args = args;
   func_call_node->value.function_call.num_arg = num_arg;
-  parser_eat(parser, TOKEN_SEMI);
   return func_call_node;
 }
 
