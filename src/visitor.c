@@ -587,6 +587,10 @@ value_t *visitor_visit(InterpreterContext *ctx, ast_t *node)
       return visitor_visit_string_literal(ctx,node);
     case AST_INT_LITERAL:
       return visitor_visit_int_literal(ctx,node);
+    case AST_FLOAT_LITERAL:
+      return visitor_visit_float_literal(ctx,node);
+    case AST_BOOLEAN:
+      return visitor_visit_boolean(ctx,node);
     case AST_IDENTIFIER:
       return visitor_visit_identifier(ctx,node);
     case AST_BINARY_EXPR:
@@ -807,8 +811,17 @@ value_t *visitor_visit_int_literal(InterpreterContext *ctx, ast_t *node)
 
 value_t *visitor_visit_float_literal(InterpreterContext *ctx, ast_t *node)
 {
+  (void)ctx;
   value_t *value = init_val(VAL_FLOAT);
   value->float_val = node->value.float_value;
+  return value;
+}
+
+value_t *visitor_visit_boolean(InterpreterContext *ctx, ast_t *node)
+{
+  (void)ctx;
+  value_t *value = init_val(VAL_BOOL);
+  value->bool_val = node->value.bool_value;
   return value;
 }
 

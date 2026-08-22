@@ -16,6 +16,7 @@ typedef struct TOKEN_STRUCT {
         TOKEN_KW_INT,       // int
         TOKEN_KW_FLOAT,     // float
         TOKEN_KW_STRING,    // string
+        TOKEN_KW_BOOL,      // bool 
         TOKEN_KW_IF,        // if
         TOKEN_KW_ELSE,      // else
         TOKEN_KW_WHILE,     // while

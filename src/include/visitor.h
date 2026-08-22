@@ -171,6 +171,11 @@ value_t *visitor_visit_int_literal(InterpreterContext *ctx, ast_t *node);
 value_t *visitor_visit_float_literal(InterpreterContext *ctx, ast_t *node);
 
 /**
+ * @brief Evaluate a boolean literal node.
+ */
+value_t *visitor_visit_boolean(InterpreterContext *ctx, ast_t *node);
+
+/**
  * @brief Look up and evaluate an identifier node.
  */
 value_t *visitor_visit_identifier(InterpreterContext *ctx, ast_t *node);
