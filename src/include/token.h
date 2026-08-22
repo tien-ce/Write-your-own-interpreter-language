@@ -24,6 +24,8 @@ typedef struct TOKEN_STRUCT {
 
         /* 3. OPERATORS & DELIMITERS */
         TOKEN_EQUALS,       // =
+        TOKEN_DEQUALS,      // ==
+        TOKEN_NOT,          // !
         TOKEN_NOT_EQUALS,   // !=
         TOKEN_PLUS,         // +
         TOKEN_MINUS,        // -

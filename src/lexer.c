@@ -86,12 +86,31 @@ token_t *lexer_get_next_token(lexer_t *lexer)
     }
 
     switch (lexer->c) {
-      case '=': return lexer_advance_with_token(lexer, init_token(TOKEN_EQUALS, NULL));
       case '(': return lexer_advance_with_token(lexer, init_token(TOKEN_LPAREN, NULL));
       case ')': return lexer_advance_with_token(lexer, init_token(TOKEN_RPAREN, NULL));
       case ';': return lexer_advance_with_token(lexer, init_token(TOKEN_SEMI, NULL));
       case '+': return lexer_advance_with_token(lexer, init_token(TOKEN_PLUS, NULL));
       case ',': return lexer_advance_with_token(lexer, init_token(TOKEN_COMMA, NULL));
+      case '=':
+      {
+          lexer_advance(lexer);
+          if(lexer->c == '=')
+          {
+              return lexer_advance_with_token(lexer, init_token(TOKEN_DEQUALS, NULL));
+          }
+          lexer_go_back(lexer);
+          return lexer_advance_with_token(lexer, init_token(TOKEN_EQUALS, NULL));
+      }
+      case '!':
+      {
+          lexer_advance(lexer);
+          if(lexer->c == '=')
+          {
+              return lexer_advance_with_token(lexer, init_token(TOKEN_NOT_EQUALS, NULL));
+          }
+          lexer_go_back(lexer);
+          return lexer_advance_with_token(lexer, init_token(TOKEN_NOT ,NULL));
+      }
       case '<':
       {
         lexer_advance(lexer);

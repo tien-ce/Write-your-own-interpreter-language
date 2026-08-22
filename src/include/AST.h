@@ -51,7 +51,7 @@ typedef struct AST_STRUCT {
           OP_MUL,             // *
           OP_DIV,             // /
           OP_MOD,             // %
-          OP_EQ,              // ==
+          OP_DEQ,             // ==
           OP_NEQ,             // !=
           OP_LT,              // <
           OP_GT,              // >

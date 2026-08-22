@@ -643,7 +643,7 @@ value_t *visitor_visit_binary_expr(InterpreterContext *ctx, ast_t *node)
     case OP_DIV:
       result = binary_div(left, right);
       break;
-    case OP_EQ:
+    case OP_DEQ:
       result = binary_equal(left, right);
       break;
     case OP_GT:

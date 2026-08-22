@@ -24,7 +24,7 @@ static int token_type_to_op(int token_type)
     case TOKEN_STAR:        return OP_MUL;
     case TOKEN_SLASH:       return OP_DIV;
     //case TOKEN_PERCENT:   return OP_MOD;
-    case TOKEN_EQUALS:      return OP_EQ;
+    case TOKEN_DEQUALS:     return OP_DEQ;
     case TOKEN_NOT_EQUALS:  return OP_NEQ;
     case TOKEN_LT:          return OP_LT;
     case TOKEN_GT:          return OP_GT;
@@ -173,7 +173,9 @@ ast_t *parser_parse_expr(parser_t *parser)
         parser->current_token->type == TOKEN_LT ||
         parser->current_token->type == TOKEN_LTE ||
         parser->current_token->type == TOKEN_GT ||
-        parser->current_token->type == TOKEN_GTE
+        parser->current_token->type == TOKEN_GTE ||
+        parser->current_token->type == TOKEN_DEQUALS ||
+        parser->current_token->type == TOKEN_NOT_EQUALS 
       )
   {
     int op = parser->current_token->type;
