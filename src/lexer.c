@@ -196,8 +196,8 @@ token_t *lexer_collect_id(lexer_t *lexer)
   if (strcmp(value, "while") == 0)    { tracked_free(value); return init_token(TOKEN_KW_WHILE, NULL); }
   if (strcmp(value, "return") == 0)   { tracked_free(value); return init_token(TOKEN_KW_RETURN, NULL); }
   // Bool value
-  if (strcmp(value, "true") == 0)   { tracked_free(value); return init_token(TOKEN_BOOL, value); }
-  if (strcmp(value, "false") == 0)   { tracked_free(value); return init_token(TOKEN_BOOL, value); }
+  if (strcmp(value, "true") == 0)   return init_token(TOKEN_BOOL, value);
+  if (strcmp(value, "false") == 0)  return init_token(TOKEN_BOOL, value);
 
   // If not keyword (variable or function)
   return init_token(TOKEN_ID, value);
