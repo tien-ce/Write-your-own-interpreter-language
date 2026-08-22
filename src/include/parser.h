@@ -62,7 +62,17 @@ ast_t *parser_parse_primary(parser_t *parser);
 ast_t *parser_parse_term(parser_t *parser);
 
 /**
- * @brief Parse additive and relational expressions (+, -, <, <=, >, >=).
+ * @brief Parse additive expressions (+, -).
+ */
+ast_t *parser_parse_additive(parser_t *parser);
+
+/**
+ * @brief Parse comparison/relational expressions (==, !=, <, <=, >, >=).
+ */
+ast_t *parser_parse_comparison(parser_t *parser);
+
+/**
+ * @brief Parse logical expressions (||, &&).
  */
 ast_t *parser_parse_expr(parser_t *parser);
 

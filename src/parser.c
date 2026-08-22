@@ -30,8 +30,8 @@ static int token_type_to_op(int token_type)
     case TOKEN_GT:          return OP_GT;
     case TOKEN_LTE:         return OP_LTE;
     case TOKEN_GTE:         return OP_GTE;
-    //case TOKEN_LOGICAL_AND: return OP_LOGICAL_AND;
-    //case TOKEN_LOGICAL_OR:  return OP_LOGICAL_OR;
+    case TOKEN_LOGIC_AND:   return OP_LOGICAL_AND;
+    case TOKEN_LOGIC_OR:    return OP_LOGICAL_OR;
     default:
     {
       ti_log("Unknown operator token type: %d\n", token_type);
@@ -81,6 +81,7 @@ ast_t *parser_parse_statement(parser_t *parser)
     case TOKEN_KW_INT:
     case TOKEN_KW_FLOAT:
     case TOKEN_KW_STRING:
+    case TOKEN_KW_BOOL:
       return parser_parse_variable_definition(parser);
     case TOKEN_ID:
     {
@@ -96,6 +97,9 @@ ast_t *parser_parse_statement(parser_t *parser)
     case TOKEN_KW_IF:
       return parser_parse_if_statement(parser);
     default:
+      ti_log("[Parser] Unexpected statement starting with token type %d ('%s')\n",
+             parser->current_token->type,
+             parser->current_token->value ? parser->current_token->value : "");
       return NULL;
   }
 }
@@ -162,59 +166,82 @@ ast_t *parser_parse_main_program(parser_t *parser)
   return compound;
 }
 
-/* Main entry (Level 1)*/
+/* Logical expressions (Level 1: ||, &&) */
 ast_t *parser_parse_expr(parser_t *parser)
 {
-  /* expression1 + expression2 - expression 3 */
-  // Expression1
-  ast_t *left = parser_parse_term(parser);  // Call to level 2
-  while (parser->current_token->type == TOKEN_PLUS ||
-        parser->current_token->type == TOKEN_MINUS ||
-        parser->current_token->type == TOKEN_LT ||
-        parser->current_token->type == TOKEN_LTE ||
-        parser->current_token->type == TOKEN_GT ||
-        parser->current_token->type == TOKEN_GTE ||
-        parser->current_token->type == TOKEN_DEQUALS ||
-        parser->current_token->type == TOKEN_NOT_EQUALS 
-      )
+  ast_t *left = parser_parse_comparison(parser);
+  while (parser->current_token->type == TOKEN_LOGIC_AND ||
+         parser->current_token->type == TOKEN_LOGIC_OR)
   {
     int op = parser->current_token->type;
-    // +
     parser_eat(parser, op);
-    // expression2
-    ast_t *right = parser_parse_term(parser); 
+    ast_t *right = parser_parse_comparison(parser);
     ast_t *binary_node = init_ast(AST_BINARY_EXPR);
     binary_node->value.binary_expr.op = token_type_to_op(op);
     binary_node->value.binary_expr.left = left;
     binary_node->value.binary_expr.right = right;
     left = binary_node;
-    // Go back to while loop with left is (expr1 + expr2), op is - and right is expr3
   }
-  // Return full expression
   return left;
 }
 
-/* Multiplicative expr (Level 2) */
+/* Comparison expressions (Level 2: ==, !=, <, <=, >, >=) */
+ast_t *parser_parse_comparison(parser_t *parser)
+{
+  ast_t *left = parser_parse_additive(parser);
+  while (parser->current_token->type == TOKEN_DEQUALS ||
+         parser->current_token->type == TOKEN_NOT_EQUALS ||
+         parser->current_token->type == TOKEN_LT ||
+         parser->current_token->type == TOKEN_LTE ||
+         parser->current_token->type == TOKEN_GT ||
+         parser->current_token->type == TOKEN_GTE)
+  {
+    int op = parser->current_token->type;
+    parser_eat(parser, op);
+    ast_t *right = parser_parse_additive(parser);
+    ast_t *binary_node = init_ast(AST_BINARY_EXPR);
+    binary_node->value.binary_expr.op = token_type_to_op(op);
+    binary_node->value.binary_expr.left = left;
+    binary_node->value.binary_expr.right = right;
+    left = binary_node;
+  }
+  return left;
+}
+
+/* Additive expressions (Level 3: +, -) */
+ast_t *parser_parse_additive(parser_t *parser)
+{
+  ast_t *left = parser_parse_term(parser);
+  while (parser->current_token->type == TOKEN_PLUS ||
+         parser->current_token->type == TOKEN_MINUS)
+  {
+    int op = parser->current_token->type;
+    parser_eat(parser, op);
+    ast_t *right = parser_parse_term(parser);
+    ast_t *binary_node = init_ast(AST_BINARY_EXPR);
+    binary_node->value.binary_expr.op = token_type_to_op(op);
+    binary_node->value.binary_expr.left = left;
+    binary_node->value.binary_expr.right = right;
+    left = binary_node;
+  }
+  return left;
+}
+
+/* Multiplicative expressions (Level 4: *, /) */
 ast_t *parser_parse_term(parser_t *parser)
 {
-  /* Expression1 in main entry: (a + b) * c / d */
-  // Expression 0: a + b
-  ast_t *left = parser_parse_primary(parser); // Call to level 3
+  ast_t *left = parser_parse_primary(parser);
   while (parser->current_token->type == TOKEN_STAR ||
-        parser->current_token->type == TOKEN_SLASH
-      )
+         parser->current_token->type == TOKEN_SLASH)
   {
-      int op = parser->current_token->type;
-      // * 
-      parser_eat(parser,op);
-      //c 
-      ast_t *right = parser_parse_primary(parser);
-      ast_t *binary_node = init_ast(AST_BINARY_EXPR);
-      binary_node->value.binary_expr.op = token_type_to_op(op);
-      binary_node->value.binary_expr.left = left;
-      binary_node->value.binary_expr.right = right;
-      left = binary_node;
-      // Go back to while loop with left is (a+b)*c, op is / and right is d
+    int op = parser->current_token->type;
+    parser_eat(parser, op);
+    ast_t *right = parser_parse_primary(parser);
+    ast_t *binary_node = init_ast(AST_BINARY_EXPR);
+    binary_node->value.binary_expr.op = token_type_to_op(op);
+    binary_node->value.binary_expr.left = left;
+    binary_node->value.binary_expr.right = right;
+    left = binary_node;
   }
   return left;
 }
@@ -260,7 +287,24 @@ ast_t *parser_parse_primary(parser_t *parser)
       parser_eat(parser, TOKEN_BOOL);
       return bool_node;
     }
+    case TOKEN_NOT:
+    case TOKEN_PLUS:
+    case TOKEN_MINUS:
+    {
+      int token_type = parser->current_token->type;
+      parser_eat(parser, token_type);
 
+      ast_t *unary_node = init_ast(AST_UNARY_EXPR);
+      if (token_type == TOKEN_NOT)
+        unary_node->value.unary_expr.op = OP_NOT;
+      else if (token_type == TOKEN_PLUS)
+        unary_node->value.unary_expr.op = OP_POS;
+      else if (token_type == TOKEN_MINUS)
+        unary_node->value.unary_expr.op = OP_NEG;
+
+      unary_node->value.unary_expr.operand = parser_parse_primary(parser);
+      return unary_node;
+    }    
     case TOKEN_ID:
     {
       char *id_name = parser->current_token->value;
@@ -320,9 +364,13 @@ ast_t *parser_parse_variable_definition(parser_t *parser)
     case TOKEN_KW_INT:    variable_type = VAR_TYPE_INT;    break;
     case TOKEN_KW_FLOAT:  variable_type = VAR_TYPE_FLOAT;  break;
     case TOKEN_KW_STRING: variable_type = VAR_TYPE_STRING; break;
+    case TOKEN_KW_BOOL:   variable_type = VAR_TYPE_BOOL;   break;
     default:
-      ti_log("Unexpected type keyword with type %d\n", parser->current_token->type);
+      ti_log("[Parser Error] Unexpected type keyword with type %d ('%s') in variable definition\n",
+             parser->current_token->type,
+             parser->current_token->value ? parser->current_token->value : "");
       ti_fatal();
+      break;
   }
   parser_eat(parser, parser->current_token->type);
   // a

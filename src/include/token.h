@@ -28,6 +28,10 @@ typedef struct TOKEN_STRUCT {
         TOKEN_DEQUALS,      // ==
         TOKEN_NOT,          // !
         TOKEN_NOT_EQUALS,   // !=
+        TOKEN_AND,
+        TOKEN_LOGIC_AND,
+        TOKEN_OR,
+        TOKEN_LOGIC_OR,
         TOKEN_PLUS,         // +
         TOKEN_MINUS,        // -
         TOKEN_STAR,         // *

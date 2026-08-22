@@ -90,7 +90,28 @@ token_t *lexer_get_next_token(lexer_t *lexer)
       case ')': return lexer_advance_with_token(lexer, init_token(TOKEN_RPAREN, NULL));
       case ';': return lexer_advance_with_token(lexer, init_token(TOKEN_SEMI, NULL));
       case '+': return lexer_advance_with_token(lexer, init_token(TOKEN_PLUS, NULL));
+      case '-': return lexer_advance_with_token(lexer, init_token(TOKEN_MINUS, NULL));
       case ',': return lexer_advance_with_token(lexer, init_token(TOKEN_COMMA, NULL));
+      case '&':
+      {
+          lexer_advance(lexer);
+          if(lexer->c == '&')
+          {
+              return lexer_advance_with_token(lexer, init_token(TOKEN_LOGIC_AND, NULL));
+          }
+          lexer_go_back(lexer);
+          return lexer_advance_with_token(lexer, init_token(TOKEN_AND, NULL));
+      }
+      case '|':
+      {
+          lexer_advance(lexer);
+          if(lexer->c == '|')
+          {
+              return lexer_advance_with_token(lexer, init_token(TOKEN_LOGIC_OR, NULL));
+          }
+          lexer_go_back(lexer);
+          return lexer_advance_with_token(lexer, init_token(TOKEN_OR, NULL));
+      }
       case '=':
       {
           lexer_advance(lexer);
@@ -205,22 +226,30 @@ token_t *lexer_collect_id(lexer_t *lexer)
 
 token_t *lexer_collect_number(lexer_t *lexer)
 {
-  char *value = tracked_calloc(1,sizeof(char));
-  while(isdigit(lexer->c))
+  char *value = tracked_calloc(1, sizeof(char));
+  while (isdigit(lexer->c))
   {
     char *s = lexer_get_current_char_as_string(lexer);
-    value = tracked_realloc(value,strlen(value) + strlen(s) + 1);
-    strcat(value,s);
+    value = tracked_realloc(value, strlen(value) + strlen(s) + 1);
+    strcat(value, s);
+    tracked_free(s);
     lexer_advance(lexer);
   }
-  if(lexer->c == '.')
+  if (lexer->c == '.')
   {
+    char *dot = lexer_get_current_char_as_string(lexer);
+    value = tracked_realloc(value, strlen(value) + strlen(dot) + 1);
+    strcat(value, dot);
+    tracked_free(dot);
+    lexer_advance(lexer);
+
     // Float number
-    while(isdigit(lexer->c))
+    while (isdigit(lexer->c))
     {
       char *s = lexer_get_current_char_as_string(lexer);
-      value = tracked_realloc(value,strlen(value) + strlen(s) + 1);
-      strcat(value,s);
+      value = tracked_realloc(value, strlen(value) + strlen(s) + 1);
+      strcat(value, s);
+      tracked_free(s);
       lexer_advance(lexer);
     }
     if (isalpha(lexer->c) || lexer->c == '_')

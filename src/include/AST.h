@@ -85,6 +85,7 @@ typedef struct AST_STRUCT {
         VAR_TYPE_INT,
         VAR_TYPE_FLOAT,
         VAR_TYPE_STRING,
+        VAR_TYPE_BOOL,
       } variable_type;
       char *variable_name;
       struct AST_STRUCT *value;

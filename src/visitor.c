@@ -24,6 +24,9 @@ static value_t *binary_greater(value_t *left, value_t *right);
 static value_t *binary_less(value_t *left, value_t *right);
 static value_t *binary_greater_equal(value_t *left, value_t *right);
 static value_t *binary_less_equal(value_t *left, value_t *right);
+static value_t *binary_logical_and(value_t *left, value_t *right);
+static value_t *binary_logical_or(value_t *left, value_t *right);
+
 static variable_t *find_variable_from_context(context_t *ctx, char *variable_name);
 static value_t *copy_value_from_variable(variable_t *variable);
 static void add_variable_to_context(context_t *ctx, char *name, value_t *value);
@@ -382,6 +385,46 @@ static value_t *binary_less_equal(value_t *left, value_t *right)
 }
 
 /**
+ * @brief Evaluate binary logical AND (&&) between two boolean values.
+ */
+static value_t *binary_logical_and(value_t *left, value_t *right)
+{
+  if (left == NULL || right == NULL) {
+    ti_log("[ERROR]: Invalid operands in binary logical and\n");
+    ti_fatal();
+    return NULL;
+  }
+  if (left->type != VAL_BOOL || right->type != VAL_BOOL) {
+    ti_log("[ERROR]: Logical AND expects bool operands, got %d and %d\n", left->type, right->type);
+    ti_fatal();
+    return NULL;
+  }
+  value_t *value = init_val(VAL_BOOL);
+  value->bool_val = (left->bool_val && right->bool_val);
+  return value;
+}
+
+/**
+ * @brief Evaluate binary logical OR (||) between two boolean values.
+ */
+static value_t *binary_logical_or(value_t *left, value_t *right)
+{
+  if (left == NULL || right == NULL) {
+    ti_log("[ERROR]: Invalid operands in binary logical or\n");
+    ti_fatal();
+    return NULL;
+  }
+  if (left->type != VAL_BOOL || right->type != VAL_BOOL) {
+    ti_log("[ERROR]: Logical OR expects bool operands, got %d and %d\n", left->type, right->type);
+    ti_fatal();
+    return NULL;
+  }
+  value_t *value = init_val(VAL_BOOL);
+  value->bool_val = (left->bool_val || right->bool_val);
+  return value;
+}
+
+/**
  * @brief Look up a variable by name in current and ancestor scopes.
  */
 static variable_t *find_variable_from_context(context_t *ctx, char *variable_name)
@@ -602,14 +645,9 @@ value_t *visitor_visit(InterpreterContext *ctx, ast_t *node)
     case AST_IF_STATEMENT:
         return visitor_visit_if_statement(ctx, node);
     default:
-        break;
+      ti_log("[Visitor Error] Unexpected AST node type %d in visitor_visit\n", node ? node->type : -1);
+      break;
   }
-  return NULL;
-}
-
-value_t *visitor_visit_expr(InterpreterContext *ctx, ast_t *node)
-{
-  ti_log("Visit expression\n");
   return NULL;
 }
 
@@ -661,6 +699,13 @@ value_t *visitor_visit_binary_expr(InterpreterContext *ctx, ast_t *node)
       break;
     case OP_LTE:
       result = binary_less_equal(left, right);
+
+      break;
+    case OP_LOGICAL_AND:
+      result = binary_logical_and(left, right);
+      break;
+    case OP_LOGICAL_OR:
+      result = binary_logical_or(left, right);
       break;
     default:
       ti_log("[ERROR]: Unknown operator: %d\n", node->value.binary_expr.op);
@@ -677,7 +722,70 @@ value_t *visitor_visit_binary_expr(InterpreterContext *ctx, ast_t *node)
 
 value_t *visitor_visit_unary_expr(InterpreterContext *ctx, ast_t *node)
 {
-  return NULL;
+  value_t *operand = visitor_visit(ctx, node->value.unary_expr.operand); 
+  if (operand == NULL || operand->type == VAL_NULL)
+  {
+    ti_log("[ERROR]: Unary expression operand evaluated to NULL\n");
+    ti_fatal();
+    return NULL;
+  }
+
+  value_t *result = NULL;
+  switch (node->value.unary_expr.op)
+  {
+    case OP_POS:
+      if (operand->type == VAL_INT)
+      {
+        result = val_new_int(+operand->int_val);
+      }
+      else if (operand->type == VAL_FLOAT)
+      {
+        result = val_new_float(+operand->float_val);
+      }
+      else
+      {
+        ti_log("[ERROR]: Unary '+' only supports int and float, got type %d\n", operand->type);
+        ti_fatal();
+      }
+      break;
+
+    case OP_NEG:
+      if (operand->type == VAL_INT)
+      {
+        result = val_new_int(-operand->int_val);
+      }
+      else if (operand->type == VAL_FLOAT)
+      {
+        result = val_new_float(-operand->float_val);
+      }
+      else
+      {
+        ti_log("[ERROR]: Unary '-' only supports int and float, got type %d\n", operand->type);
+        ti_fatal();
+      }
+      break;
+
+    case OP_NOT:
+      if (operand->type == VAL_BOOL)
+      {
+        result = val_new_bool(!operand->bool_val);
+      }
+      else
+      {
+        ti_log("[ERROR]: Unary '!' only supports bool, got type %d\n", operand->type);
+        ti_fatal();
+      }
+      break;
+
+    default:
+      ti_log("[ERROR]: Unknown unary operator: %d\n", node->value.unary_expr.op);
+      ti_fatal();
+      break;
+  }
+
+  free_internal_value(operand);
+  tracked_free(operand);
+  return result;
 }
 
 value_t *visitor_visit_variable_definition(InterpreterContext *ctx, ast_t *node)
