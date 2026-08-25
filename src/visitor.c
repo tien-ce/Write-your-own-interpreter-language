@@ -333,7 +333,7 @@ static value_t *binary_greater_equal(value_t *left, value_t *right)
       value->bool_val = (left->int_val >= right->int_val);
       break;
     case VAL_FLOAT:
-      value->float_val = (left->float_val >= right->float_val);
+      value->bool_val = (left->float_val >= right->float_val);
       break;
     case VAL_STRING:
     {
