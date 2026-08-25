@@ -50,7 +50,6 @@ parser_t *init_parser(lexer_t *lexer)
   parser->current_token= lexer_get_next_token(parser->lexer);
   return parser;
 }
-
 void parser_eat(parser_t *parser, int expected_type)
 {
   if ((int)parser->current_token->type == expected_type)
@@ -100,6 +99,7 @@ ast_t *parser_parse_statement(parser_t *parser)
       ti_log("[Parser] Unexpected statement starting with token type %d ('%s')\n",
              parser->current_token->type,
              parser->current_token->value ? parser->current_token->value : "");
+      ti_fatal();
       return NULL;
   }
 }
@@ -108,28 +108,23 @@ ast_t *parser_parse_statements(parser_t *parser)
 {
   /* {Compound} */
   parser_eat(parser, TOKEN_LBRACE);
-  ast_t **compound_value = tracked_calloc(1, sizeof(struct AST_STRUCT*));
   ast_t *compound = init_ast(AST_COMPOUND);
-  compound->value.compound.compound_value = compound_value;
-  // Parse first statement
-  ast_t *statement = parser_parse_statement(parser);
-  compound->value.compound.compound_value[0] = statement; 
-  compound->value.compound.compound_size = 1;
-  
-  // When still end with right brace  
+  compound->value.compound.compound_value = NULL;
+  compound->value.compound.compound_size = 0;
+
+  // Parse statements until the closing brace (handles empty "{}" too)
   while(parser->current_token->type != TOKEN_RBRACE)
   {
     ast_t *statement = parser_parse_statement(parser);
-    // Might be end file 
-    if (!statement)
-      break;
     int size = compound->value.compound.compound_size;
-    // Add new statement 
-    compound->value.compound.compound_value = tracked_realloc(
-     compound->value.compound.compound_value,
-     (size + 1) * sizeof(struct AST_STRUCT*)
-    );
-    compound->value.compound.compound_value[size] = statement; 
+    if (compound->value.compound.compound_value == NULL)
+      compound->value.compound.compound_value = tracked_calloc(1, sizeof(struct AST_STRUCT*));
+    else
+      compound->value.compound.compound_value = tracked_realloc(
+       compound->value.compound.compound_value,
+       (size + 1) * sizeof(struct AST_STRUCT*)
+      );
+    compound->value.compound.compound_value[size] = statement;
     compound->value.compound.compound_size += 1;
   }
   parser_eat(parser, TOKEN_RBRACE);
@@ -139,28 +134,23 @@ ast_t *parser_parse_statements(parser_t *parser)
 ast_t *parser_parse_main_program(parser_t *parser)
 {
   // Main entry point -> compound
-  ast_t **compound_value = tracked_calloc(1, sizeof(struct AST_STRUCT*));
   ast_t *compound = init_ast(AST_COMPOUND);
-  compound->value.compound.compound_value = compound_value;
-  // Parse first statement
-  ast_t *statement = parser_parse_statement(parser);
-  compound->value.compound.compound_value[0] = statement; 
-  compound->value.compound.compound_size = 1;
-  
-  // When still end with end of file
+  compound->value.compound.compound_value = NULL;
+  compound->value.compound.compound_size = 0;
+
+  // Parse statements until end of file (handles an empty program too)
   while(parser->current_token->type != TOKEN_EOF)
   {
     ast_t *statement = parser_parse_statement(parser);
-    // Might be end file 
-    if (!statement)
-      break;
     int size = compound->value.compound.compound_size;
-    // Add new statement 
-    compound->value.compound.compound_value = tracked_realloc(
-     compound->value.compound.compound_value,
-     (size + 1) * sizeof(struct AST_STRUCT*)
-    );
-    compound->value.compound.compound_value[size] = statement; 
+    if (compound->value.compound.compound_value == NULL)
+      compound->value.compound.compound_value = tracked_calloc(1, sizeof(struct AST_STRUCT*));
+    else
+      compound->value.compound.compound_value = tracked_realloc(
+       compound->value.compound.compound_value,
+       (size + 1) * sizeof(struct AST_STRUCT*)
+      );
+    compound->value.compound.compound_value[size] = statement;
     compound->value.compound.compound_size += 1;
   }
   return compound;

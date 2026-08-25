@@ -167,7 +167,7 @@ token_t *lexer_collect_string(lexer_t *lexer)
   lexer_advance(lexer); // go through open quote
   char *value = tracked_calloc(1, sizeof(char));
   value[0] = '\0';
-  while(lexer->c != '"')
+  while(lexer->c != '"' && lexer->c != '\0')
   {
      if (lexer->c == '\\')
      {
@@ -190,6 +190,11 @@ token_t *lexer_collect_string(lexer_t *lexer)
      strcat(value,s);
      tracked_free(s);
      lexer_advance(lexer);
+  }
+  if(lexer->c == '\0')
+  {
+    ti_log("Missing close quote\n");
+    ti_fatal();
   }
   lexer_advance(lexer); // Skip close quote
   return init_token(TOKEN_STRING, value);

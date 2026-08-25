@@ -34,6 +34,8 @@ void ti_fatal(void)
     {
         ti_fatal_cb();
     }
+    /* Shouldn't fall to here */
+    exit(1);
 }
 
 /* -------------------- Public Interpreter Functions -------------------- */
