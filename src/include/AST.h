@@ -5,6 +5,14 @@
 #include <stdbool.h>
 /* -------------------- AST Structure & Definitions -------------------- */
 
+typedef enum {
+    VAR_TYPE_INT,
+    VAR_TYPE_FLOAT,
+    VAR_TYPE_STRING,
+    VAR_TYPE_BOOL,
+    VAR_TYPE_VOID,
+} type;
+
 typedef struct AST_STRUCT {
   enum {
     /* 1. LITERALS & IDENTIFIERS */
@@ -27,6 +35,7 @@ typedef struct AST_STRUCT {
     AST_FOR_STATEMENT,        // for (init; cond; post) { ... }
     AST_RETURN_STATEMENT,     // return expr;
     AST_VARIABLE_DEFINITION,  // int x = 5;
+    AST_FUNCTION_DEFINITION,  //
     AST_ASSIGNMENT,           // x = 10
 
     AST_NOOP,
@@ -81,15 +90,25 @@ typedef struct AST_STRUCT {
 
     /* Variable definition statement */
     struct {
-      enum {
-        VAR_TYPE_INT,
-        VAR_TYPE_FLOAT,
-        VAR_TYPE_STRING,
-        VAR_TYPE_BOOL,
-      } variable_type;
+      type variable_type;
       char *variable_name;
       struct AST_STRUCT *value;
     } variable_definition;
+
+    /* Function call */
+    struct {
+      char *func;                   // Point to function name (id)
+      struct AST_STRUCT **args;     // An array contains pointers pointing to args (exprs)
+      int num_arg;
+    } function_call;
+
+    struct {
+      type func_type;
+      char *func_name;
+      int num_args;
+      struct AST_STRUCT **args;     // An array contains pointers pointing to args (exprs)
+      struct AST_STRUCT *body;
+    } function_definition;
 
     /* Compound */ 
     struct {
@@ -109,12 +128,6 @@ typedef struct AST_STRUCT {
       struct AST_STRUCT *else_body; // Point to compound, statement, or nested if (else if) - NULL if no else
     } if_statement;
 
-    /* Function call */
-    struct {
-      char *func;                   // Point to function name (id)
-      struct AST_STRUCT **args;     // An array contains pointers pointing to args (exprs)
-      int num_arg;
-    } function_call;
 
     struct {
       struct AST_STRUCT *id;
@@ -131,12 +144,12 @@ typedef struct AST_STRUCT {
  * @param type Node type enum.
  * @return Pointer to newly allocated ast_t.
  */
-ast_t *init_ast(int type);
+ast_t *ast_init(int type);
 
 /**
  * @brief Recursively free an AST node and all its children.
  * @param ast Root AST node to free.
  */
-void free_ast(ast_t *ast);
+void ast_free(ast_t *ast);
 
-#endif // !AST_H
+#endif /* !AST_H */

@@ -11,21 +11,21 @@ extern "C" {
 /* -------------------- Value & Context Types -------------------- */
 
 typedef enum {
-  VAL_NULL,
-  VAL_INT,
-  VAL_FLOAT,
-  VAL_STRING,
-  VAL_BOOL,
+    VAL_NULL,
+    VAL_INT,
+    VAL_FLOAT,
+    VAL_STRING,
+    VAL_BOOL,
 } value_type_t;
 
 typedef struct VALUE_STRUCT {
-  value_type_t type;
-  union {
-    int int_val;
-    float float_val;
-    char *string_val;
-    bool bool_val;
-  };
+    value_type_t type;
+    union {
+        int int_val;
+        float float_val;
+        char *string_val;
+        bool bool_val;
+    };
 } value_t;
 
 /**
@@ -39,62 +39,70 @@ typedef struct BUILTIN_FUNC_STRUCT {
 } builtin_func_t;
 
 typedef struct VARIABLE_STRUCT {
-  const char *name;
-  value_t *value;
+    const char *name;
+    value_t *value;
 } variable_t;
 
 typedef struct InterpreterContext {
-  struct InterpreterContext *parent;
-  variable_t **variables;
-  int variable_size;
+    struct InterpreterContext *parent;
+    variable_t **variables;
+    int variable_size;
 } context_t, InterpreterContext;
 
 /* -------------------- Memory & Object Initializers -------------------- */
 
 /**
  * @brief Allocate a new value_t of the specified type.
+ * @param type Value type enum value.
+ * @return Pointer to newly allocated value_t.
  */
-value_t *init_val(int type);
-
-/**
- * @brief Allocate a new variable_t with the given variable name.
- */
-variable_t *init_variable(char *variable_name);
+value_t *val_init(int type);
 
 /**
  * @brief Allocate a new interpreter context scope.
+ * @return Pointer to newly allocated context_t.
  */
-context_t *init_interpreter_context(void);
+context_t *context_init(void);
 
 /**
  * @brief Free an interpreter context and its scoped variables.
+ * @param ctx Pointer to context scope to free.
  */
-void free_context(context_t *ctx);
+void context_free(context_t *ctx);
 
 /* -------------------- Value Helper Constructors -------------------- */
 
 /**
  * @brief Create a null value_t.
+ * @return Newly allocated VAL_NULL value_t.
  */
 value_t *val_new_null(void);
 
 /**
  * @brief Create an integer value_t.
+ * @param v Integer value.
+ * @return Newly allocated VAL_INT value_t.
  */
 value_t *val_new_int(int v);
 
 /**
  * @brief Create a float value_t.
+ * @param v Float value.
+ * @return Newly allocated VAL_FLOAT value_t.
  */
 value_t *val_new_float(float v);
 
 /**
- * @brief Create a string value_t (duplicates string).
+ * @brief Create a string value_t (duplicates string into tracked memory).
+ * @param s String content (or NULL).
+ * @return Newly allocated VAL_STRING value_t.
  */
 value_t *val_new_string(const char *s);
 
 /**
  * @brief Create a boolean value_t.
+ * @param b Boolean value.
+ * @return Newly allocated VAL_BOOL value_t.
  */
 value_t *val_new_bool(bool b);
 
@@ -102,83 +110,11 @@ value_t *val_new_bool(bool b);
 
 /**
  * @brief Main entry point to evaluate an AST node in the given context.
+ * @param ctx Pointer to active execution context scope.
+ * @param node Pointer to AST node to evaluate.
+ * @return Pointer to evaluated result value_t (or NULL).
  */
 value_t *visitor_visit(InterpreterContext *ctx, ast_t *node);
-
-/**
- * @brief Evaluate an expression node.
- */
-value_t *visitor_visit_expr(InterpreterContext *ctx, ast_t *node);
-
-/**
- * @brief Evaluate a binary expression node (+, -, *, /, ==, <, etc.).
- */
-value_t *visitor_visit_binary_expr(InterpreterContext *ctx, ast_t *node);
-
-/**
- * @brief Evaluate a unary expression node (!, -, etc.).
- */
-value_t *visitor_visit_unary_expr(InterpreterContext *ctx, ast_t *node);
-
-/**
- * @brief Evaluate a variable definition node and add to context.
- */
-value_t *visitor_visit_variable_definition(InterpreterContext *ctx, ast_t *node);
-
-/**
- * @brief Evaluate an assignment node.
- */
-value_t *visitor_visit_assignment(InterpreterContext *ctx, ast_t *node);
-
-/**
- * @brief Execute a while loop node.
- */
-value_t *visitor_visit_while_statement(InterpreterContext *ctx, ast_t *node);
-
-/**
- * @brief Execute an if/else statement node.
- */
-value_t *visitor_visit_if_statement(InterpreterContext *ctx, ast_t *node);
-
-/**
- * @brief Execute a for statement node.
- */
-value_t *visitor_visit_for_statement(InterpreterContext *ctx, ast_t *node);
-
-/**
- * @brief Evaluate a function call node.
- */
-value_t *visitor_visit_function_call(InterpreterContext *ctx, ast_t *node);
-
-/**
- * @brief Execute a compound block node.
- */
-value_t *visitor_visit_compound(InterpreterContext *ctx, ast_t *node);
-
-/**
- * @brief Evaluate a string literal node.
- */
-value_t *visitor_visit_string_literal(InterpreterContext *ctx, ast_t *node);
-
-/**
- * @brief Evaluate an integer literal node.
- */
-value_t *visitor_visit_int_literal(InterpreterContext *ctx, ast_t *node);
-
-/**
- * @brief Evaluate a float literal node.
- */
-value_t *visitor_visit_float_literal(InterpreterContext *ctx, ast_t *node);
-
-/**
- * @brief Evaluate a boolean literal node.
- */
-value_t *visitor_visit_boolean(InterpreterContext *ctx, ast_t *node);
-
-/**
- * @brief Look up and evaluate an identifier node.
- */
-value_t *visitor_visit_identifier(InterpreterContext *ctx, ast_t *node);
 
 /* -------------------- Built-in Registration -------------------- */
 
@@ -194,4 +130,4 @@ bool register_builtin_function(const char *name, native_fn_t function);
 }
 #endif
 
-#endif // VISITOR_H
+#endif /* !VISITOR_H */

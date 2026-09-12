@@ -34,17 +34,25 @@ typedef void (*ti_fatal_callback_t)(void);
 void ti_log(const char *fmt, ...);
 
 /**
+ * @brief Print a line of text from the given pointer up to newline or null terminator.
+ * @param line Pointer to start of line.
+ */
+void ti_log_line(char *line);
+
+/**
  * @brief Handles an unrecoverable fatal interpreter error (frees memory and halts/exits).
  */
 void ti_fatal(void);
 
 /**
  * @brief Register custom logging callback (e.g. stdout for Desktop, Serial for Arduino).
+ * @param func Pointer to callback function.
  */
 void ti_register_log(ti_log_callback_t func);
 
 /**
  * @brief Register custom fatal error callback (e.g. exit(1) for Desktop, halt for Arduino).
+ * @param func Pointer to callback function.
  */
 void ti_register_fatal(ti_fatal_callback_t func);
 
@@ -53,7 +61,7 @@ void ti_register_fatal(ti_fatal_callback_t func);
 /**
  * @brief Initialize built-in interpreter functions (e.g. print).
  */
-void init_builtin(void);
+void ti_init_builtin(void);
 
 /**
  * @brief High-level helper to execute a Ti script from a source string.
@@ -65,4 +73,4 @@ void ti_run_string(const char *source_code);
 }
 #endif
 
-#endif // TIEN_INTERPRETER_H
+#endif /* !TIEN_INTERPRETER_H */

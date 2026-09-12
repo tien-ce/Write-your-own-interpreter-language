@@ -5,163 +5,164 @@
 
 #define MAX_DEPTH 256
 
+/* -------------------- Static Function Prototypes -------------------- */
+
+static void print_node_label(ast_t *node);
+static void draw_ast_internal(ast_t *node, bool is_last, bool is_root, bool has_next_sibling[], int depth);
+
 /* -------------------- Static Functions -------------------- */
 
 /**
  * @brief Print node label and payload info.
+ * @param node AST node pointer.
  */
 static void print_node_label(ast_t *node)
 {
-  if (!node)
-  {
-    printf("(NULL)\n");
-    return;
-  }
+    if (!node) {
+        printf("(NULL)\n");
+        return;
+    }
 
-  switch (node->type)
-  {
+    switch (node->type) {
     case AST_INT_LITERAL:
-      printf("INT: %d\n", node->value.int_value);
-      break;
+        printf("INT: %d\n", node->value.int_value);
+        break;
     case AST_FLOAT_LITERAL:
-      printf("FLOAT: %f\n", node->value.float_value);
-      break;
+        printf("FLOAT: %f\n", node->value.float_value);
+        break;
     case AST_STRING_LITERAL:
-      printf("STRING: \"%s\"\n", node->value.string_value);
-      break;
+        printf("STRING: \"%s\"\n", node->value.string_value);
+        break;
     case AST_BOOLEAN:
-      printf("BOOL: %s\n", node->value.bool_value ? "true" : "false");
-      break;
+        printf("BOOL: %s\n", node->value.bool_value ? "true" : "false");
+        break;
     case AST_IDENTIFIER:
-      printf("ID: %s\n", node->value.identifier);
-      break;
+        printf("ID: %s\n", node->value.identifier);
+        break;
     case AST_BINARY_EXPR:
-      printf("BIN_OP: (%s)\n", binary_op_to_str(node->value.binary_expr.op));
-      break;
+        printf("BIN_OP: (%s)\n", binary_op_to_str(node->value.binary_expr.op));
+        break;
     case AST_UNARY_EXPR:
-      printf("UNARY_OP: (%s)\n", unary_op_to_str(node->value.unary_expr.op));
-      break;
+        printf("UNARY_OP: (%s)\n", unary_op_to_str(node->value.unary_expr.op));
+        break;
     case AST_ARRAY_ACCESS:
-      printf("ARRAY_ACCESS: %s[]\n", node->value.array_access.id);
-      break;
+        printf("ARRAY_ACCESS: %s[]\n", node->value.array_access.id);
+        break;
     case AST_VARIABLE_DEFINITION:
-      printf("VAR_DEF: %s %s\n",
-             var_type_to_str(node->value.variable_definition.variable_type),
-             node->value.variable_definition.variable_name);
-      break;
+        printf("VAR_DEF: %s %s\n",
+               var_type_to_str(node->value.variable_definition.variable_type),
+               node->value.variable_definition.variable_name);
+        break;
     case AST_ASSIGNMENT:
-      printf("ASSIGNMENT (=)\n");
-      break;
+        printf("ASSIGNMENT (=)\n");
+        break;
     case AST_WHILE_STATEMENT:
-      printf("WHILE\n");
-      break;
+        printf("WHILE\n");
+        break;
     case AST_FUNCTION_CALL:
-      printf("CALL %s\n", node->value.function_call.func);
-      break;
+        printf("CALL %s\n", node->value.function_call.func);
+        break;
     case AST_COMPOUND:
-      printf("COMPOUND (%d stmts)\n", node->value.compound.compound_size);
-      break;
+        printf("COMPOUND (%d stmts)\n", node->value.compound.compound_size);
+        break;
     default:
-      printf("%s\n", ast_type_to_str(node->type));
-      break;
-  }
+        printf("%s\n", ast_type_to_str(node->type));
+        break;
+    }
 }
 
 /**
  * @brief Recursive internal tree renderer using Unicode branch characters.
+ * @param node Current AST node.
+ * @param is_last Whether this is the last child in the current level.
+ * @param is_root Whether this is the root node.
+ * @param has_next_sibling Sibling presence tracker array.
+ * @param depth Current recursion depth.
  */
 static void draw_ast_internal(ast_t *node, bool is_last, bool is_root, bool has_next_sibling[], int depth)
 {
-  if (!node)
-    return;
-
-  // Print vertical guide lines for previous levels
-  if (!is_root)
-  {
-    for (int i = 0; i < depth - 1; i++)
-    {
-      if (has_next_sibling[i])
-        printf("│   ");
-      else
-        printf("    ");
+    if (!node) {
+        return;
     }
 
-    // Print branch connector for current level
-    if (is_last)
-      printf("└── ");
-    else
-      printf("├── ");
-  }
+    /* Print vertical guide lines for previous levels */
+    if (!is_root) {
+        for (int i = 0; i < depth - 1; i++) {
+            if (has_next_sibling[i]) {
+                printf("│   ");
+            } else {
+                printf("    ");
+            }
+        }
 
-  // Print the current node's info
-  print_node_label(node);
+        /* Print branch connector for current level */
+        if (is_last) {
+            printf("└── ");
+        } else {
+            printf("├── ");
+        }
+    }
 
-  // Mark whether the current level still has siblings below it
-  if (depth > 0)
-    has_next_sibling[depth - 1] = !is_last;
+    print_node_label(node);
 
-  // Dispatch and render children
-  switch (node->type)
-  {
+    if (depth > 0) {
+        has_next_sibling[depth - 1] = !is_last;
+    }
+
+    switch (node->type) {
     case AST_BINARY_EXPR:
-      draw_ast_internal(node->value.binary_expr.left, false, false, has_next_sibling, depth + 1);
-      draw_ast_internal(node->value.binary_expr.right, true, false, has_next_sibling, depth + 1);
-      break;
+        draw_ast_internal(node->value.binary_expr.left, false, false, has_next_sibling, depth + 1);
+        draw_ast_internal(node->value.binary_expr.right, true, false, has_next_sibling, depth + 1);
+        break;
 
     case AST_UNARY_EXPR:
-      draw_ast_internal(node->value.unary_expr.operand, true, false, has_next_sibling, depth + 1);
-      break;
+        draw_ast_internal(node->value.unary_expr.operand, true, false, has_next_sibling, depth + 1);
+        break;
 
     case AST_VARIABLE_DEFINITION:
-      draw_ast_internal(node->value.variable_definition.value, true, false, has_next_sibling, depth + 1);
-      break;
+        draw_ast_internal(node->value.variable_definition.value, true, false, has_next_sibling, depth + 1);
+        break;
 
     case AST_ASSIGNMENT:
-      draw_ast_internal(node->value.assignment.id, false, false, has_next_sibling, depth + 1);
-      draw_ast_internal(node->value.assignment.value, true, false, has_next_sibling, depth + 1);
-      break;
+        draw_ast_internal(node->value.assignment.id, false, false, has_next_sibling, depth + 1);
+        draw_ast_internal(node->value.assignment.value, true, false, has_next_sibling, depth + 1);
+        break;
 
     case AST_ARRAY_ACCESS:
-      draw_ast_internal(node->value.array_access.index_expr, true, false, has_next_sibling, depth + 1);
-      break;
+        draw_ast_internal(node->value.array_access.index_expr, true, false, has_next_sibling, depth + 1);
+        break;
 
     case AST_WHILE_STATEMENT:
-      draw_ast_internal(node->value.while_statement.condition, false, false, has_next_sibling, depth + 1);
-      draw_ast_internal(node->value.while_statement.body, true, false, has_next_sibling, depth + 1);
-      break;
+        draw_ast_internal(node->value.while_statement.condition, false, false, has_next_sibling, depth + 1);
+        draw_ast_internal(node->value.while_statement.body, true, false, has_next_sibling, depth + 1);
+        break;
 
-    case AST_FUNCTION_CALL:
-    {
-      // Draw Callee
-      // Draw Arguments
-      for (int i = 0; i < node->value.function_call.num_arg; i++)
-      {
-        bool last_child = (i == node->value.function_call.num_arg - 1);
-        draw_ast_internal(node->value.function_call.args[i], last_child, false, has_next_sibling, depth + 1);
-      }
-      break;
+    case AST_FUNCTION_CALL: {
+        for (int i = 0; i < node->value.function_call.num_arg; i++) {
+            bool last_child = (i == node->value.function_call.num_arg - 1);
+            draw_ast_internal(node->value.function_call.args[i], last_child, false, has_next_sibling, depth + 1);
+        }
+        break;
     }
 
-    case AST_COMPOUND:
-    {
-      for (int i = 0; i < node->value.compound.compound_size; i++)
-      {
-        bool last_child = (i == node->value.compound.compound_size - 1);
-        draw_ast_internal(node->value.compound.compound_value[i], last_child, false, has_next_sibling, depth + 1);
-      }
-      break;
+    case AST_COMPOUND: {
+        for (int i = 0; i < node->value.compound.compound_size; i++) {
+            bool last_child = (i == node->value.compound.compound_size - 1);
+            draw_ast_internal(node->value.compound.compound_value[i], last_child, false, has_next_sibling, depth + 1);
+        }
+        break;
     }
 
     default:
-      // Leaf nodes (LITERALS, IDENTIFIERS) have no children
-      break;
-  }
+        break;
+    }
 }
 
 /* -------------------- Public Functions -------------------- */
 
+/* Render an ASCII tree representation of an AST hierarchy to stdout */
 void ast_draw(ast_t *root)
 {
-  bool has_next_sibling[MAX_DEPTH] = {false};
-  draw_ast_internal(root, true, true, has_next_sibling, 0);
+    bool has_next_sibling[MAX_DEPTH] = {false};
+    draw_ast_internal(root, true, true, has_next_sibling, 0);
 }
