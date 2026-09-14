@@ -1,6 +1,6 @@
 # Maintainer Guide: Visitor & Evaluator Subsystem
 
-> **Audience:** Developers maintaining or extending evaluation logic in `src/visitor.c`, `src/visitor_eval_*.c`, and `src/include/visitor_internal.h`.
+> **Audience:** Developers maintaining or extending evaluation logic in `src/visitor.c`, `src/visitor_eval_*.c`, `src/include/visitor_internal.h`, and `src/include/ti_type.h`.
 
 ---
 
@@ -100,7 +100,7 @@ visitor_eval_binary.c  visitor_eval_control.c  visitor_eval_func.c  visitor_eval
 
 ## 4. Variable Evaluation (`src/visitor_eval_variable.c`)
 
-- **`eval_variable_definition`:** Evaluates initializer expression, duplicates the variable name string, and adds to current scope via `context_add_variable(ctx, name, value)`.
+- **`eval_variable_definition`:** Evaluates initializer expression, verifies type compatibility between declared variable type and value type (halting with an error via `val_type_to_str` if mismatched), duplicates the variable name string, and adds to current scope via `context_add_variable(ctx, name, value)`.
 - **`eval_assignment`:**
   1. Looks up variable via `context_find_variable(ctx, id)`.
   2. Evaluates new value.
@@ -129,5 +129,5 @@ visitor_eval_binary.c  visitor_eval_control.c  visitor_eval_func.c  visitor_eval
 
 ### Unified Implementation Architecture
 Literal evaluators (`eval_int_literal`, `eval_float_literal`, `eval_string_literal`, `eval_boolean_literal`) are simple leaf AST node unwrappers:
-- **Mechanism:** Each function allocates a new `value_t` via `val_init(TYPE)`, copies the primitive constant from `node->value` (for strings, duplicates via `tracked_strdup`), and returns the boxed `value_t *`.
+- **Mechanism:** Each function directly delegates to constructor helpers (`val_new_int`, `val_new_float`, `val_new_string`, `val_new_bool`) defined in `src/value.c` to produce boxed `value_t *` instances without duplicating allocation and string duplication logic.
 - **Reason for Separation:** Keeps primitive boxing completely separate from AST dispatching, making memory lifetimes transparent.

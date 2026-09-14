@@ -1,6 +1,6 @@
 # Maintainer Guide: Abstract Syntax Tree (AST) & Token Subsystem
 
-> **Audience:** Developers modifying AST representation or memory lifecycle in `src/AST.c` and `src/include/AST.h`.
+> **Audience:** Developers modifying AST representation or memory lifecycle in `src/AST.c`, `src/include/AST.h`, and `src/include/ti_type.h`.
 
 ---
 
@@ -42,9 +42,9 @@ typedef struct AST_STRUCT {
         struct { int op; struct AST_STRUCT *left; struct AST_STRUCT *right; } binary_expr;
         struct { int op; struct AST_STRUCT *operand; } unary_expr;
         struct { char *id; struct AST_STRUCT *index_expr; } array_access;
-        struct { type variable_type; char *variable_name; struct AST_STRUCT *value; } variable_definition;
+        struct { val_type_t variable_type; char *variable_name; struct AST_STRUCT *value; } variable_definition;
         struct { char *func; struct AST_STRUCT **args; int num_arg; } function_call;
-        struct { type func_type; char *func_name; int num_args; struct AST_STRUCT **args; struct AST_STRUCT *body; } function_definition;
+        struct { val_type_t func_type; char *func_name; int num_args; struct AST_STRUCT **args; struct AST_STRUCT *body; } function_definition;
         struct { struct AST_STRUCT **compound_value; int compound_size; } compound;
         struct { struct AST_STRUCT *condition; struct AST_STRUCT *body; } while_statement;
         struct { struct AST_STRUCT *condition; struct AST_STRUCT *body; struct AST_STRUCT *else_body; } if_statement;
