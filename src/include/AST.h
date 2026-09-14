@@ -3,15 +3,8 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include "ti_type.h"
 /* -------------------- AST Structure & Definitions -------------------- */
-
-typedef enum {
-    VAR_TYPE_INT,
-    VAR_TYPE_FLOAT,
-    VAR_TYPE_STRING,
-    VAR_TYPE_BOOL,
-    VAR_TYPE_VOID,
-} type;
 
 typedef struct AST_STRUCT {
   enum {
@@ -90,7 +83,7 @@ typedef struct AST_STRUCT {
 
     /* Variable definition statement */
     struct {
-      type variable_type;
+      val_type_t variable_type;
       char *variable_name;
       struct AST_STRUCT *value;
     } variable_definition;
@@ -103,7 +96,7 @@ typedef struct AST_STRUCT {
     } function_call;
 
     struct {
-      type func_type;
+      val_type_t func_type;
       char *func_name;
       int num_args;
       struct AST_STRUCT **args;     // An array contains pointers pointing to args (exprs)

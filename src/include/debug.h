@@ -34,6 +34,13 @@ const char *binary_op_to_str(int op);
 const char *unary_op_to_str(int op);
 
 /**
+ * @brief Convert value/variable type enum to type keyword string (e.g. "int").
+ * @param type Value/variable type enum value.
+ * @return Type keyword string.
+ */
+const char *val_type_to_str(val_type_t type);
+
+/**
  * @brief Convert variable type enum to type keyword string (e.g. "int").
  * @param type Variable type enum value.
  * @return Type keyword string.

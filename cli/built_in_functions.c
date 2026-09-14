@@ -49,14 +49,19 @@ static value_t *built_in_print(value_t **argv, int argc)
         break;
     }
   }
-  return init_val(VAL_NULL);
+  return val_new_null();
 }
 
 /* -------------------- Public Functions -------------------- */
 
-void init_builtin(void)
+void ti_init_builtin(void)
 {
   ti_register_log(ti_log_callback);
   ti_register_fatal(ti_fatal_callback);
   register_builtin_function("print", built_in_print);
+}
+
+void init_builtin(void)
+{
+  ti_init_builtin();
 }

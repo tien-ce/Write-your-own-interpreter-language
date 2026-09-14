@@ -2,6 +2,7 @@
 #define VISITOR_INTERNAL_H
 
 #include "AST.h"
+#include "ti_type.h"
 #include <stdbool.h>
 
 #ifdef __cplusplus
@@ -10,16 +11,8 @@ extern "C" {
 
 /* -------------------- Value & Context Types -------------------- */
 
-typedef enum {
-    VAL_NULL,
-    VAL_INT,
-    VAL_FLOAT,
-    VAL_STRING,
-    VAL_BOOL,
-} value_type_t;
-
 typedef struct VALUE_STRUCT {
-    value_type_t type;
+    val_type_t type;
     union {
         int int_val;
         float float_val;
@@ -107,12 +100,6 @@ void context_add_variable(context_t *ctx, const char *name, value_t *value);
  */
 void context_free_internal(context_t *ctx);
 
-/* Migration aliases */
-#define find_variable_from_context(ctx, name)   context_find_variable(ctx, name)
-#define copy_value_from_variable(var)           context_copy_value(var)
-#define add_variable_to_context(ctx, name, val) context_add_variable(ctx, name, val)
-#define free_internal_context(ctx)              context_free_internal(ctx)
-
 /* -------------------- Value Helper Constructors -------------------- */
 
 /**
@@ -155,8 +142,6 @@ value_t *val_new_bool(bool b);
  */
 void val_free_internal(value_t *value);
 
-#define free_internal_value(v) val_free_internal(v)
-
 /* -------------------- AST Evaluator / Visitor Dispatcher -------------------- */
 
 /**
@@ -186,10 +171,6 @@ value_t *eval_binary_expr(InterpreterContext *ctx, ast_t *node);
  * @return Evaluated result value_t.
  */
 value_t *eval_unary_expr(InterpreterContext *ctx, ast_t *node);
-
-/* Migration aliases */
-#define visitor_visit_binary_expr(ctx, node) eval_binary_expr(ctx, node)
-#define visitor_visit_unary_expr(ctx, node)  eval_unary_expr(ctx, node)
 
 /* -------------------- Statement / Control Flow Evaluators -------------------- */
 
@@ -225,12 +206,6 @@ value_t *eval_for_statement(InterpreterContext *ctx, ast_t *node);
  */
 value_t *eval_compound_statement(InterpreterContext *ctx, ast_t *node);
 
-/* Migration aliases */
-#define visitor_visit_if_statement(ctx, node)    eval_if_statement(ctx, node)
-#define visitor_visit_while_statement(ctx, node) eval_while_statement(ctx, node)
-#define visitor_visit_for_statement(ctx, node)   eval_for_statement(ctx, node)
-#define visitor_visit_compound(ctx, node)        eval_compound_statement(ctx, node)
-
 /* -------------------- Variable & Identifier Evaluators -------------------- */
 
 /**
@@ -256,11 +231,6 @@ value_t *eval_assignment(InterpreterContext *ctx, ast_t *node);
  * @return Evaluated value_t pointer.
  */
 value_t *eval_identifier(InterpreterContext *ctx, ast_t *node);
-
-/* Migration aliases */
-#define visitor_visit_variable_definition(ctx, node) eval_variable_definition(ctx, node)
-#define visitor_visit_assignment(ctx, node)          eval_assignment(ctx, node)
-#define visitor_visit_identifier(ctx, node)          eval_identifier(ctx, node)
 
 /* -------------------- Literal Evaluators -------------------- */
 
@@ -296,12 +266,6 @@ value_t *eval_float_literal(InterpreterContext *ctx, ast_t *node);
  */
 value_t *eval_boolean_literal(InterpreterContext *ctx, ast_t *node);
 
-/* Migration aliases */
-#define visitor_visit_string_literal(ctx, node) eval_string_literal(ctx, node)
-#define visitor_visit_int_literal(ctx, node)    eval_int_literal(ctx, node)
-#define visitor_visit_float_literal(ctx, node)  eval_float_literal(ctx, node)
-#define visitor_visit_boolean(ctx, node)        eval_boolean_literal(ctx, node)
-
 /* -------------------- Function Call & Definition Evaluators -------------------- */
 
 /**
@@ -319,10 +283,6 @@ value_t *eval_function_call(InterpreterContext *ctx, ast_t *node);
  * @return Always NULL.
  */
 value_t *eval_function_definition(InterpreterContext *ctx, ast_t *node);
-
-/* Migration aliases */
-#define visitor_visit_function_call(ctx, node)       eval_function_call(ctx, node)
-#define visitor_visit_function_definition(ctx, node) eval_function_definition(ctx, node)
 
 /* -------------------- Built-in Registration -------------------- */
 
