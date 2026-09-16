@@ -7,7 +7,7 @@
 
 /* -------------------- Static Variables -------------------- */
 
-static alloc_hdr_t *s_alloc_list = NULL;
+static _Thread_local alloc_hdr_t *s_alloc_list = NULL;
 
 /* -------------------- Static Function Prototypes -------------------- */
 
