@@ -50,7 +50,7 @@ static void print_node_label(ast_t *node)
         break;
     case AST_VARIABLE_DEFINITION:
         printf("VAR_DEF: %s %s\n",
-               var_type_to_str(node->value.variable_definition.variable_type),
+               val_type_to_str(node->value.variable_definition.variable_type),
                node->value.variable_definition.variable_name);
         break;
     case AST_ASSIGNMENT:

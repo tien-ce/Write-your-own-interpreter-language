@@ -111,15 +111,22 @@ const char *unary_op_to_str(int op)
     }
 }
 
-/* Convert variable type enum to type keyword string */
-const char *var_type_to_str(int type)
+/* Convert value/variable type enum to type keyword string */
+const char *val_type_to_str(val_type_t type)
 {
     switch (type) {
-    case VAR_TYPE_INT:    return "int";
-    case VAR_TYPE_FLOAT:  return "float";
-    case VAR_TYPE_STRING: return "string";
-    case VAR_TYPE_BOOL:   return "bool";
-    case VAR_TYPE_VOID:   return "void";
-    default:              return "?";
+    case VAL_NULL:   return "null";
+    case VAL_INT:    return "int";
+    case VAL_FLOAT:  return "float";
+    case VAL_STRING: return "string";
+    case VAL_BOOL:   return "bool";
+    case VAL_VOID:   return "void";
+    default:         return "?";
     }
+}
+
+/* Convert legacy variable type enum to type keyword string */
+const char *var_type_to_str(int type)
+{
+    return val_type_to_str((val_type_t)type);
 }

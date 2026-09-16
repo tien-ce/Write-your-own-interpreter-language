@@ -330,3 +330,8 @@ void ti_init_builtin(void)
     register_builtin_function("http_get", built_in_http_get);
     register_builtin_function("get_json", built_in_get_json);
 }
+
+void init_builtin(void)
+{
+  ti_init_builtin();
+}

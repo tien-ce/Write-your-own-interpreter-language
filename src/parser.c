@@ -79,13 +79,13 @@ static token_t *parser_peek(parser_t *parser)
  */
 static ast_t *parser_parse_function_definition(parser_t *parser)
 {
-    int type;
+    val_type_t type;
     switch (parser->current_token->type) {
-    case TOKEN_KW_INT:    type = VAR_TYPE_INT;    break;
-    case TOKEN_KW_FLOAT:  type = VAR_TYPE_FLOAT;  break;
-    case TOKEN_KW_STRING: type = VAR_TYPE_STRING; break;
-    case TOKEN_KW_BOOL:   type = VAR_TYPE_BOOL;   break;
-    case TOKEN_KW_VOID:   type = VAR_TYPE_VOID;   break;
+    case TOKEN_KW_INT:    type = VAL_INT;    break;
+    case TOKEN_KW_FLOAT:  type = VAL_FLOAT;  break;
+    case TOKEN_KW_STRING: type = VAL_STRING; break;
+    case TOKEN_KW_BOOL:   type = VAL_BOOL;   break;
+    case TOKEN_KW_VOID:   type = VAL_VOID;   break;
     default:
         ti_log("[Parser Error] Unexpected type %s in function definition, at line %d\n",
                token_to_str(parser->current_token->type), parser->lexer->line_num);
@@ -462,13 +462,13 @@ static ast_t *parser_parse_primary(parser_t *parser)
  */
 static ast_t *parser_parse_variable_definition(parser_t *parser)
 {
-    int variable_type;
+    val_type_t variable_type;
     switch (parser->current_token->type) {
-    case TOKEN_KW_INT:    variable_type = VAR_TYPE_INT;    break;
-    case TOKEN_KW_FLOAT:  variable_type = VAR_TYPE_FLOAT;  break;
-    case TOKEN_KW_STRING: variable_type = VAR_TYPE_STRING; break;
-    case TOKEN_KW_BOOL:   variable_type = VAR_TYPE_BOOL;   break;
-    case TOKEN_KW_VOID:   variable_type = VAR_TYPE_VOID;   break;
+    case TOKEN_KW_INT:    variable_type = VAL_INT;    break;
+    case TOKEN_KW_FLOAT:  variable_type = VAL_FLOAT;  break;
+    case TOKEN_KW_STRING: variable_type = VAL_STRING; break;
+    case TOKEN_KW_BOOL:   variable_type = VAL_BOOL;   break;
+    case TOKEN_KW_VOID:   variable_type = VAL_VOID;   break;
     default:
         ti_log("[Parser Error] Unexpected type keyword with type %d ('%s') in variable definition\n",
                parser->current_token->type,

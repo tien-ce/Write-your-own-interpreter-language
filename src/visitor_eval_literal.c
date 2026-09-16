@@ -13,9 +13,7 @@
 value_t *eval_string_literal(InterpreterContext *ctx, ast_t *node)
 {
     (void)ctx;
-    value_t *value = val_init(VAL_STRING);
-    value->string_val = tracked_strdup(node->value.string_value);
-    return value;
+    return val_new_string(node->value.string_value);
 }
 
 /**
@@ -27,9 +25,7 @@ value_t *eval_string_literal(InterpreterContext *ctx, ast_t *node)
 value_t *eval_int_literal(InterpreterContext *ctx, ast_t *node)
 {
     (void)ctx;
-    value_t *value = val_init(VAL_INT);
-    value->int_val = node->value.int_value;
-    return value;
+    return val_new_int(node->value.int_value);
 }
 
 /**
@@ -41,9 +37,7 @@ value_t *eval_int_literal(InterpreterContext *ctx, ast_t *node)
 value_t *eval_float_literal(InterpreterContext *ctx, ast_t *node)
 {
     (void)ctx;
-    value_t *value = val_init(VAL_FLOAT);
-    value->float_val = node->value.float_value;
-    return value;
+    return val_new_float(node->value.float_value);
 }
 
 /**
@@ -55,7 +49,5 @@ value_t *eval_float_literal(InterpreterContext *ctx, ast_t *node)
 value_t *eval_boolean_literal(InterpreterContext *ctx, ast_t *node)
 {
     (void)ctx;
-    value_t *value = val_init(VAL_BOOL);
-    value->bool_val = node->value.bool_value;
-    return value;
+    return val_new_bool(node->value.bool_value);
 }

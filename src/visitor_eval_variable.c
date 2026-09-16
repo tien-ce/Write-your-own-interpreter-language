@@ -1,5 +1,6 @@
 #include "include/visitor_internal.h"
 #include "include/tracked_memory.h"
+#include "include/debug.h"
 #include "TienInterpreter.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,6 +20,13 @@ value_t *eval_variable_definition(InterpreterContext *ctx, ast_t *node)
     value_t *value = visitor_visit(ctx, node->value.variable_definition.value);
     if (value == NULL) {
         ti_log("[ERROR]: Variable definition '%s' evaluated to NULL\n", variable_name);
+        ti_fatal();
+    }
+    if (node->value.variable_definition.variable_type != value->type) {
+        ti_log("[ERROR]: Type mismatch in definition of '%s'. Expected %s, but got %s\n",
+               variable_name,
+               val_type_to_str(node->value.variable_definition.variable_type),
+               val_type_to_str(value->type));
         ti_fatal();
     }
     context_add_variable(ctx, variable_name, value);
@@ -43,10 +51,10 @@ value_t *eval_assignment(InterpreterContext *ctx, ast_t *node)
             ti_fatal();
         }
         if (variable->value != NULL && variable->value->type != val->type) {
-            ti_log("[ERROR]: Type mismatch in assignment to '%s'. Expected %d, but got %d\n",
+            ti_log("[ERROR]: Type mismatch in assignment to '%s'. Expected %s, but got %s\n",
                    id_node->value.identifier,
-                   variable->value->type,
-                   val->type);
+                   val_type_to_str(variable->value->type),
+                   val_type_to_str(val->type));
             ti_fatal();
         }
         if (variable->value != NULL) {

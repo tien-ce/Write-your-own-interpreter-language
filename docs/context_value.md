@@ -8,16 +8,18 @@
 
 ### 1.1. `value_t` (`struct VALUE_STRUCT`)
 ```c
+/* Defined in src/include/ti_type.h */
 typedef enum {
     VAL_NULL,
     VAL_INT,
     VAL_FLOAT,
     VAL_STRING,
     VAL_BOOL,
-} value_type_t;
+    VAL_VOID,
+} val_type_t;
 
 typedef struct VALUE_STRUCT {
-    value_type_t type;
+    val_type_t type;
     union {
         int int_val;
         float float_val;
