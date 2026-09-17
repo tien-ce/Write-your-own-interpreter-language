@@ -1,4 +1,4 @@
-#include "include/visitor_internal.h"
+#include "include/value.h"
 #include "include/tracked_memory.h"
 #include <string.h>
 
@@ -8,7 +8,7 @@
 value_t *val_init(int type)
 {
     value_t *value = tracked_calloc(1, sizeof(struct VALUE_STRUCT));
-    value->type = (value_type_t)type;
+    value->type = (val_type_t)type;
     return value;
 }
 
@@ -48,6 +48,12 @@ value_t *val_new_bool(bool b)
     value_t *val = val_init(VAL_BOOL);
     val->bool_val = b;
     return val;
+}
+
+/* Create a void value_t */
+value_t *val_new_void(void)
+{
+    return val_init(VAL_VOID);
 }
 
 /* Free dynamically allocated payload inside value_t (e.g. string_val) */

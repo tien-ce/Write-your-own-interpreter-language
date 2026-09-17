@@ -17,12 +17,16 @@ static ast_t *parser_parse_statement(parser_t *parser);
 static ast_t *parser_parse_statements(parser_t *parser);
 static ast_t *parser_parse_main_program(parser_t *parser);
 static ast_t *parser_parse_definition(parser_t *parser);
+static ast_t *parser_parse_param(parser_t *parser);
 static ast_t *parser_parse_function_definition(parser_t *parser);
 static ast_t *parser_parse_variable_definition(parser_t *parser);
 static ast_t *parser_parse_assignment(parser_t *parser, ast_t *target);
 static ast_t *parser_parse_function_call(parser_t *parser, char *func_name);
 static ast_t *parser_parse_while_statement(parser_t *parser);
 static ast_t *parser_parse_if_statement(parser_t *parser);
+static ast_t *parser_parse_return_statement(parser_t *parser);
+static ast_t *parser_parse_break_statement(parser_t *parser);
+static ast_t *parser_parse_continue_statement(parser_t *parser);
 static ast_t *parser_parse_expr(parser_t *parser);
 static ast_t *parser_parse_comparison(parser_t *parser);
 static ast_t *parser_parse_additive(parser_t *parser);
@@ -73,19 +77,52 @@ static token_t *parser_peek(parser_t *parser)
 }
 
 /**
- * @brief Parse a function definition statement: type func_name(args) { body }.
+ * @brief Parse a single typed function parameter.
+ * @param parser Pointer to parser.
+ * @return AST parameter node.
+ */
+/* <type> <param_name> */
+static ast_t *parser_parse_param(parser_t *parser)
+{
+    val_type_t param_type;
+    switch (parser->current_token->type) {
+    case TOKEN_KW_INT:    param_type = VAL_INT;    break;
+    case TOKEN_KW_FLOAT:  param_type = VAL_FLOAT;  break;
+    case TOKEN_KW_STRING: param_type = VAL_STRING; break;
+    case TOKEN_KW_BOOL:   param_type = VAL_BOOL;   break;
+    default:
+        ti_log("[Parser Error] Unexpected type %s for parameter, at line %d\n",
+               token_to_str(parser->current_token->type), parser->lexer->line_num);
+        ti_log_line(parser->lexer->line);
+        ti_fatal();
+        break;
+    }
+    parser_eat(parser, parser->current_token->type); // Eat <param_type>
+
+    char *param_name = parser->current_token->value;
+    parser_eat(parser, TOKEN_ID); // Eat param_name
+
+    ast_t *param_node = ast_init(AST_PARAM);
+    param_node->value.param.param_type = param_type;
+    param_node->value.param.param_name = param_name;
+    return param_node;
+}
+
+/**
+ * @brief Parse a function definition statement: type func_name(param1, param2, ...) { body }.
  * @param parser Pointer to parser.
  * @return AST function definition node.
  */
+/* <return_type> func_name(<type> param1, <type> param2, ...) { <compound> } */
 static ast_t *parser_parse_function_definition(parser_t *parser)
 {
-    val_type_t type;
+    val_type_t return_type;
     switch (parser->current_token->type) {
-    case TOKEN_KW_INT:    type = VAL_INT;    break;
-    case TOKEN_KW_FLOAT:  type = VAL_FLOAT;  break;
-    case TOKEN_KW_STRING: type = VAL_STRING; break;
-    case TOKEN_KW_BOOL:   type = VAL_BOOL;   break;
-    case TOKEN_KW_VOID:   type = VAL_VOID;   break;
+    case TOKEN_KW_INT:    return_type = VAL_INT;    break;
+    case TOKEN_KW_FLOAT:  return_type = VAL_FLOAT;  break;
+    case TOKEN_KW_STRING: return_type = VAL_STRING; break;
+    case TOKEN_KW_BOOL:   return_type = VAL_BOOL;   break;
+    case TOKEN_KW_VOID:   return_type = VAL_VOID;   break;
     default:
         ti_log("[Parser Error] Unexpected type %s in function definition, at line %d\n",
                token_to_str(parser->current_token->type), parser->lexer->line_num);
@@ -93,37 +130,40 @@ static ast_t *parser_parse_function_definition(parser_t *parser)
         ti_fatal();
         break;
     }
-    parser_eat(parser, parser->current_token->type);
+    parser_eat(parser, parser->current_token->type); // Eat <return_type>
 
     char *func_name = parser->current_token->value;
-    parser_eat(parser, TOKEN_ID);
+    parser_eat(parser, TOKEN_ID); // Eat func_name
 
-    parser_eat(parser, TOKEN_LPAREN);
-    ast_t **args = NULL;
-    int num_arg = 0;
+    parser_eat(parser, TOKEN_LPAREN); // Eat '('
+    ast_t **params = NULL;
+    int param_count = 0;
+
+    /* Parse parameter list: <type> param1, <type> param2, ... */
     if (parser->current_token->type != TOKEN_RPAREN) {
-        args = tracked_calloc(1, sizeof(struct AST_STRUCT *));
-        ast_t *arg_node = parser_parse_expr(parser);
-        args[num_arg] = arg_node;
-        num_arg++;
-    }
-    while (parser->current_token->type == TOKEN_COMMA) {
-        parser_eat(parser, TOKEN_COMMA);
-        args = tracked_realloc(args, (num_arg + 1) * sizeof(struct AST_STRUCT *));
-        ast_t *arg_node = parser_parse_expr(parser);
-        args[num_arg] = arg_node;
-        num_arg++;
-    }
-    parser_eat(parser, TOKEN_RPAREN);
+        params = tracked_calloc(1, sizeof(struct AST_STRUCT *));
+        ast_t *param_node = parser_parse_param(parser);
+        params[param_count] = param_node;
+        param_count++;
 
-    ast_t *statements = parser_parse_statements(parser);
-    ast_t *var_def_node = ast_init(AST_FUNCTION_DEFINITION);
-    var_def_node->value.function_definition.func_type = type;
-    var_def_node->value.function_definition.func_name = func_name;
-    var_def_node->value.function_definition.num_args = num_arg;
-    var_def_node->value.function_definition.args = args;
-    var_def_node->value.function_definition.body = statements;
-    return var_def_node;
+        while (parser->current_token->type == TOKEN_COMMA) {
+            parser_eat(parser, TOKEN_COMMA); // Eat ','
+            params = tracked_realloc(params, (param_count + 1) * sizeof(struct AST_STRUCT *));
+            ast_t *next_param_node = parser_parse_param(parser);
+            params[param_count] = next_param_node;
+            param_count++;
+        }
+    }
+    parser_eat(parser, TOKEN_RPAREN); // Eat ')'
+
+    ast_t *statements = parser_parse_statements(parser); // Parse '{' ... '}' compound body
+    ast_t *func_def_node = ast_init(AST_FUNCTION_DEFINITION);
+    func_def_node->value.function_definition.return_type = return_type;
+    func_def_node->value.function_definition.func_name = func_name;
+    func_def_node->value.function_definition.param_count = param_count;
+    func_def_node->value.function_definition.params = params;
+    func_def_node->value.function_definition.body = statements;
+    return func_def_node;
 }
 
 /**
@@ -200,6 +240,12 @@ static ast_t *parser_parse_statement(parser_t *parser)
         return parser_parse_while_statement(parser);
     case TOKEN_KW_IF:
         return parser_parse_if_statement(parser);
+    case TOKEN_KW_RETURN:
+        return parser_parse_return_statement(parser);
+    case TOKEN_KW_BREAK:
+        return parser_parse_break_statement(parser);
+    case TOKEN_KW_CONTINUE:
+        return parser_parse_continue_statement(parser);
     default:
         ti_log("[Parser] Unexpected statement starting with token type %d ('%s')\n",
                parser->current_token->type,
@@ -218,22 +264,22 @@ static ast_t *parser_parse_statements(parser_t *parser)
 {
     parser_eat(parser, TOKEN_LBRACE);
     ast_t *compound = ast_init(AST_COMPOUND);
-    compound->value.compound.compound_value = NULL;
-    compound->value.compound.compound_size = 0;
+    compound->value.compound.statements = NULL;
+    compound->value.compound.statement_count = 0;
 
     while (parser->current_token->type != TOKEN_RBRACE) {
         ast_t *statement = parser_parse_statement(parser);
-        int size = compound->value.compound.compound_size;
-        if (compound->value.compound.compound_value == NULL) {
-            compound->value.compound.compound_value = tracked_calloc(1, sizeof(struct AST_STRUCT *));
+        int count = compound->value.compound.statement_count;
+        if (compound->value.compound.statements == NULL) {
+            compound->value.compound.statements = tracked_calloc(1, sizeof(struct AST_STRUCT *));
         } else {
-            compound->value.compound.compound_value = tracked_realloc(
-                compound->value.compound.compound_value,
-                (size + 1) * sizeof(struct AST_STRUCT *)
+            compound->value.compound.statements = tracked_realloc(
+                compound->value.compound.statements,
+                (count + 1) * sizeof(struct AST_STRUCT *)
             );
         }
-        compound->value.compound.compound_value[size] = statement;
-        compound->value.compound.compound_size += 1;
+        compound->value.compound.statements[count] = statement;
+        compound->value.compound.statement_count += 1;
     }
     parser_eat(parser, TOKEN_RBRACE);
     return compound;
@@ -247,22 +293,22 @@ static ast_t *parser_parse_statements(parser_t *parser)
 static ast_t *parser_parse_main_program(parser_t *parser)
 {
     ast_t *compound = ast_init(AST_COMPOUND);
-    compound->value.compound.compound_value = NULL;
-    compound->value.compound.compound_size = 0;
+    compound->value.compound.statements = NULL;
+    compound->value.compound.statement_count = 0;
 
     while (parser->current_token->type != TOKEN_EOF) {
         ast_t *statement = parser_parse_statement(parser);
-        int size = compound->value.compound.compound_size;
-        if (compound->value.compound.compound_value == NULL) {
-            compound->value.compound.compound_value = tracked_calloc(1, sizeof(struct AST_STRUCT *));
+        int count = compound->value.compound.statement_count;
+        if (compound->value.compound.statements == NULL) {
+            compound->value.compound.statements = tracked_calloc(1, sizeof(struct AST_STRUCT *));
         } else {
-            compound->value.compound.compound_value = tracked_realloc(
-                compound->value.compound.compound_value,
-                (size + 1) * sizeof(struct AST_STRUCT *)
+            compound->value.compound.statements = tracked_realloc(
+                compound->value.compound.statements,
+                (count + 1) * sizeof(struct AST_STRUCT *)
             );
         }
-        compound->value.compound.compound_value[size] = statement;
-        compound->value.compound.compound_size += 1;
+        compound->value.compound.statements[count] = statement;
+        compound->value.compound.statement_count += 1;
     }
     return compound;
 }
@@ -456,10 +502,11 @@ static ast_t *parser_parse_primary(parser_t *parser)
 }
 
 /**
- * @brief Parse variable definition statement (e.g. int x = 5;).
+ * @brief Parse a variable definition statement: type var_name = expr;.
  * @param parser Pointer to parser.
  * @return AST variable definition node.
  */
+/* <type> <variable_name> = <expr>; */
 static ast_t *parser_parse_variable_definition(parser_t *parser)
 {
     val_type_t variable_type;
@@ -476,19 +523,19 @@ static ast_t *parser_parse_variable_definition(parser_t *parser)
         ti_fatal();
         break;
     }
-    parser_eat(parser, parser->current_token->type);
+    parser_eat(parser, parser->current_token->type); // Eat <variable_type>
 
     char *variable_name = parser->current_token->value;
-    parser_eat(parser, TOKEN_ID);
+    parser_eat(parser, TOKEN_ID); // Eat variable_name
 
-    parser_eat(parser, TOKEN_EQUALS);
+    parser_eat(parser, TOKEN_EQUALS); // Eat '='
 
     ast_t *value = parser_parse_expr(parser);
     ast_t *var_def_node = ast_init(AST_VARIABLE_DEFINITION);
     var_def_node->value.variable_definition.variable_type = variable_type;
     var_def_node->value.variable_definition.variable_name = variable_name;
     var_def_node->value.variable_definition.value = value;
-    parser_eat(parser, TOKEN_SEMI);
+    parser_eat(parser, TOKEN_SEMI); // Eat ';'
     return var_def_node;
 }
 
@@ -497,12 +544,13 @@ static ast_t *parser_parse_variable_definition(parser_t *parser)
  * @param parser Pointer to parser.
  * @return AST while node.
  */
+/* while (<condition>) { <compound> } */
 static ast_t *parser_parse_while_statement(parser_t *parser)
 {
-    parser_eat(parser, TOKEN_KW_WHILE);
-    parser_eat(parser, TOKEN_LPAREN);
+    parser_eat(parser, TOKEN_KW_WHILE); // Eat 'while'
+    parser_eat(parser, TOKEN_LPAREN);   // Eat '('
     ast_t *condition = parser_parse_expr(parser);
-    parser_eat(parser, TOKEN_RPAREN);
+    parser_eat(parser, TOKEN_RPAREN);   // Eat ')'
 
     ast_t *body = parser_parse_statements(parser);
     ast_t *while_node = ast_init(AST_WHILE_STATEMENT);
@@ -516,12 +564,13 @@ static ast_t *parser_parse_while_statement(parser_t *parser)
  * @param parser Pointer to parser.
  * @return AST if node.
  */
+/* if (<condition>) <compound> [else <compound>] */
 static ast_t *parser_parse_if_statement(parser_t *parser)
 {
-    parser_eat(parser, TOKEN_KW_IF);
-    parser_eat(parser, TOKEN_LPAREN);
+    parser_eat(parser, TOKEN_KW_IF);   // Eat 'if'
+    parser_eat(parser, TOKEN_LPAREN);  // Eat '('
     ast_t *condition = parser_parse_expr(parser);
-    parser_eat(parser, TOKEN_RPAREN);
+    parser_eat(parser, TOKEN_RPAREN);  // Eat ')'
 
     ast_t *body = NULL;
     if (parser->current_token->type == TOKEN_LBRACE) {
@@ -536,7 +585,7 @@ static ast_t *parser_parse_if_statement(parser_t *parser)
     if_node->value.if_statement.else_body = NULL;
 
     if (parser->current_token->type == TOKEN_KW_ELSE) {
-        parser_eat(parser, TOKEN_KW_ELSE);
+        parser_eat(parser, TOKEN_KW_ELSE); // Eat 'else'
         if (parser->current_token->type == TOKEN_LBRACE) {
             if_node->value.if_statement.else_body = parser_parse_statements(parser);
         } else {
@@ -552,32 +601,32 @@ static ast_t *parser_parse_if_statement(parser_t *parser)
  * @param func_name Name of function being called.
  * @return AST function call node.
  */
+/* <func_name>(<arg1>, <arg2>, ...) */
 static ast_t *parser_parse_function_call(parser_t *parser, char *func_name)
 {
-    parser_eat(parser, TOKEN_LPAREN);
+    parser_eat(parser, TOKEN_LPAREN); // Eat '('
     ast_t **args = NULL;
-    int num_arg = 0;
-    char *func = func_name;
+    int arg_count = 0;
 
     if (parser->current_token->type != TOKEN_RPAREN) {
         args = tracked_calloc(1, sizeof(struct AST_STRUCT *));
         ast_t *arg_node = parser_parse_expr(parser);
-        args[num_arg] = arg_node;
-        num_arg++;
+        args[arg_count] = arg_node;
+        arg_count++;
     }
     while (parser->current_token->type == TOKEN_COMMA) {
-        parser_eat(parser, TOKEN_COMMA);
-        args = tracked_realloc(args, (num_arg + 1) * sizeof(struct AST_STRUCT *));
+        parser_eat(parser, TOKEN_COMMA); // Eat ','
+        args = tracked_realloc(args, (arg_count + 1) * sizeof(struct AST_STRUCT *));
         ast_t *arg_node = parser_parse_expr(parser);
-        args[num_arg] = arg_node;
-        num_arg++;
+        args[arg_count] = arg_node;
+        arg_count++;
     }
-    parser_eat(parser, TOKEN_RPAREN);
+    parser_eat(parser, TOKEN_RPAREN); // Eat ')'
 
     ast_t *func_call_node = ast_init(AST_FUNCTION_CALL);
-    func_call_node->value.function_call.func = func;
+    func_call_node->value.function_call.func_name = func_name;
     func_call_node->value.function_call.args = args;
-    func_call_node->value.function_call.num_arg = num_arg;
+    func_call_node->value.function_call.arg_count = arg_count;
     return func_call_node;
 }
 
@@ -587,15 +636,65 @@ static ast_t *parser_parse_function_call(parser_t *parser, char *func_name)
  * @param target Target AST node for assignment.
  * @return AST assignment node.
  */
+/* <target> = <expr>; */
 static ast_t *parser_parse_assignment(parser_t *parser, ast_t *target)
 {
-    parser_eat(parser, TOKEN_EQUALS);
+    parser_eat(parser, TOKEN_EQUALS); // Eat '='
     ast_t *value = parser_parse_expr(parser);
     ast_t *assignment_node = ast_init(AST_ASSIGNMENT);
-    assignment_node->value.assignment.id = target;
+    assignment_node->value.assignment.target = target;
     assignment_node->value.assignment.value = value;
-    parser_eat(parser, TOKEN_SEMI);
+    parser_eat(parser, TOKEN_SEMI);   // Eat ';'
     return assignment_node;
+}
+
+/**
+ * @brief Parse return statement: return [expr];.
+ * @param parser Pointer to parser.
+ * @return AST return statement node.
+ */
+/* return [<expr>]; */
+static ast_t *parser_parse_return_statement(parser_t *parser)
+{
+    parser_eat(parser, TOKEN_KW_RETURN); // Eat 'return'
+
+    ast_t *return_node = ast_init(AST_RETURN_STATEMENT);
+    return_node->value.return_statement.value = NULL;
+
+    if (parser->current_token->type != TOKEN_SEMI) {
+        return_node->value.return_statement.value = parser_parse_expr(parser);
+    }
+
+    parser_eat(parser, TOKEN_SEMI); // Eat ';'
+    return return_node;
+}
+
+/**
+ * @brief Parse break statement: break;.
+ * @param parser Pointer to parser.
+ * @return AST break statement node.
+ */
+/* break; */
+static ast_t *parser_parse_break_statement(parser_t *parser)
+{
+    parser_eat(parser, TOKEN_KW_BREAK); // Eat 'break'
+    parser_eat(parser, TOKEN_SEMI);     // Eat ';'
+
+    return ast_init(AST_BREAK_STATEMENT);
+}
+
+/**
+ * @brief Parse continue statement: continue;.
+ * @param parser Pointer to parser.
+ * @return AST continue statement node.
+ */
+/* continue; */
+static ast_t *parser_parse_continue_statement(parser_t *parser)
+{
+    parser_eat(parser, TOKEN_KW_CONTINUE); // Eat 'continue'
+    parser_eat(parser, TOKEN_SEMI);         // Eat ';'
+
+    return ast_init(AST_CONTINUE_STATEMENT);
 }
 
 /* -------------------- Public Functions -------------------- */

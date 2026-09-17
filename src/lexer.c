@@ -150,10 +150,12 @@ static token_t *lexer_collect_id(lexer_t *lexer)
     if (strcmp(value, "bool") == 0)   { tracked_free(value); return token_init(TOKEN_KW_BOOL, NULL); }
     if (strcmp(value, "void") == 0)   { tracked_free(value); return token_init(TOKEN_KW_VOID, NULL); }
 
-    if (strcmp(value, "if") == 0)     { tracked_free(value); return token_init(TOKEN_KW_IF, NULL); }
-    if (strcmp(value, "else") == 0)   { tracked_free(value); return token_init(TOKEN_KW_ELSE, NULL); }
-    if (strcmp(value, "while") == 0)  { tracked_free(value); return token_init(TOKEN_KW_WHILE, NULL); }
-    if (strcmp(value, "return") == 0) { tracked_free(value); return token_init(TOKEN_KW_RETURN, NULL); }
+    if (strcmp(value, "if") == 0)       { tracked_free(value); return token_init(TOKEN_KW_IF, NULL); }
+    if (strcmp(value, "else") == 0)     { tracked_free(value); return token_init(TOKEN_KW_ELSE, NULL); }
+    if (strcmp(value, "while") == 0)    { tracked_free(value); return token_init(TOKEN_KW_WHILE, NULL); }
+    if (strcmp(value, "return") == 0)   { tracked_free(value); return token_init(TOKEN_KW_RETURN, NULL); }
+    if (strcmp(value, "break") == 0)    { tracked_free(value); return token_init(TOKEN_KW_BREAK, NULL); }
+    if (strcmp(value, "continue") == 0) { tracked_free(value); return token_init(TOKEN_KW_CONTINUE, NULL); }
 
     /* Boolean literals */
     if (strcmp(value, "true") == 0) {

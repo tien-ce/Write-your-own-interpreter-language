@@ -19,8 +19,10 @@ typedef enum {
     VAL_VOID,    // Void return type for functions
 } val_type_t;
 
-/* Backward-compatibility alias */
-typedef val_type_t value_type_t;
+typedef enum {
+    FUNC_BUILTIN,
+    FUNC_TI,
+} func_type_t;
 
 #ifdef __cplusplus
 }

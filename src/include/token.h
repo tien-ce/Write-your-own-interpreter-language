@@ -21,7 +21,8 @@ typedef enum token_type {
     TOKEN_KW_ELSE,      // else
     TOKEN_KW_WHILE,     // while
     TOKEN_KW_RETURN,    // return
-    TOKEN_KW_BREAK,
+    TOKEN_KW_BREAK,     // break
+    TOKEN_KW_CONTINUE,  // continue
 
     /* 3. OPERATORS & DELIMITERS */
     TOKEN_EQUALS,       // =

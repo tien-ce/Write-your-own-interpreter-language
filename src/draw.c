@@ -53,6 +53,11 @@ static void print_node_label(ast_t *node)
                val_type_to_str(node->value.variable_definition.variable_type),
                node->value.variable_definition.variable_name);
         break;
+    case AST_PARAM:
+        printf("PARAM: %s %s\n",
+               val_type_to_str(node->value.param.param_type),
+               node->value.param.param_name);
+        break;
     case AST_ASSIGNMENT:
         printf("ASSIGNMENT (=)\n");
         break;
@@ -60,10 +65,19 @@ static void print_node_label(ast_t *node)
         printf("WHILE\n");
         break;
     case AST_FUNCTION_CALL:
-        printf("CALL %s\n", node->value.function_call.func);
+        printf("CALL %s\n", node->value.function_call.func_name);
         break;
     case AST_COMPOUND:
-        printf("COMPOUND (%d stmts)\n", node->value.compound.compound_size);
+        printf("COMPOUND (%d stmts)\n", node->value.compound.statement_count);
+        break;
+    case AST_RETURN_STATEMENT:
+        printf("RETURN\n");
+        break;
+    case AST_BREAK_STATEMENT:
+        printf("BREAK\n");
+        break;
+    case AST_CONTINUE_STATEMENT:
+        printf("CONTINUE\n");
         break;
     default:
         printf("%s\n", ast_type_to_str(node->type));
@@ -124,7 +138,7 @@ static void draw_ast_internal(ast_t *node, bool is_last, bool is_root, bool has_
         break;
 
     case AST_ASSIGNMENT:
-        draw_ast_internal(node->value.assignment.id, false, false, has_next_sibling, depth + 1);
+        draw_ast_internal(node->value.assignment.target, false, false, has_next_sibling, depth + 1);
         draw_ast_internal(node->value.assignment.value, true, false, has_next_sibling, depth + 1);
         break;
 
@@ -138,20 +152,26 @@ static void draw_ast_internal(ast_t *node, bool is_last, bool is_root, bool has_
         break;
 
     case AST_FUNCTION_CALL: {
-        for (int i = 0; i < node->value.function_call.num_arg; i++) {
-            bool last_child = (i == node->value.function_call.num_arg - 1);
+        for (int i = 0; i < node->value.function_call.arg_count; i++) {
+            bool last_child = (i == node->value.function_call.arg_count - 1);
             draw_ast_internal(node->value.function_call.args[i], last_child, false, has_next_sibling, depth + 1);
         }
         break;
     }
 
     case AST_COMPOUND: {
-        for (int i = 0; i < node->value.compound.compound_size; i++) {
-            bool last_child = (i == node->value.compound.compound_size - 1);
-            draw_ast_internal(node->value.compound.compound_value[i], last_child, false, has_next_sibling, depth + 1);
+        for (int i = 0; i < node->value.compound.statement_count; i++) {
+            bool last_child = (i == node->value.compound.statement_count - 1);
+            draw_ast_internal(node->value.compound.statements[i], last_child, false, has_next_sibling, depth + 1);
         }
         break;
     }
+
+    case AST_RETURN_STATEMENT:
+        if (node->value.return_statement.value) {
+            draw_ast_internal(node->value.return_statement.value, true, false, has_next_sibling, depth + 1);
+        }
+        break;
 
     default:
         break;

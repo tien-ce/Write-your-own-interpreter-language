@@ -397,7 +397,7 @@ static value_t *binary_logical_or(value_t *left, value_t *right)
 /* -------------------- Public Expression Evaluators -------------------- */
 
 /* Evaluate a binary expression node (+, -, *, /, ==, <, etc.) */
-value_t *eval_binary_expr(InterpreterContext *ctx, ast_t *node)
+value_t *eval_binary_expr(context_t *ctx, ast_t *node)
 {
     value_t *left = visitor_visit(ctx, node->value.binary_expr.left);
     value_t *right = visitor_visit(ctx, node->value.binary_expr.right);
@@ -461,7 +461,7 @@ value_t *eval_binary_expr(InterpreterContext *ctx, ast_t *node)
 }
 
 /* Evaluate a unary expression node (!, -, +) */
-value_t *eval_unary_expr(InterpreterContext *ctx, ast_t *node)
+value_t *eval_unary_expr(context_t *ctx, ast_t *node)
 {
     value_t *operand = visitor_visit(ctx, node->value.unary_expr.operand); 
     if (operand == NULL || operand->type == VAL_NULL) {

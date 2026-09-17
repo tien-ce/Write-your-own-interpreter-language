@@ -27,8 +27,11 @@ typedef struct AST_STRUCT {
     AST_WHILE_STATEMENT,      // while (cond) { ... }
     AST_FOR_STATEMENT,        // for (init; cond; post) { ... }
     AST_RETURN_STATEMENT,     // return expr;
+    AST_BREAK_STATEMENT,      // break;
+    AST_CONTINUE_STATEMENT,   // continue;
     AST_VARIABLE_DEFINITION,  // int x = 5;
-    AST_FUNCTION_DEFINITION,  //
+    AST_FUNCTION_DEFINITION,  // int f() { ... }
+    AST_PARAM,                // Function parameter: type param_name
     AST_ASSIGNMENT,           // x = 10
 
     AST_NOOP,
@@ -90,23 +93,29 @@ typedef struct AST_STRUCT {
 
     /* Function call */
     struct {
-      char *func;                   // Point to function name (id)
-      struct AST_STRUCT **args;     // An array contains pointers pointing to args (exprs)
-      int num_arg;
+      char *func_name;              // Target function identifier name
+      struct AST_STRUCT **args;     // Array of argument expression AST nodes
+      int arg_count;                // Number of arguments passed
     } function_call;
 
     struct {
-      val_type_t func_type;
-      char *func_name;
-      int num_args;
-      struct AST_STRUCT **args;     // An array contains pointers pointing to args (exprs)
-      struct AST_STRUCT *body;
+      val_type_t return_type;       // Declared function return data type
+      char *func_name;              // Function identifier name
+      int param_count;              // Number of declared parameters
+      struct AST_STRUCT **params;   // Array of parameter AST nodes
+      struct AST_STRUCT *body;      // Function body compound AST node
     } function_definition;
+
+    /* Parameter */
+    struct {
+      val_type_t param_type;        // Expected parameter type (VAL_INT, VAL_STRING, etc.)
+      char *param_name;             // Parameter identifier name
+    } param;
 
     /* Compound */ 
     struct {
-      struct AST_STRUCT **compound_value; // Array contains ast_statements
-      int compound_size;
+      struct AST_STRUCT **statements; // Array of statement AST nodes
+      int statement_count;            // Number of statements in compound block
     } compound;
   
     /* While statement */
@@ -121,11 +130,14 @@ typedef struct AST_STRUCT {
       struct AST_STRUCT *else_body; // Point to compound, statement, or nested if (else if) - NULL if no else
     } if_statement;
 
+    struct {
+      struct AST_STRUCT *target;    // Target AST node (identifier or array index)
+      struct AST_STRUCT *value;     // Expression to assign
+    } assignment;
 
     struct {
-      struct AST_STRUCT *id;
-      struct AST_STRUCT *value;     // Expression
-    } assignment;
+      struct AST_STRUCT *value;     // Expression node to return (NULL if void return)
+    } return_statement;
 
   } value;
 } ast_t;  // Abstract syntax tree

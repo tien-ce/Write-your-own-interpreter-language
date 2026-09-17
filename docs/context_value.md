@@ -1,6 +1,6 @@
 # Maintainer Guide: Context & Value Runtime System
 
-> **Audience:** Developers modifying runtime execution scopes, variable storage, or dynamic value representation in `src/context.c`, `src/value.c`, and `src/include/visitor_internal.h`.
+> **Audience:** Developers modifying runtime execution scopes, variable storage, or dynamic value representation in `src/context.c`, `src/value.c`, `src/include/value.h`, and `src/include/context.h`.
 
 ---
 
@@ -49,18 +49,30 @@ typedef struct VARIABLE_STRUCT {
 
 ---
 
-### 1.3. `context_t` (`struct InterpreterContext`)
+### 1.3. `flow_state_t` & `context_t` (`struct CONTEXT_STRUCT`)
 ```c
-typedef struct InterpreterContext {
-    struct InterpreterContext *parent; // Pointer to enclosing parent scope
-    variable_t **variables;            // Array of variable pointers in this scope
-    int variable_size;                 // Number of variables in this scope
-} context_t, InterpreterContext;
+typedef enum {
+    FLOW_NORMAL,     // Sequential execution within compound block
+    FLOW_RETURN,     // Return statement triggered: unwinds scopes up to function boundary
+    FLOW_BREAK,      // Break statement triggered: breaks out of innermost loop
+    FLOW_CONTINUE,   // Continue statement triggered: jumps to next iteration of loop
+} flow_state_t;
+
+typedef struct CONTEXT_STRUCT {
+    struct CONTEXT_STRUCT *parent; // Pointer to enclosing parent scope (NULL for root)
+    variable_t **variables;        // Array of variable pointers in this scope
+    int variable_count;            // Number of variables in this scope
+    flow_state_t flow_state;       // Active flow interruption flag
+    value_t *return_value;         // Evaluated return payload (owned by this context)
+} context_t;
 ```
-- **Purpose:** Implements a lexical environment frame (call frame / block scope).
+- **Purpose:** Implements a lexical environment frame (call frame / block scope) augmented with control flow signal propagation.
 - **Scope Hierarchy:**
   - Root scope has `parent = NULL`.
   - Child scopes (inside `if`, `while`, or function bodies) point their `parent` pointer to the enclosing context.
+- **Control Flow Interruption:**
+  - When non-sequential control flow occurs (`return`, `break`, `continue`), `flow_state` is updated from `FLOW_NORMAL` to the corresponding flag.
+  - If returning a value, `return_value` holds the evaluated `value_t *`.
 
 ---
 
@@ -72,7 +84,7 @@ variable_t *context_find_variable(context_t *ctx, const char *variable_name)
 {
     context_t *current_ctx = ctx;
     while (current_ctx != NULL) {
-        for (int i = 0; i < current_ctx->variable_size; i++) {
+        for (int i = 0; i < current_ctx->variable_count; i++) {
             if (strcmp(current_ctx->variables[i]->name, variable_name) == 0) {
                 return current_ctx->variables[i];
             }
@@ -100,7 +112,7 @@ value_t *context_copy_value(variable_t *variable)
 ---
 
 ### 2.3. Redefinition Collision Detection (`context_add_variable`)
-- Checks only the **current local scope** (`ctx->variables[0..variable_size]`):
+- Checks only the **current local scope** (`ctx->variables[0..variable_count]`):
   - If a variable with `name` already exists in *this* scope, logs an error (`"Redefinition of variable"`) and calls `ti_fatal()`.
   - Shadowing an outer variable from a parent scope is permitted.
 - Dynamically resizes the `ctx->variables` pointer array using `tracked_realloc`.
@@ -108,8 +120,9 @@ value_t *context_copy_value(variable_t *variable)
 ---
 
 ### 2.4. Scope Destruction (`context_free_internal`)
-- Iterates through `0` to `variable_size`:
+- Iterates through `0` to `variable_count`:
   1. Frees variable value via `val_free_internal(var->value)` and `tracked_free(var->value)`.
   2. Frees `var` struct.
 - Frees the `ctx->variables` pointer array.
+- **Return Value Safety:** If `ctx->return_value != NULL` (e.g. unconsumed return payload due to an error or premature termination), safely frees `ctx->return_value` via `val_free_internal()` and `tracked_free()` to prevent memory leaks.
 - **Note:** Does **not** modify or free `ctx->parent`, as the parent context belongs to the enclosing caller.

@@ -23,6 +23,7 @@ const char *token_type_to_str(int type)
     case TOKEN_KW_WHILE:  return "TOKEN_KW_WHILE";
     case TOKEN_KW_RETURN: return "TOKEN_KW_RETURN";
     case TOKEN_KW_BREAK:  return "TOKEN_KW_BREAK";
+    case TOKEN_KW_CONTINUE: return "TOKEN_KW_CONTINUE";
     case TOKEN_EQUALS:    return "TOKEN_EQUALS";
     case TOKEN_DEQUALS:   return "TOKEN_DEQUALS";
     case TOKEN_NOT:       return "TOKEN_NOT";
@@ -65,12 +66,15 @@ const char *ast_type_to_str(int type)
     case AST_UNARY_EXPR:          return "AST_UNARY_EXPR";
     case AST_FUNCTION_CALL:       return "AST_FUNCTION_CALL";
     case AST_FUNCTION_DEFINITION: return "AST_FUNCTION_DEFINITION";
+    case AST_PARAM:               return "AST_PARAM";
     case AST_ARRAY_ACCESS:        return "AST_ARRAY_ACCESS";
     case AST_COMPOUND:            return "AST_COMPOUND";
     case AST_IF_STATEMENT:        return "AST_IF_STATEMENT";
     case AST_WHILE_STATEMENT:     return "AST_WHILE_STATEMENT";
     case AST_FOR_STATEMENT:       return "AST_FOR_STATEMENT";
     case AST_RETURN_STATEMENT:    return "AST_RETURN_STATEMENT";
+    case AST_BREAK_STATEMENT:     return "AST_BREAK_STATEMENT";
+    case AST_CONTINUE_STATEMENT:  return "AST_CONTINUE_STATEMENT";
     case AST_VARIABLE_DEFINITION: return "AST_VARIABLE_DEFINITION";
     case AST_ASSIGNMENT:          return "AST_ASSIGNMENT";
     case AST_PROGRAM:             return "AST_PROGRAM";

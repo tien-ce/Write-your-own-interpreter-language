@@ -32,6 +32,7 @@ const char *token_to_str(int token_type)
     case TOKEN_KW_WHILE:    return "'while'";
     case TOKEN_KW_RETURN:   return "'return'";
     case TOKEN_KW_BREAK:    return "'break'";
+    case TOKEN_KW_CONTINUE: return "'continue'";
     case TOKEN_EQUALS:      return "'='";
     case TOKEN_DEQUALS:     return "'=='";
     case TOKEN_NOT:         return "'!'";

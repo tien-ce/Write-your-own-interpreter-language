@@ -127,7 +127,31 @@ In `parser_parse_definition(parser_t *parser)`:
    - If the peeked token is `(`, it branches to `parser_parse_function_definition()`.
    - Otherwise, it branches to `parser_parse_variable_definition()`.
 
+### Function Definition & Typed Parameters
+- **`parser_parse_param(parser_t *parser)`:** Parses a typed parameter declaration `<type> <param_name>` (e.g. `int a`, `string s`). Returns an `AST_PARAM` node storing `param_type` and `param_name`.
+- **`parser_parse_function_definition(parser_t *parser)`:** Parses `<return_type> <func_name>(<type> param1, <type> param2, ...) { <body> }`.
+  - Consumes return type and function identifier.
+  - Consumes `(` and iterates over comma-separated parameter declarations using `parser_parse_param()`, storing them in an `ast_t **params` array and counting them in `param_count`.
+  - Parses the function body compound block via `parser_parse_statements()`.
+  - Returns an `AST_FUNCTION_DEFINITION` node.
+
 ### `parser_parse_statements` & Compound Block Building
 - Gathers a sequence of statements inside curly braces `{ ... }` or at the file top-level.
-- Dynamically resizes an array of `ast_t *` pointers (`compound_value`) using `tracked_realloc`.
+- Dynamically resizes an array of `ast_t *` pointers (`statements`) using `tracked_realloc`.
 - Returns an `AST_COMPOUND` node storing the statement count and array of statement ASTs.
+
+### Jump & Control Flow Statements (`return`, `break`, `continue`)
+- **`parser_parse_return_statement(parser_t *parser)`:**
+  - Consumes `TOKEN_KW_RETURN`.
+  - Checks if lookahead token is `TOKEN_SEMI` (void `return;`). If so, sets `return_statement.value = NULL`.
+  - Otherwise, parses the return expression via `parser_parse_expr(parser)`.
+  - Consumes `TOKEN_SEMI` and returns `AST_RETURN_STATEMENT`.
+- **`parser_parse_break_statement(parser_t *parser)`:**
+  - Consumes `TOKEN_KW_BREAK` and `TOKEN_SEMI`.
+  - Returns leaf node `AST_BREAK_STATEMENT`.
+- **`parser_parse_continue_statement(parser_t *parser)`:**
+  - Consumes `TOKEN_KW_CONTINUE` and `TOKEN_SEMI`.
+  - Returns leaf node `AST_CONTINUE_STATEMENT`.
+- **Contextual Validation Strategy:**
+  - In accordance with the decoupling architecture (Method 2), the parser parses `break;` and `continue;` unconditionally into valid AST nodes without loop depth tracking. Contextual validation (verifying whether a `break`/`continue` statement resides inside an active loop boundary) is enforced by the Visitor during runtime execution.
+

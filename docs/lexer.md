@@ -133,7 +133,7 @@ The `lexer_t` struct encapsulates the complete traversal state of the tokenizer.
   2. Appends characters to `value`.
   3. **Keyword resolution:** Compares `value` against known keywords:
      - Types: `"int"` (`TOKEN_KW_INT`), `"float"` (`TOKEN_KW_FLOAT`), `"string"` (`TOKEN_KW_STRING`), `"bool"` (`TOKEN_KW_BOOL`), `"void"` (`TOKEN_KW_VOID`).
-     - Control flow: `"if"` (`TOKEN_KW_IF`), `"else"` (`TOKEN_KW_ELSE`), `"while"` (`TOKEN_KW_WHILE`), `"return"` (`TOKEN_KW_RETURN`).
+     - Control flow: `"if"` (`TOKEN_KW_IF`), `"else"` (`TOKEN_KW_ELSE`), `"while"` (`TOKEN_KW_WHILE`), `"return"` (`TOKEN_KW_RETURN`), `"break"` (`TOKEN_KW_BREAK`), `"continue"` (`TOKEN_KW_CONTINUE`).
      - **Why Keywords Free `value` and Pass `NULL`:**
        ```c
        // src/lexer.c line 147:

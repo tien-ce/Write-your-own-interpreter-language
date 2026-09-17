@@ -142,3 +142,65 @@ All public and module-scoped functions must strictly follow the **`module_action
       ...
   }
   ```
+
+---
+
+## 5. Interpreter Variable & Field Naming Framework (Quy tắc tư duy đặt tên)
+
+To prevent cognitive overload (quá tải nhận thức) and eliminate ambiguity (sự mơ hồ, không rõ ràng) as the codebase grows larger, all variables and struct fields across the interpreter must comply with (tuân thủ) the following 5 mental rules (quy tắc tư duy).
+
+### 5.1 Rule 1: Distinguish AST Nodes (`_node`) from Runtime Values (`_val`)
+A common pitfall (bẫy lỗi phổ biến) in tree-walking interpreters written in C is naming both AST pointers and evaluated runtime values with generic (chung chung) names like `res`, `val`, or `x`.
+- **AST Nodes (`ast_t *`):** Must always use the suffix (hậu tố) `_node` (or `node` if standalone).
+  - Examples: `cond_node`, `body_node`, `left_node`, `right_node`, `expr_node`, `stmt_node`.
+- **Runtime Values (`value_t *`):** Must always use the suffix `_val` (or `value` / `ret_val`).
+  - Examples: `left_val`, `right_val`, `cond_val`, `ret_val`, `arg_val`.
+
+```c
+/* Clear distinction (phân biệt rõ ràng): */
+ast_t   *left_node = node->value.binary_expr.left;   /* Static syntax node (node cú pháp tĩnh) */
+value_t *left_val  = visitor_visit(ctx, left_node); /* Evaluated runtime result (giá trị runtime) */
+```
+
+### 5.2 Rule 2: Item Count (`_count`) vs Byte Size (`_size` / `_bytes`)
+Do not mix item counts with memory allocations:
+- **Quantity of items (số lượng phần tử):** Always use `_count`.
+  - `statement_count` (never `compound_size`).
+  - `variable_count` (never `variable_size`).
+  - `param_count` (number of parameters in function definition).
+  - `arg_count` (number of arguments in function call).
+- **Memory buffer size (dung lượng bộ nhớ theo byte):** Reserve `_size` or `_bytes` exclusively (riêng biệt) for memory buffers and byte allocations.
+  - `buffer_size`, `sizeof(function_t)`.
+
+### 5.3 Rule 3: Symmetry between Plural Arrays and `_count` (Tính đối xứng giữa mảng và bộ đếm)
+Every array of pointers (`**`) must have a corresponding counterpart (thành phần đối ứng) count sharing the identical prefix (tiền tố giống nhau):
+
+| Entity (Thực thể) | Array Pointer (`**`) | Count Variable (`int`) | Single Item |
+| :--- | :--- | :--- | :--- |
+| Block statements | `statements` | `statement_count` | `stmt_node` |
+| Function parameters | `params` | `param_count` | `param_node` |
+| Call arguments | `args` | `arg_count` | `arg_val` / `arg_node` |
+| Scoped variables | `variables` | `variable_count` | `var` / `variable` |
+| Loaded functions | `s_functions` | `s_function_count` | `func` |
+
+### 5.4 Rule 4: Distinguish Identifier Names (`_name`) from String Content (`_str` / `_text`)
+Avoid ambiguous (mơ hồ) names like `id`:
+- **Identifier Name (Tên định danh):** Must contain `name`.
+  - `var_name`, `func_name`, `param_name`.
+- **String Text Payload (Nội dung chuỗi):**
+  - `string_val` (raw string inside `value_t`), `src_text`, `line_text`.
+
+### 5.5 Rule 5: Distinguish Syntax Terminology from Runtime Semantics (Từ vựng cú pháp vs Thực thi)
+- **Function Definition (`AST_FUNCTION_DEFINITION`):**
+  - Use `return_type` for declared return data type (`val_type_t`). Never use `func_type` (avoids collision (xung đột) with `func_type_t`).
+  - Use `params` & `param_count` (declared parameters in signature).
+  - Use `body` (compound block node).
+- **Function Call (`AST_FUNCTION_CALL`):**
+  - Use `func_name` for target function name.
+  - Use `args` & `arg_count` (passed arguments).
+- **Assignment (`AST_ASSIGNMENT`):**
+  - Left-hand side: `target` (ast_t pointer, accommodates (đáp ứng) both simple variables and array indexing). Never name it `id`.
+  - Right-hand side: `value` (ast_t pointer).
+- **Return Statement (`AST_RETURN_STATEMENT`):**
+  - `value` (ast_t expression node to return, NULL for void return).
+

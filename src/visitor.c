@@ -11,7 +11,7 @@
  * @param node Pointer to AST node to evaluate.
  * @return Pointer to evaluated result value_t (or NULL).
  */
-value_t *visitor_visit(InterpreterContext *ctx, ast_t *node)
+value_t *visitor_visit(context_t *ctx, ast_t *node)
 {
     if (!node) {
         return NULL;
@@ -48,6 +48,12 @@ value_t *visitor_visit(InterpreterContext *ctx, ast_t *node)
         return eval_function_definition(ctx, node);
     case AST_FOR_STATEMENT:
         return eval_for_statement(ctx, node);
+    case AST_RETURN_STATEMENT:
+        return eval_return_statement(ctx, node);
+    case AST_BREAK_STATEMENT:
+        return eval_break_statement(ctx, node);
+    case AST_CONTINUE_STATEMENT:
+        return eval_continue_statement(ctx, node);
     default:
         ti_log("[Visitor Error] Unexpected AST node type %d in visitor_visit\n", (int)node->type);
         break;

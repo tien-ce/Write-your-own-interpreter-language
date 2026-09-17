@@ -23,10 +23,10 @@ void ast_free(ast_t *ast)
 
     switch (ast->type) {
     case AST_COMPOUND:
-        for (int i = 0; i < ast->value.compound.compound_size; i++) {
-            ast_free(ast->value.compound.compound_value[i]);
+        for (int i = 0; i < ast->value.compound.statement_count; i++) {
+            ast_free(ast->value.compound.statements[i]);
         }
-        tracked_free(ast->value.compound.compound_value);
+        tracked_free(ast->value.compound.statements);
         break;
 
     case AST_VARIABLE_DEFINITION:
@@ -37,23 +37,29 @@ void ast_free(ast_t *ast)
         break;
 
     case AST_FUNCTION_DEFINITION: {
-        int argc = ast->value.function_definition.num_args;
-        for (int i = 0; i < argc; i++) {
-            ast_free(ast->value.function_definition.args[i]);
+        int param_count = ast->value.function_definition.param_count;
+        for (int i = 0; i < param_count; i++) {
+            ast_free(ast->value.function_definition.params[i]);
         }
-        if (ast->value.function_definition.args) {
-            tracked_free(ast->value.function_definition.args);
+        if (ast->value.function_definition.params) {
+            tracked_free(ast->value.function_definition.params);
         }
         ast_free(ast->value.function_definition.body);
         break;
     }
 
-    case AST_FUNCTION_CALL: {
-        if (ast->value.function_call.func) {
-            tracked_free(ast->value.function_call.func);
+    case AST_PARAM:
+        if (ast->value.param.param_name) {
+            tracked_free(ast->value.param.param_name);
         }
-        int argc = ast->value.function_call.num_arg;
-        for (int i = 0; i < argc; i++) {
+        break;
+
+    case AST_FUNCTION_CALL: {
+        if (ast->value.function_call.func_name) {
+            tracked_free(ast->value.function_call.func_name);
+        }
+        int arg_count = ast->value.function_call.arg_count;
+        for (int i = 0; i < arg_count; i++) {
             ast_free(ast->value.function_call.args[i]);
         }
         tracked_free(ast->value.function_call.args);
@@ -70,7 +76,7 @@ void ast_free(ast_t *ast)
         break;
 
     case AST_ASSIGNMENT:
-        ast_free(ast->value.assignment.id);
+        ast_free(ast->value.assignment.target);
         ast_free(ast->value.assignment.value);
         break;
 
@@ -100,13 +106,18 @@ void ast_free(ast_t *ast)
         ast_free(ast->value.if_statement.else_body);
         break;
 
+    case AST_RETURN_STATEMENT:
+        ast_free(ast->value.return_statement.value);
+        break;
+
     case AST_INT_LITERAL:
     case AST_FLOAT_LITERAL:
     case AST_BOOLEAN:
     case AST_NOOP:
     case AST_PROGRAM:
     case AST_FOR_STATEMENT:
-    case AST_RETURN_STATEMENT:
+    case AST_BREAK_STATEMENT:
+    case AST_CONTINUE_STATEMENT:
         break;
 
     default:

@@ -1,4 +1,5 @@
 #include "include/visitor.h"
+#include "include/function.h"
 #include "TienInterpreter.h"
 #include <stdarg.h>
 #include <stdio.h>
@@ -319,16 +320,23 @@ void ti_init_builtin(void)
 {
     ti_register_log(ti_log_callback);
     ti_register_fatal(ti_fatal_callback);
-    register_builtin_function("print", built_in_print);
-    register_builtin_function("delay", built_in_delay);
-    register_builtin_function("relay_get_state", built_in_relay_get_state);
-    register_builtin_function("relay_set_state", built_in_relay_set_state);
-    register_builtin_function("autonics_tk_set_slave_address", built_in_autonics_tk_set_slave_address);
-    register_builtin_function("autonics_tk_get_pv", built_in_autonics_tk_get_pv);
-    register_builtin_function("autonics_tk_get_sv", built_in_autonics_tk_get_sv);
-    register_builtin_function("nvs_read", built_in_nvs_read);
-    register_builtin_function("http_get", built_in_http_get);
-    register_builtin_function("get_json", built_in_get_json);
+
+    static param_t delay_params[] = { { VAL_INT, "ms" } };
+    static param_t relay_set_params[] = { { VAL_INT, "id" }, { VAL_INT, "state" } };
+    static param_t autonics_addr_params[] = { { VAL_INT, "address" } };
+    static param_t nvs_read_params[] = { { VAL_STRING, "key" }, { VAL_INT, "default_val" } };
+    static param_t get_json_params[] = { { VAL_STRING, "json" }, { VAL_STRING, "key" } };
+
+    register_builtin_function("print", VAL_VOID, NULL, -1, built_in_print);
+    register_builtin_function("delay", VAL_VOID, delay_params, 1, built_in_delay);
+    register_builtin_function("relay_get_state", VAL_INT, NULL, 0, built_in_relay_get_state);
+    register_builtin_function("relay_set_state", VAL_VOID, relay_set_params, 2, built_in_relay_set_state);
+    register_builtin_function("autonics_tk_set_slave_address", VAL_VOID, autonics_addr_params, 1, built_in_autonics_tk_set_slave_address);
+    register_builtin_function("autonics_tk_get_pv", VAL_FLOAT, NULL, 0, built_in_autonics_tk_get_pv);
+    register_builtin_function("autonics_tk_get_sv", VAL_FLOAT, NULL, 0, built_in_autonics_tk_get_sv);
+    register_builtin_function("nvs_read", VAL_INT, nvs_read_params, 2, built_in_nvs_read);
+    register_builtin_function("http_get", VAL_STRING, NULL, 0, built_in_http_get);
+    register_builtin_function("get_json", VAL_STRING, get_json_params, 2, built_in_get_json);
 }
 
 void init_builtin(void)
