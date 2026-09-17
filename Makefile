@@ -1,12 +1,13 @@
 CC = gcc
-CFLAGS = -Wall -Wextra
+CFLAGS = -Wall -Wextra -Isrc
 MEMCHECK_FLAGS = -fsanitize=address -g
-DEBUG_FLAGS = -g -O0
+DEBUG_FLAGS = -g -O0 
+LDFLAGS = -lcjson -pthread
 LOG_FILE = memory_check.txt
 TEST_FILE = while_loop.ti 
 
 HEADERS = $(wildcard src/include/*.h)
-SOURCES = $(wildcard src/*.c)
+SOURCES = $(wildcard src/*.c cli/*.c)
 OBJECTS = $(SOURCES:.c=.o)
 
 EXEC = ti.out
@@ -17,7 +18,7 @@ DEBUG_EXEC = ti_debug.out
 all: $(EXEC)
 
 $(EXEC): $(OBJECTS)
-	$(CC) $(OBJECTS) $(CFLAGS) -o $(EXEC)
+	$(CC) $(OBJECTS) $(CFLAGS) $(LDFLAGS) -o $(EXEC)
 
 %.o: %.c $(HEADERS)
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -28,7 +29,7 @@ memcheck: clean_objs $(MEMCHECK_EXEC)
 	./$(MEMCHECK_EXEC) $(TEST_FILE) > $(LOG_FILE) 2>&1 || true
 
 $(MEMCHECK_EXEC): $(OBJECTS)
-	$(CC) $(OBJECTS) $(CFLAGS) -o $(MEMCHECK_EXEC)
+	$(CC) $(OBJECTS) $(CFLAGS) $(LDFLAGS) -o $(MEMCHECK_EXEC)
 
 # Target debug: build with debug symbols and launch gdb in TUI mode
 debug: CFLAGS += $(DEBUG_FLAGS)
@@ -36,7 +37,7 @@ debug: clean_objs $(DEBUG_EXEC)
 	gdb -tui --args ./$(DEBUG_EXEC) $(TEST_FILE)
 
 $(DEBUG_EXEC): $(OBJECTS)
-	$(CC) $(OBJECTS) $(CFLAGS) -o $(DEBUG_EXEC)
+	$(CC) $(OBJECTS) $(CFLAGS) $(LDFLAGS) -o $(DEBUG_EXEC)
 
 clean_objs:
 	rm -f $(OBJECTS)
