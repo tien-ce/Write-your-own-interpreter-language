@@ -10,7 +10,7 @@
 
 /* -------------------- Static Function Prototypes -------------------- */
 
-static int token_type_to_op(int token_type);
+static int token_type_to_op(parser_t *parser, int token_type);
 static token_t *parser_peek(parser_t *parser);
 static void parser_eat(parser_t *parser, int expected_type);
 static ast_t *parser_parse_statement(parser_t *parser);
@@ -40,7 +40,7 @@ static ast_t *parser_parse_primary(parser_t *parser);
  * @param token_type Token type enum value.
  * @return Corresponding binary operator enum value.
  */
-static int token_type_to_op(int token_type)
+static int token_type_to_op(parser_t *parser, int token_type)
 {
     switch (token_type) {
     case TOKEN_PLUS:        return OP_ADD;
@@ -56,7 +56,9 @@ static int token_type_to_op(int token_type)
     case TOKEN_LOGIC_AND:   return OP_LOGICAL_AND;
     case TOKEN_LOGIC_OR:    return OP_LOGICAL_OR;
     default:
-        ti_log("Unknown operator token type: %d\n", token_type);
+        ti_log("[Parser Error] Unknown operator token %s at line %d\n",
+               token_to_str(token_type), parser->lexer->line_num);
+        ti_log_line(parser->lexer->line);
         ti_fatal();
         return -1;
     }
@@ -180,7 +182,7 @@ static ast_t *parser_parse_definition(parser_t *parser)
     case TOKEN_EQUALS:
         return parser_parse_variable_definition(parser);
     default:
-        ti_log("Definition: Unexpected token %s at line %d\n",
+        ti_log("[Parser Error] Unexpected token %s in definition at line %d\n",
                token_to_str(next_token->type), parser->lexer->line_num);
         ti_log_line(parser->lexer->line);
         ti_fatal();
@@ -201,11 +203,11 @@ static void parser_eat(parser_t *parser, int expected_type)
         tracked_free(old_token);
         old_token = NULL;
     } else {
-        ti_log("Unexpected value %s, at line %d\n",
+        ti_log("[Parser Error] Unexpected token %s ('%s') at line %d\n",
+               token_to_str(parser->current_token->type),
                parser->current_token->value ? parser->current_token->value : "<eof>",
                parser->lexer->line_num);
         ti_log_line(parser->lexer->line);
-        ti_log("\n");
         ti_log("Expected token %s, but received %s\n",
                token_to_str(expected_type),
                token_to_str(parser->current_token->type));
@@ -247,9 +249,11 @@ static ast_t *parser_parse_statement(parser_t *parser)
     case TOKEN_KW_CONTINUE:
         return parser_parse_continue_statement(parser);
     default:
-        ti_log("[Parser] Unexpected statement starting with token type %d ('%s')\n",
-               parser->current_token->type,
-               parser->current_token->value ? parser->current_token->value : "");
+        ti_log("[Parser Error] Unexpected statement starting with %s ('%s') at line %d\n",
+               token_to_str(parser->current_token->type),
+               parser->current_token->value ? parser->current_token->value : "",
+               parser->lexer->line_num);
+        ti_log_line(parser->lexer->line);
         ti_fatal();
         return NULL;
     }
@@ -327,7 +331,7 @@ static ast_t *parser_parse_expr(parser_t *parser)
         parser_eat(parser, op);
         ast_t *right = parser_parse_comparison(parser);
         ast_t *binary_node = ast_init(AST_BINARY_EXPR);
-        binary_node->value.binary_expr.op = token_type_to_op(op);
+        binary_node->value.binary_expr.op = token_type_to_op(parser, op);
         binary_node->value.binary_expr.left = left;
         binary_node->value.binary_expr.right = right;
         left = binary_node;
@@ -353,7 +357,7 @@ static ast_t *parser_parse_comparison(parser_t *parser)
         parser_eat(parser, op);
         ast_t *right = parser_parse_additive(parser);
         ast_t *binary_node = ast_init(AST_BINARY_EXPR);
-        binary_node->value.binary_expr.op = token_type_to_op(op);
+        binary_node->value.binary_expr.op = token_type_to_op(parser, op);
         binary_node->value.binary_expr.left = left;
         binary_node->value.binary_expr.right = right;
         left = binary_node;
@@ -375,7 +379,7 @@ static ast_t *parser_parse_additive(parser_t *parser)
         parser_eat(parser, op);
         ast_t *right = parser_parse_term(parser);
         ast_t *binary_node = ast_init(AST_BINARY_EXPR);
-        binary_node->value.binary_expr.op = token_type_to_op(op);
+        binary_node->value.binary_expr.op = token_type_to_op(parser, op);
         binary_node->value.binary_expr.left = left;
         binary_node->value.binary_expr.right = right;
         left = binary_node;
@@ -397,7 +401,7 @@ static ast_t *parser_parse_term(parser_t *parser)
         parser_eat(parser, op);
         ast_t *right = parser_parse_primary(parser);
         ast_t *binary_node = ast_init(AST_BINARY_EXPR);
-        binary_node->value.binary_expr.op = token_type_to_op(op);
+        binary_node->value.binary_expr.op = token_type_to_op(parser, op);
         binary_node->value.binary_expr.left = left;
         binary_node->value.binary_expr.right = right;
         left = binary_node;
@@ -492,8 +496,9 @@ static ast_t *parser_parse_primary(parser_t *parser)
         return expr;
     }
     default:
-        ti_log("Unexpected value %s, at line %d\n",
+        ti_log("[Parser Error] Unexpected token %s ('%s') in expression at line %d\n",
                token_to_str(parser->current_token->type),
+               parser->current_token->value ? parser->current_token->value : "",
                parser->lexer->line_num);
         ti_log_line(parser->lexer->line);
         ti_fatal();
@@ -517,9 +522,9 @@ static ast_t *parser_parse_variable_definition(parser_t *parser)
     case TOKEN_KW_BOOL:   variable_type = VAL_BOOL;   break;
     case TOKEN_KW_VOID:   variable_type = VAL_VOID;   break;
     default:
-        ti_log("[Parser Error] Unexpected type keyword with type %d ('%s') in variable definition\n",
-               parser->current_token->type,
-               parser->current_token->value ? parser->current_token->value : "");
+        ti_log("[Parser Error] Unexpected type %s in variable definition, at line %d\n",
+               token_to_str(parser->current_token->type), parser->lexer->line_num);
+        ti_log_line(parser->lexer->line);
         ti_fatal();
         break;
     }
