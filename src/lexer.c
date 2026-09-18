@@ -120,7 +120,8 @@ static token_t *lexer_collect_string(lexer_t *lexer)
     }
 
     if (lexer->c == '\0') {
-        ti_log("Missing close quote\n");
+        ti_log("[Lexer Error] Missing close quote at line %d\n", lexer->line_num);
+        ti_log_line(lexer->line);
         ti_fatal();
     }
     lexer_advance(lexer); // Skip close quote
@@ -201,7 +202,8 @@ static token_t *lexer_collect_number(lexer_t *lexer)
         }
 
         if (isalpha(lexer->c) || lexer->c == '_') {
-            ti_log("[Lexer Error] Invalid suffix '%c' on float constant '%s'\n", lexer->c, value);
+            ti_log("[Lexer Error] Invalid suffix '%c' on float constant '%s' at line %d\n", lexer->c, value, lexer->line_num);
+            ti_log_line(lexer->line);
             ti_fatal();
         }
         return token_init(TOKEN_FLOAT, value);
@@ -209,7 +211,8 @@ static token_t *lexer_collect_number(lexer_t *lexer)
 
     /* Integer number */
     if (isalpha(lexer->c) || lexer->c == '_') {
-        ti_log("[Lexer Error] Invalid suffix '%c' on integer constant '%s'\n", lexer->c, value);
+        ti_log("[Lexer Error] Invalid suffix '%c' on integer constant '%s' at line %d\n", lexer->c, value, lexer->line_num);
+        ti_log_line(lexer->line);
         ti_fatal();
     } 
     return token_init(TOKEN_INT, value);
