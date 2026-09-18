@@ -76,6 +76,12 @@ value_t *val_new_void(void);
 void val_free_internal(value_t *value);
 
 /**
+ * @brief Free an entire value_t structure along with its dynamic payload.
+ * @param value Pointer to value_t to deallocate.
+ */
+void val_free(value_t *value);
+
+/**
  * @brief Create an independent deep copy of a value_t structure.
  * @param val Source value pointer to clone.
  * @return Newly allocated value_t clone, or NULL if source is NULL.

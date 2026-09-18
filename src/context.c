@@ -13,11 +13,14 @@ context_t *context_init(void)
     context_t *context = tracked_calloc(1, sizeof(struct CONTEXT_STRUCT));
     context->variables = NULL;
     context->variable_count = 0;
+    context->functions = NULL;
+    context->function_count = 0;
     context->parent = NULL;
     context->flow_state = FLOW_NORMAL;
     context->return_value = NULL;
     return context;
 }
+
 
 /* Free an interpreter context and its scoped variables */
 void context_free(context_t *ctx)
@@ -106,6 +109,51 @@ void context_add_variable(context_t *ctx, const char *name, value_t *value)
     }
 }
 
+/* Free a variable structure, its name string, and its value payload */
+void variable_free(variable_t *var)
+{
+    if (var == NULL) {
+        return;
+    }
+    if (var->value != NULL) {
+        val_free(var->value);
+        var->value = NULL;
+    }
+    if (var->name != NULL) {
+        tracked_free((void *)var->name);
+        var->name = NULL;
+    }
+    tracked_free(var);
+}
+
+/* Free dynamically allocated parameter array and name strings */
+void params_free(param_t *params, int param_count)
+{
+    if (params == NULL) {
+        return;
+    }
+    for (int i = 0; i < param_count; i++) {
+        if (params[i].name != NULL) {
+            tracked_free(params[i].name);
+            params[i].name = NULL;
+        }
+    }
+    tracked_free(params);
+}
+
+/* Free an entire function_t structure and its owned parameters */
+void function_free(function_t *func)
+{
+    if (func == NULL) {
+        return;
+    }
+    if (func->type == FUNC_TI && func->params != NULL) {
+        params_free(func->params, func->param_count);
+        func->params = NULL;
+    }
+    tracked_free(func);
+}
+
 /* Free all variables and internal structures inside a context scope */
 void context_free_internal(context_t *ctx)
 {
@@ -113,28 +161,71 @@ void context_free_internal(context_t *ctx)
         return;
     }
 
-    for (int i = 0; i < ctx->variable_count; i++) {
-        variable_t *var = ctx->variables[i];
-        if (var) {
-            if (var->value) {
-                val_free_internal(var->value);
-                tracked_free(var->value);
-            }
-            if (var->name) {
-                tracked_free((void *)var->name);
-            }
-            tracked_free(var);
+    /* Free variables */
+    if (ctx->variables != NULL) {
+        for (int i = 0; i < ctx->variable_count; i++) {
+            variable_free(ctx->variables[i]);
         }
+        tracked_free(ctx->variables);
+        ctx->variables = NULL;
+        ctx->variable_count = 0;
     }
 
-    tracked_free(ctx->variables);
-    ctx->variables = NULL;
-    ctx->variable_count = 0;
+    /* Free functions */
+    if (ctx->functions != NULL) {
+        for (int i = 0; i < ctx->function_count; i++) {
+            function_free(ctx->functions[i]);
+        }
+        tracked_free(ctx->functions);
+        ctx->functions = NULL;
+        ctx->function_count = 0;
+    }
 
-    /* Free any unconsumed return value owned by this context scope */
-    if (ctx->return_value) {
-        val_free_internal(ctx->return_value);
-        tracked_free(ctx->return_value);
+    /* Free unconsumed return value */
+    if (ctx->return_value != NULL) {
+        val_free(ctx->return_value);
         ctx->return_value = NULL;
     }
+}
+
+
+/**
+ * @brief Add a newly defined function to the given context scope. */
+void context_add_function(context_t *ctx, function_t *func)
+{
+    if (ctx == NULL || func == NULL) {
+        return;
+    }
+
+    /* Append function symbol table in context */
+    function_t **temp = tracked_realloc(
+        ctx->functions,
+        sizeof(function_t *) * (ctx->function_count + 1)
+    );
+
+    if (temp == NULL) {
+        ti_log("[Runtime Error] Out of memory when allocating function table\n");
+        ti_fatal();
+        return;
+    }
+
+    ctx->functions = temp;
+    ctx->functions[ctx->function_count] = func;
+    ctx->function_count++;
+}
+
+/**
+ * @brief Find a function by name walking up from the current context to root parent. */
+function_t *context_find_function(context_t *ctx, const char *function_name)
+{
+    context_t *current = ctx;
+    while (current != NULL) {
+        for (int i = 0; i < current->function_count; i++) {
+            if (strcmp(current->functions[i]->name, function_name) == 0) {
+                return current->functions[i]; // found funciton 
+            }
+        }
+        current = current->parent; // Walk up to parent
+    }
+    return NULL; // Not find throguh all contexts
 }

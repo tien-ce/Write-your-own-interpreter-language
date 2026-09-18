@@ -2,10 +2,13 @@
 #define TI_FUNCTION_H
 
 #include "value.h"
-#include "context.h"
 #include "AST.h"
 #include "ti_type.h"
 #include <stdbool.h>
+
+/* Forward declaration to resolve circular dependency with context.h */
+struct CONTEXT_STRUCT;
+typedef struct CONTEXT_STRUCT context_t;
 
 #ifdef __cplusplus
 extern "C" {
@@ -57,7 +60,7 @@ bool register_builtin_function(const char *name, val_type_t return_type, param_t
  * @param argc Number of arguments passed.
  * @return Evaluated return value_t (or NULL).
  */
-value_t *run_function(context_t *ctx, function_t *func, value_t **argv, int argc);
+value_t *run_function(context_t *ctx, function_t *func, value_t **argv, int argc, ast_t *node);
 
 /**
  * @brief Execute a user-defined Ti function.
@@ -67,7 +70,21 @@ value_t *run_function(context_t *ctx, function_t *func, value_t **argv, int argc
  * @param argc Number of arguments passed.
  * @return Evaluated return value_t (or NULL).
  */
-value_t *run_ti_function(context_t *ctx, function_t *func, value_t **argv, int argc);
+value_t *run_ti_function(context_t *ctx, function_t *func, value_t **argv, int argc, ast_t *node);
+
+/**
+ * @brief Free dynamically allocated parameter array and name strings.
+ * @param params Parameter array pointer.
+ * @param param_count Number of parameters.
+ */
+void params_free(param_t *params, int param_count);
+
+/**
+ * @brief Free an entire function_t structure and its owned parameters.
+ * @param func Pointer to function_t.
+ */
+void function_free(function_t *func);
+
 
 #ifdef __cplusplus
 }

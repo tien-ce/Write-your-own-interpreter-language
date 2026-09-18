@@ -7,10 +7,11 @@
 /* -------------------- Public Functions -------------------- */
 
 /* Initialize AST node */
-ast_t *ast_init(int type)
+ast_t *ast_init(int type, int line)
 {
     ast_t *ast = tracked_calloc(1, sizeof(struct AST_STRUCT));
     ast->type = type;
+    ast->line = line;
     return ast;
 }
 

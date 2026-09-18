@@ -18,7 +18,7 @@ static bool eval_boolean_condition(context_t *ctx, ast_t *cond_node)
 {
     value_t *value = visitor_visit(ctx, cond_node);
     if (!value || value->type != VAL_BOOL) {
-        ti_log("[ERROR]: Unexpected type %d, only expect bool value\n", value ? (int)value->type : -1);
+        ti_log("[Runtime Error] Unexpected type %d, only expect bool value at line %d\n", value ? (int)value->type : -1, cond_node->line);
         ti_fatal();
     }
     

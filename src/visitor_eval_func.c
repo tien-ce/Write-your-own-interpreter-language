@@ -12,39 +12,54 @@
 
 /* -------------------- Function Registry Table -------------------- */
 
-static function_t *s_functions = NULL;
-static int s_function_count = 0;
+static function_t *s_bultin_functions = NULL;
+static int s_bultin_function_count = 0;
+
+/**
+ * @brief Find a built-in native function by name.
+ * @param name Function identifier name in Ti scripts.
+ * @return Pointer to function_t if found, NULL otherwise.
+ */
+static function_t *builtin_find_function(const char *name)
+{
+    for (int i = 0; i < s_bultin_function_count; i++) {
+        if (strcmp(name, s_bultin_functions[i].name) == 0) {
+            return &s_bultin_functions[i];
+        }
+    }
+    return NULL;
+}
 
 /**
  * @brief Register a native C function into the interpreter global functions table.
- * @param name Function name in Ti scripts.
- * @param return_type Declared return value type.
- * @param params Array of parameter metadata (or NULL).
- * @param param_count Number of parameters (-1 for variadic).
- * @param function Native C callback function.
- * @return true on success, false if name exists or out of memory.
- */
+* @param name Function name in Ti scripts.
+* @param return_type Declared return value type.
+* @param params Array of parameter metadata (or NULL).
+* @param param_count Number of parameters (-1 for variadic).
+* @param function Native C callback function.
+* @return true on success, false if name exists or out of memory.
+*/
 bool register_builtin_function(const char *name, val_type_t return_type, param_t *params, int param_count, native_fn_t function) 
 {
-    for (int i = 0; i < s_function_count; i++) {
-        if (strcmp(name, s_functions[i].name) == 0) {
-            ti_log("Function name already exists\n");
-            return false;
-        }
+for (int i = 0; i < s_bultin_function_count; i++) {
+    if (strcmp(name, s_bultin_functions[i].name) == 0) {
+        ti_log("Function name already exists\n");
+        return false;
     }
-    function_t *temp = tracked_realloc(s_functions, sizeof(function_t) * (s_function_count + 1));
+    }
+    function_t *temp = tracked_realloc(s_bultin_functions, sizeof(function_t) * (s_bultin_function_count + 1));
     if (temp == NULL) {
         ti_log("Memory issue\n");
         return false;
     }
-    s_functions = temp;
-    s_functions[s_function_count].name = name;
-    s_functions[s_function_count].type = FUNC_BUILTIN;
-    s_functions[s_function_count].return_type = return_type;
-    s_functions[s_function_count].params = params;
-    s_functions[s_function_count].param_count = param_count;
-    s_functions[s_function_count].native_fn = function;
-    s_function_count++;
+    s_bultin_functions = temp;
+    s_bultin_functions[s_bultin_function_count].name = name;
+    s_bultin_functions[s_bultin_function_count].type = FUNC_BUILTIN;
+    s_bultin_functions[s_bultin_function_count].return_type = return_type;
+    s_bultin_functions[s_bultin_function_count].params = params;
+    s_bultin_functions[s_bultin_function_count].param_count = param_count;
+    s_bultin_functions[s_bultin_function_count].native_fn = function;
+    s_bultin_function_count++;
     return true;
 }
 
@@ -58,7 +73,7 @@ bool register_builtin_function(const char *name, val_type_t return_type, param_t
  * @param argc Number of arguments passed.
  * @return Evaluated return value_t (or NULL).
  */
-value_t *run_ti_function(context_t *ctx, function_t *func, value_t **argv, int argc)
+value_t *run_ti_function(context_t *ctx, function_t *func, value_t **argv, int argc, ast_t *node)
 {
     /* Create new context for function */
     (void)ctx; //Function only connect with global context (not from caller)
@@ -81,10 +96,10 @@ value_t *run_ti_function(context_t *ctx, function_t *func, value_t **argv, int a
 
     /* Capture the trap signal */ 
     if (func_ctx->flow_state == FLOW_BREAK) {
-        ti_log("[Runtime Error] 'break' statement not within a loop inside function '%s'\n", func->name);
+        ti_log("[Runtime Error] 'break' statement not within a loop inside function '%s' at line %d\n", func->name, node->line);
         ti_fatal();
     } else if (func_ctx->flow_state == FLOW_CONTINUE) {
-        ti_log("[Runtime Error] 'continue' statement not within a loop inside function '%s'\n", func->name);
+        ti_log("[Runtime Error] 'continue' statement not within a loop inside function '%s' at line %d\n", func->name, node->line);
         ti_fatal();
     }
 
@@ -100,7 +115,7 @@ value_t *run_ti_function(context_t *ctx, function_t *func, value_t **argv, int a
         /* The function end but not meet return */
         if (func->return_type != VAL_VOID)
         {
-            ti_log("[Runtime Error] Non-void function '%s' reached end of body without returning a value\n", func->name);
+            ti_log("[Runtime Error] Non-void function '%s' reached end of body without returning a value at line %d\n", func->name, node->line);
             ti_fatal();
         }
         else {
@@ -111,10 +126,11 @@ value_t *run_ti_function(context_t *ctx, function_t *func, value_t **argv, int a
     /* Checking the return value and expected return value*/
     if (ret_val != NULL && ret_val->type != func->return_type)
     {
-        ti_log("[Runtime Error] Function '%s' declared to return %s, but returned %s\n",
+        ti_log("[Runtime Error] Function '%s' declared to return %s, but returned %s at line %d\n",
                func->name,
                val_type_to_str(func->return_type),
-               ret_val ? val_type_to_str(ret_val->type) : "null");
+               ret_val ? val_type_to_str(ret_val->type) : "null",
+               node->line);
         ti_fatal();
     }
     context_free(func_ctx); // Reclaim stack frame of funciton
@@ -131,20 +147,19 @@ value_t *eval_function_definition(context_t *ctx, ast_t *node)
 {
     (void)ctx;
     const char *name = node->value.function_definition.func_name;
-    for (int i = 0; i < s_function_count; i++) {
-        if (strcmp(name, s_functions[i].name) == 0) {
-            ti_log("[ERROR]: Redefinition of function '%s'\n", name);
+    context_t *global_ctx = visitor_get_global_context();
+    if (builtin_find_function(name) != NULL || context_find_function(global_ctx, name) != NULL) {
+            ti_log("[Runtime Error] Redefinition of function '%s' at line %d\n", name, node->line);
             ti_fatal();
             return NULL;
-        }
     }
-    function_t *temp = tracked_realloc(s_functions, sizeof(function_t) * (s_function_count + 1));
+    function_t *temp = tracked_realloc(s_bultin_functions, sizeof(function_t) * (s_bultin_function_count + 1));
     if (temp == NULL) {
-        ti_log("Memory issue\n");
+        ti_log("[Runtime Error] Memory issue at line %d\n", node->line);
         ti_fatal();
         return NULL;
     }
-    s_functions = temp;
+    s_bultin_functions = temp;
 
     int param_count = node->value.function_definition.param_count;
     param_t *params = NULL;
@@ -157,13 +172,13 @@ value_t *eval_function_definition(context_t *ctx, ast_t *node)
         }
     }
 
-    s_functions[s_function_count].name = name;
-    s_functions[s_function_count].type = FUNC_TI;
-    s_functions[s_function_count].return_type = node->value.function_definition.return_type;
-    s_functions[s_function_count].params = params;
-    s_functions[s_function_count].param_count = param_count;
-    s_functions[s_function_count].def = node;
-    s_function_count++;
+    s_bultin_functions[s_bultin_function_count].name = name;
+    s_bultin_functions[s_bultin_function_count].type = FUNC_TI;
+    s_bultin_functions[s_bultin_function_count].return_type = node->value.function_definition.return_type;
+    s_bultin_functions[s_bultin_function_count].params = params;
+    s_bultin_functions[s_bultin_function_count].param_count = param_count;
+    s_bultin_functions[s_bultin_function_count].def = node;
+    s_bultin_function_count++;
     return NULL;
 }
 
@@ -175,12 +190,12 @@ value_t *eval_function_definition(context_t *ctx, ast_t *node)
  * @param argc Number of arguments passed.
  * @return Evaluated return value_t (or NULL).
  */
-value_t *run_function(context_t *ctx, function_t *func, value_t **argv, int argc)
+value_t *run_function(context_t *ctx, function_t *func, value_t **argv, int argc, ast_t *node)
 {
     /* 1. Check argument count (if not variadic) */
     if (func->param_count >= 0 && argc != func->param_count) {
-        ti_log("[ERROR]: Function '%s' expects %d argument(s), but received %d\n",
-               func->name, func->param_count, argc);
+        ti_log("[Runtime Error] Function '%s' expects %d argument(s), but received %d at line %d\n",
+               func->name, func->param_count, argc, node->line);
         ti_fatal();
         return NULL;
     }
@@ -188,11 +203,12 @@ value_t *run_function(context_t *ctx, function_t *func, value_t **argv, int argc
     /* 2. Check argument types against declared parameter types */
     for (int i = 0; i < func->param_count; i++) {
         if (argv[i]->type != func->params[i].type) {
-            ti_log("[ERROR]: Function '%s' parameter %d ('%s') expected type %s, but got %s\n",
+            ti_log("[Runtime Error] Function '%s' parameter %d ('%s') expected type %s, but got %s at line %d\n",
                    func->name, i + 1,
                    func->params[i].name ? func->params[i].name : "unnamed",
                    val_type_to_str(func->params[i].type),
-                   val_type_to_str(argv[i]->type));
+                   val_type_to_str(argv[i]->type),
+                   node->line);
             ti_fatal();
             return NULL;
         }
@@ -202,7 +218,7 @@ value_t *run_function(context_t *ctx, function_t *func, value_t **argv, int argc
     if (func->type == FUNC_BUILTIN) {
         return func->native_fn(argv, argc);
     } else if (func->type == FUNC_TI) {
-        return run_ti_function(ctx, func, argv, argc);
+        return run_ti_function(ctx, func, argv, argc, node);
     }
 
     return NULL;
@@ -223,23 +239,23 @@ value_t *eval_function_call(context_t *ctx, ast_t *node)
     for (int i = 0; i < argc; i++) {
         value_t *value = visitor_visit(ctx, node->value.function_call.args[i]);
         if (value == NULL) {
-            ti_log("[ERROR]: Argument %d in call to '%s' evaluated to NULL\n", i, node->value.function_call.func_name);
+            ti_log("[Runtime Error] Argument %d in call to '%s' evaluated to NULL at line %d\n", i, node->value.function_call.func_name, node->line);
             ti_fatal();
         }
         argv[i] = value;
     }
 
     bool found = false;
-    for (int i = 0; i < s_function_count; i++) {
-        if (strcmp(node->value.function_call.func_name, s_functions[i].name) == 0) {
+    for (int i = 0; i < s_bultin_function_count; i++) {
+        if (strcmp(node->value.function_call.func_name, s_bultin_functions[i].name) == 0) {
             found = true;
-            ret = run_function(ctx, &s_functions[i], argv, argc);
+            ret = run_function(ctx, &s_bultin_functions[i], argv, argc, node);
             break;
         }
     }
 
     if (!found) {
-        ti_log("[ERROR]: Call to undefined function '%s'\n", node->value.function_call.func_name);
+        ti_log("[Runtime Error] Call to undefined function '%s' at line %d\n", node->value.function_call.func_name, node->line);
         ti_fatal();
     }
 

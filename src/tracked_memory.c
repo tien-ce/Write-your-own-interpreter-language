@@ -85,7 +85,6 @@ void *tracked_calloc(size_t num, size_t size)
 void *tracked_realloc(void *ptr, size_t new_size)
 {
     if (ptr == NULL) {
-        ti_log("[Warn]: Reallocating NULL pointer, delegating to tracked_malloc\n");
         return tracked_malloc(new_size);
     }
     alloc_hdr_t *hdr = (alloc_hdr_t *)ptr - 1;

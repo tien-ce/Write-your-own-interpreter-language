@@ -1,6 +1,7 @@
 #ifndef TI_CONTEXT_H
 #define TI_CONTEXT_H
 
+#include "function.h"
 #include "value.h"
 
 #ifdef __cplusplus
@@ -29,8 +30,13 @@ typedef struct VARIABLE_STRUCT {
 
 typedef struct CONTEXT_STRUCT {
     struct CONTEXT_STRUCT *parent; // Enclosing parent scope (or NULL for root)
+    /* Variable symbol table */
     variable_t **variables;        // Symbol table of local variables
     int variable_count;            // Number of registered local variables
+
+    /* Function symbol table */
+    function_t **functions;
+    int function_count;
 
     /* Control flow state */
     flow_state_t flow_state;       // Active flow interruption flag
@@ -63,6 +69,13 @@ void context_free_internal(context_t *ctx);
  * @return Newly allocated variable_t.
  */
 variable_t *variable_init(const char *variable_name);
+
+/**
+ * @brief Free a variable structure, its name string, and its value payload.
+ * @param var Pointer to variable_t.
+ */
+void variable_free(variable_t *var);
+
 
 /**
  * @brief Find a variable by name walking up from the current context to root parent.
@@ -98,6 +111,21 @@ void visitor_set_global_context(context_t *ctx);
  * @return Pointer to global context_t.
  */
 context_t *visitor_get_global_context(void);
+
+/**
+ * @brief Add a newly defined function to the given context scope.
+ * @param ctx Pointer to target context scope.
+ * @param func Function struct.
+ */
+void context_add_function(context_t *ctx, function_t *func);
+
+/**
+ * @brief Find a function by name walking up from the current context to root parent.
+ * @param ctx Starting context scope.
+ * @param function_name Identifier name to look up.
+ * @return Pointer to func_t if found, NULL otherwise.
+ */
+function_t *context_find_function(context_t *ctx, const char *function_name);
 #ifdef __cplusplus
 }
 #endif

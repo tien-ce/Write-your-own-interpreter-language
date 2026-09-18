@@ -39,6 +39,7 @@ typedef struct AST_STRUCT {
     /* 4. ROOT / PROGRAM */
     AST_PROGRAM, 
   } type;                     // Node type tag
+  int line;                   // Source line number where node was created
 
   union {
     /* 1. LITERALS and IDENTIFIERS */
@@ -145,11 +146,12 @@ typedef struct AST_STRUCT {
 /* -------------------- Public Functions -------------------- */
 
 /**
- * @brief Allocate and initialize an AST node with the given type.
+ * @brief Allocate and initialize an AST node with the given type and source line.
  * @param type Node type enum.
+ * @param line Source line number.
  * @return Pointer to newly allocated ast_t.
  */
-ast_t *ast_init(int type);
+ast_t *ast_init(int type, int line);
 
 /**
  * @brief Recursively free an AST node and all its children.

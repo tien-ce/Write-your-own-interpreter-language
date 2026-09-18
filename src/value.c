@@ -69,6 +69,17 @@ void val_free_internal(value_t *value)
     }
 }
 
+/* Free an entire value_t structure along with its dynamic payload */
+void val_free(value_t *value)
+{
+    if (value == NULL) {
+        return;
+    }
+    val_free_internal(value);
+    tracked_free(value);
+}
+
+
 /**
  * @brief Create an independent deep copy of a value_t structure.
 */
