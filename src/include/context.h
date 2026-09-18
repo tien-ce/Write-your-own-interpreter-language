@@ -87,6 +87,17 @@ value_t *context_copy_value(variable_t *variable);
  */
 void context_add_variable(context_t *ctx, const char *name, value_t *value);
 
+/**
+ * @brief Register the root execution context as the global context.
+ * @param ctx Pointer to global context scope (or NULL to unregister).
+ */
+void visitor_set_global_context(context_t *ctx);
+
+/**
+ * @brief Retrieve the active global execution context.
+ * @return Pointer to global context_t.
+ */
+context_t *visitor_get_global_context(void);
 #ifdef __cplusplus
 }
 #endif

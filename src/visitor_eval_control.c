@@ -1,3 +1,4 @@
+#include "include/context.h"
 #include "include/visitor_internal.h"
 #include "include/tracked_memory.h"
 #include "TienInterpreter.h"
@@ -20,6 +21,7 @@ static bool eval_boolean_condition(context_t *ctx, ast_t *cond_node)
         ti_log("[ERROR]: Unexpected type %d, only expect bool value\n", value ? (int)value->type : -1);
         ti_fatal();
     }
+    
 
     bool res = value->bool_val;
     val_free_internal(value);
@@ -66,6 +68,7 @@ static void visitor_execute_body(context_t *parent_ctx, ast_t *body_node)
 
 /**
  * @brief Execute a while loop statement node.
+ * Consume break, continue signal.
  * @param ctx Pointer to context.
  * @param node While statement AST node.
  * @return Always NULL.
@@ -74,6 +77,24 @@ value_t *eval_while_statement(context_t *ctx, ast_t *node)
 {
     while (eval_boolean_condition(ctx, node->value.while_statement.condition)) {
         visitor_execute_body(ctx, node->value.while_statement.body);
+        /* Capture the follow flag */
+        if (ctx->flow_state == FLOW_BREAK)
+        {
+            /* Consume the brake */
+            ctx->flow_state = FLOW_NORMAL;
+            break; 
+        }
+        else if (ctx->flow_state == FLOW_CONTINUE)
+        {
+            /* Consume the brake */
+            ctx->flow_state = FLOW_NORMAL;
+            continue; 
+        }
+        else if (ctx->flow_state == FLOW_RETURN)
+        {
+            /* Reserve the signal */
+            break; 
+        }
     }
     return NULL;
 }

@@ -1,4 +1,5 @@
 #include "TienInterpreter.h"
+#include "include/context.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -71,9 +72,19 @@ void ti_run_string(const char *source_code)
     parser_t *parser = parser_init(lexer);
     ast_t *root = parser_parse(parser);
     context_t *context = context_init();
-
+    visitor_set_global_context(context);
     visitor_visit(context, root);
-
+    /* Capture if jump statment not consume unitl get the main program */
+    if (context->flow_state == FLOW_BREAK) {
+        ti_log("[Runtime Error] 'break' statement not within a loop\n");
+        ti_fatal();
+    } else if (context->flow_state == FLOW_CONTINUE) {
+        ti_log("[Runtime Error] 'continue' statement not within a loop\n");
+        ti_fatal();
+    } else if (context->flow_state == FLOW_RETURN) {
+        context->flow_state = FLOW_NORMAL;
+    }
+    visitor_set_global_context(NULL);
     tracked_free(parser);
     context_free(context);
     tracked_free(lexer);

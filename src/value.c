@@ -1,5 +1,6 @@
 #include "include/value.h"
 #include "include/tracked_memory.h"
+#include "TienInterpreter.h"
 #include <string.h>
 
 /* -------------------- Value Constructors & Destructors -------------------- */
@@ -66,4 +67,46 @@ void val_free_internal(value_t *value)
         tracked_free(value->string_val);
         value->string_val = NULL;
     }
+}
+
+/**
+ * @brief Create an independent deep copy of a value_t structure.
+*/
+value_t *val_copy(const value_t *val)
+{
+    if (val == NULL)
+    {
+        return NULL;
+    }
+    /* Create struct value_t with same value type */
+    value_t *copy = val_init(val->type);
+    switch(val->type)
+    {
+        case VAL_INT:
+            copy->int_val = val->int_val;
+            break;
+
+        case VAL_FLOAT:
+            copy->float_val = val->float_val;
+            break;
+
+        case VAL_STRING:
+        /* Deep copy string value*/
+            copy->string_val = val->string_val ? tracked_strdup(val->string_val) : NULL;
+            break;
+
+        case VAL_BOOL:
+            copy->bool_val = val->bool_val;
+            break;
+
+        case VAL_VOID:
+        case VAL_NULL:
+            break;
+
+        default:
+            ti_log("[ERROR]: Unknown value type %d in val_copy\n", (int)val->type);
+            ti_fatal();
+        break;
+    }
+    return copy;
 }

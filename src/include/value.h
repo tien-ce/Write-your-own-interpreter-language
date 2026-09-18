@@ -75,6 +75,12 @@ value_t *val_new_void(void);
  */
 void val_free_internal(value_t *value);
 
+/**
+ * @brief Create an independent deep copy of a value_t structure.
+ * @param val Source value pointer to clone.
+ * @return Newly allocated value_t clone, or NULL if source is NULL.
+ */
+value_t *val_copy(const value_t *val);
 #ifdef __cplusplus
 }
 #endif

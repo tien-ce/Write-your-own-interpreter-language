@@ -1,4 +1,6 @@
+#include "include/context.h"
 #include "include/ti_type.h"
+#include "include/value.h"
 #include "include/visitor_internal.h"
 #include "include/tracked_memory.h"
 #include "include/debug.h"
@@ -58,8 +60,65 @@ bool register_builtin_function(const char *name, val_type_t return_type, param_t
  */
 value_t *run_ti_function(context_t *ctx, function_t *func, value_t **argv, int argc)
 {
-  /* Create new context for function */
-  return NULL;
+    /* Create new context for function */
+    (void)ctx; //Function only connect with global context (not from caller)
+
+    /* Get gloabl context and create new stack frame*/ 
+    context_t *gloabl_ctx = visitor_get_global_context();
+    context_t *func_ctx = context_init();
+    func_ctx->parent = gloabl_ctx;
+
+    /* Copy the argument value and create variables for current context*/ 
+    // Checking match between param count and param types should be done before call this function */
+    for (int i = 0; i < argc; i ++)
+    {
+        value_t *param_val = val_copy(argv[i]);
+        context_add_variable(ctx, tracked_strdup(func->params[i].name), param_val);
+    }
+    /* Execute the body function */
+    ast_t *body = func->def->value.function_definition.body;
+    visitor_visit(func_ctx, body);
+
+    /* Capture the trap signal */ 
+    if (func_ctx->flow_state == FLOW_BREAK) {
+        ti_log("[Runtime Error] 'break' statement not within a loop inside function '%s'\n", func->name);
+        ti_fatal();
+    } else if (func_ctx->flow_state == FLOW_CONTINUE) {
+        ti_log("[Runtime Error] 'continue' statement not within a loop inside function '%s'\n", func->name);
+        ti_fatal();
+    }
+
+    /* Havest (get) the return value */ 
+    value_t *ret_val = NULL;
+    if (func_ctx->flow_state == FLOW_RETURN)
+    {
+        ret_val = func_ctx->return_value;
+        func_ctx->return_value = NULL; // Hand over the onwer of return value to avoid context freeing
+        func_ctx->flow_state = FLOW_NORMAL; // Consume the follow flag
+    }
+    else {
+        /* The function end but not meet return */
+        if (func->return_type != VAL_VOID)
+        {
+            ti_log("[Runtime Error] Non-void function '%s' reached end of body without returning a value\n", func->name);
+            ti_fatal();
+        }
+        else {
+            ret_val = val_new_void();
+        }
+    }
+
+    /* Checking the return value and expected return value*/
+    if (ret_val != NULL && ret_val->type != func->return_type)
+    {
+        ti_log("[Runtime Error] Function '%s' declared to return %s, but returned %s\n",
+               func->name,
+               val_type_to_str(func->return_type),
+               ret_val ? val_type_to_str(ret_val->type) : "null");
+        ti_fatal();
+    }
+    context_free(func_ctx); // Reclaim stack frame of funciton
+    return ret_val;
 }
 
 /**
