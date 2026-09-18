@@ -44,6 +44,10 @@ void ast_free(ast_t *ast)
         if (ast->value.function_definition.params) {
             tracked_free(ast->value.function_definition.params);
         }
+        if (ast->value.function_definition.func_name) 
+        {
+            tracked_free(ast->value.function_definition.func_name);
+        }
         ast_free(ast->value.function_definition.body);
         break;
     }

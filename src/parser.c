@@ -102,6 +102,7 @@ static ast_t *parser_parse_param(parser_t *parser)
     parser_eat(parser, parser->current_token->type); // Eat <param_type>
 
     char *param_name = parser->current_token->value;
+    parser->current_token->value = NULL; // Change the onwer to ast instead of token
     parser_eat(parser, TOKEN_ID); // Eat param_name
 
     ast_t *param_node = ast_init(AST_PARAM);
@@ -135,6 +136,7 @@ static ast_t *parser_parse_function_definition(parser_t *parser)
     parser_eat(parser, parser->current_token->type); // Eat <return_type>
 
     char *func_name = parser->current_token->value;
+    parser->current_token->value = NULL; // Change the onwer to ast instead of token
     parser_eat(parser, TOKEN_ID); // Eat func_name
 
     parser_eat(parser, TOKEN_LPAREN); // Eat '('
@@ -200,6 +202,11 @@ static void parser_eat(parser_t *parser, int expected_type)
     if ((int)parser->current_token->type == expected_type) {
         token_t *old_token = parser->current_token;
         parser->current_token = lexer_get_next_token(parser->lexer);
+        if(old_token->value != NULL)
+        {
+          tracked_free(old_token->value); // Free the value of old token
+          old_token->value = NULL;
+        }
         tracked_free(old_token);
         old_token = NULL;
     } else {
@@ -432,6 +439,7 @@ static ast_t *parser_parse_primary(parser_t *parser)
     case TOKEN_STRING: {
         ast_t *string_node = ast_init(AST_STRING_LITERAL);
         string_node->value.string_value = parser->current_token->value;
+        parser->current_token->value = NULL; // Change the onwer to ast instead of token
         parser_eat(parser, TOKEN_STRING);
         return string_node;
     }
@@ -466,6 +474,7 @@ static ast_t *parser_parse_primary(parser_t *parser)
     }    
     case TOKEN_ID: {
         char *id_name = parser->current_token->value;
+        parser->current_token->value = NULL; // Change the onwer to ast instead of token
         parser_eat(parser, TOKEN_ID);
 
         /* Function call: id(...) */
@@ -531,6 +540,7 @@ static ast_t *parser_parse_variable_definition(parser_t *parser)
     parser_eat(parser, parser->current_token->type); // Eat <variable_type>
 
     char *variable_name = parser->current_token->value;
+    parser->current_token->value = NULL; // Give the onwer to AST
     parser_eat(parser, TOKEN_ID); // Eat variable_name
 
     parser_eat(parser, TOKEN_EQUALS); // Eat '='
