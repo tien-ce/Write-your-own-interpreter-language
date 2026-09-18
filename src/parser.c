@@ -72,7 +72,12 @@ static int token_type_to_op(parser_t *parser, int token_type)
 static token_t *parser_peek(parser_t *parser)
 {
     lexer_t *temp_lexer = lexer_copy(parser->lexer);
-    (void)lexer_get_next_token(temp_lexer);
+    token_t *discared = lexer_get_next_token(temp_lexer);
+    if(discared->value != NULL)
+    {
+      tracked_free(discared->value);
+    }
+    tracked_free(discared);
     token_t *next_token = lexer_get_next_token(temp_lexer);
     tracked_free((void *)temp_lexer);
     return next_token;
@@ -178,14 +183,20 @@ static ast_t *parser_parse_function_definition(parser_t *parser)
 static ast_t *parser_parse_definition(parser_t *parser)
 {
     token_t *next_token = parser_peek(parser);
-    switch ((int)next_token->type) {
+    int next_type = (int)next_token->type;
+    if (next_token->value != NULL) {
+        tracked_free(next_token->value);
+        next_token->value = NULL;
+    }
+    tracked_free(next_token);
+    switch (next_type) {
     case TOKEN_LPAREN:
         return parser_parse_function_definition(parser);
     case TOKEN_EQUALS:
         return parser_parse_variable_definition(parser);
     default:
         ti_log("[Parser Error] Unexpected token %s in definition at line %d\n",
-               token_to_str(next_token->type), parser->lexer->line_num);
+               token_to_str(next_type), parser->lexer->line_num);
         ti_log_line(parser->lexer->line);
         ti_fatal();
         return NULL;
