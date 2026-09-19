@@ -32,8 +32,9 @@ typedef struct VALUE_STRUCT {
 - **Tagged Union Design:**
   - `type`: Discriminating tag identifying which union field is valid.
   - `string_val`: The only field requiring heap management (`tracked_strdup` / `tracked_free`).
-- **Destructor (`val_free_internal`):**
-  Only frees `string_val` when `type == VAL_STRING`. Never touches numeric fields.
+- **Destructor (`val_free_internal` & `val_free`):**
+  - `val_free_internal`: Frees internal dynamic payload (`string_val` when `type == VAL_STRING`). Does not deallocate the `value_t` container.
+  - `val_free`: Complete destructor. Checks for `NULL`, invokes `val_free_internal`, and releases the `value_t` container via `tracked_free`.
 
 ---
 
@@ -45,7 +46,7 @@ typedef struct VARIABLE_STRUCT {
 } variable_t;
 ```
 - **Purpose:** Represents an active variable binding in a specific scope.
-- **Ownership:** Owns `value`. When the variable is updated (in assignment), the old `value` is deallocated via `val_free_internal` + `tracked_free` before binding the new `value_t`.
+- **Ownership & Destructor (`variable_free`):** Owns `value` and heap-allocated `name`. `variable_free` deallocates `var->value` via `val_free`, releases `(void *)var->name` via `tracked_free`, and deallocates `var` itself.
 
 ---
 
@@ -67,12 +68,14 @@ typedef struct CONTEXT_STRUCT {
 } context_t;
 ```
 - **Purpose:** Implements a lexical environment frame (call frame / block scope) augmented with control flow signal propagation.
+- **Decoupled Function Storage:** Functions are decoupled from `context_t`. Built-in functions and user-defined script functions reside in dedicated symbol tables within `src/visitor_eval_func.c`. User function lifecycle is coordinated with the global execution context through co-occurrent teardown (`visitor_set_global_context(NULL)` triggering `user_functions_clear()`).
 - **Scope Hierarchy:**
   - Root scope has `parent = NULL`.
   - Child scopes (inside `if`, `while`, or function bodies) point their `parent` pointer to the enclosing context.
 - **Control Flow Interruption:**
   - When non-sequential control flow occurs (`return`, `break`, `continue`), `flow_state` is updated from `FLOW_NORMAL` to the corresponding flag.
   - If returning a value, `return_value` holds the evaluated `value_t *`.
+
 
 ---
 
@@ -120,9 +123,10 @@ value_t *context_copy_value(variable_t *variable)
 ---
 
 ### 2.4. Scope Destruction (`context_free_internal`)
-- Iterates through `0` to `variable_count`:
-  1. Frees variable value via `val_free_internal(var->value)` and `tracked_free(var->value)`.
-  2. Frees `var` struct.
-- Frees the `ctx->variables` pointer array.
-- **Return Value Safety:** If `ctx->return_value != NULL` (e.g. unconsumed return payload due to an error or premature termination), safely frees `ctx->return_value` via `val_free_internal()` and `tracked_free()` to prevent memory leaks.
+- **Variable Clean-up:**
+  - Iterates through `0` to `ctx->variable_count - 1` invoking `variable_free(ctx->variables[i])`.
+  - Frees the `ctx->variables` table via `tracked_free`, resets pointer to `NULL`, and resets count to `0`.
+- **Return Value Safety:** If `ctx->return_value != NULL` (e.g. unconsumed return payload due to an error, loop break, or premature termination), safely deallocates `ctx->return_value` via `val_free(ctx->return_value)` and clears pointer to `NULL`.
 - **Note:** Does **not** modify or free `ctx->parent`, as the parent context belongs to the enclosing caller.
+- **Decoupled Function Teardown:** `context_t` no longer holds or frees function tables. Function records are managed in `src/visitor_eval_func.c` and freed when `visitor_set_global_context(NULL)` triggers `user_functions_clear()`.
+

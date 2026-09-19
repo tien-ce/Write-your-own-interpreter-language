@@ -34,6 +34,7 @@ typedef struct AST_STRUCT {
         AST_NOOP,
         AST_PROGRAM
     } type;
+    int line; // Source line number where node was created, used for runtime error reporting
 
     union {
         int int_value;
@@ -61,6 +62,7 @@ typedef struct AST_STRUCT {
 ### Purpose of the Tagged Union Architecture
 Every AST node represents a syntactical construct. Rather than declaring dozens of separate structs and dealing with complex C casting, `ast_t` uses a **discriminated (tagged) union**:
 - The `type` enum identifies which union variant is currently active.
+- The `line` field records the source code line where the AST node was parsed (from `parser->lexer->line_num`), powering descriptive diagnostics (`[Runtime Error] <message> at line %d`).
 - The `value` union overlays memory so that all AST nodes share a uniform memory size and pointer type (`ast_t *`), allowing homogeneous recursive tree walking.
 
 ### Union Variants & Their Purpose
@@ -88,6 +90,10 @@ Every AST node represents a syntactical construct. Rather than declaring dozens 
 ## 2. Memory Lifecycle & Recursive Destruction (`ast_free`)
 
 Because an AST is an arbitrarily deep recursive hierarchy, deallocation must strictly follow tree traversal rules:
+
+### `ast_init(int type, int line)`
+- Allocates zero-initialized memory (`tracked_calloc(1, sizeof(struct AST_STRUCT))`) for a new node of the given `type`.
+- Captures the source code `line` to enable consistent runtime error diagnostics (`[Runtime Error] <message> at line %d`).
 
 ### `ast_free(ast_t *ast)` (Hard / Critical Logic)
 - **Check Null:** Returns immediately if `!ast`.

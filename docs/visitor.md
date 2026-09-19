@@ -48,8 +48,9 @@ visitor_eval_binary.c  visitor_eval_control.c  visitor_eval_func.c  visitor_eval
 
 ### 2.2. Complex Operator Functions
 
-#### `binary_add(value_t *left, value_t *right)`
+#### `binary_add(value_t *left, value_t *right, int line)`
 - **Polymorphism:** Supports integers, floats, and string concatenation.
+- **Diagnostics:** Emits `[Runtime Error] ... at line %d` before calling `ti_fatal()` on invalid operands.
 - **String Concatenation Logic:**
   ```c
   int length = strlen(s_left) + strlen(s_right) + 1;
@@ -59,10 +60,10 @@ visitor_eval_binary.c  visitor_eval_control.c  visitor_eval_func.c  visitor_eval
   ```
   Allocates exact memory for the concatenated string on the tracked heap.
 
-#### `binary_div(value_t *left, value_t *right)` (Division by Zero Prevention)
+#### `binary_div(value_t *left, value_t *right, int line)` (Division by Zero Prevention)
 - **Zero Divisor Check:**
-  - Integer: `if (right->int_val == 0)` &rarr; logs fatal error `ti_fatal()`.
-  - Float: `if (right->float_val == 0.0f)` &rarr; logs fatal error `ti_fatal()`.
+  - Integer: `if (right->int_val == 0)` &rarr; logs `[Runtime Error] Division by zero error at line %d` and halts via `ti_fatal()`.
+  - Float: `if (right->float_val == 0.0f)` &rarr; logs `[Runtime Error] Division by zero error at line %d` and halts via `ti_fatal()`.
   Guarantees that script errors never trigger an unhandled CPU `SIGFPE` exception.
 
 #### `binary_logical_and` & `binary_logical_or`
@@ -130,7 +131,20 @@ visitor_eval_binary.c  visitor_eval_control.c  visitor_eval_func.c  visitor_eval
 
 ## 5. Functions & Function Registry (`src/visitor_eval_func.c`, `src/include/function.h`)
 
-### Parameter Representation (`param_t`) & Function Representation (`function_t`)
+### 5.1. Dual Table Architecture & Co-Occurrent Teardown
+Function management in `src/visitor_eval_func.c` maintains strict separation between native C bindings and user script functions:
+
+- **Built-in Registry (`s_builtin_functions`):** Static array storing registered host C functions (`native_fn_t`), populated via `register_builtin_function()`.
+- **User Functions Table (`s_user_functions`):** `_Thread_local` dynamic array storing script-defined functions (`FUNC_TI`), isolated per execution thread.
+- **Global Context Binding (`s_global_context`):** `_Thread_local` pointer tracking the active root execution scope via `visitor_set_global_context()` and `visitor_get_global_context()`.
+- **Co-Occurrent Teardown (`user_functions_clear`):**
+  When execution terminates, `src/TienInterpreter.c` unregisters the root environment via `visitor_set_global_context(NULL)`. This immediately triggers `user_functions_clear()`, which:
+  1. Iterates through all registered user functions in `s_user_functions`.
+  2. Invokes `params_free()` on `s_user_functions[i].params` to free heap-allocated parameter names and arrays.
+  3. Releases the dynamic array via `tracked_free(s_user_functions)`.
+  4. Resets `s_user_functions = NULL` and `s_user_function_count = 0`.
+
+### 5.2. Parameter & Function Representation
 ```c
 typedef struct PARAM_STRUCT {
     val_type_t type;          /* Expected parameter type (VAL_INT, VAL_STRING, etc.) */
@@ -150,41 +164,52 @@ typedef struct FUNCTION_STRUCT {
 } function_t;
 ```
 
-- `register_builtin_function`: Registers native C callbacks (`FUNC_BUILTIN`) with full signature metadata:
+- `register_builtin_function`: Registers native C callbacks (`FUNC_BUILTIN`) with full signature metadata into `s_builtin_functions`:
   ```c
   bool register_builtin_function(const char *name, val_type_t return_type, param_t *params, int param_count, native_fn_t function);
   ```
   Sets `params = NULL` and `param_count = -1` for variadic C functions (such as `print`), or explicit `params` and `param_count` for typed native functions (e.g. `delay`, `relay_set_state`).
 
-### `eval_function_definition`
-- Takes the parsed `AST_FUNCTION_DEFINITION` node, checks for redefinition collisions, and registers it into `s_functions`.
-- Extracts declared parameters into a newly allocated `params` array of `param_t` structs, duplicating `param_name` and recording `param_type` and `param_count`.
+### 5.3. Lookup Helpers
+- `builtin_find_function(const char *name)`: Scans `s_builtin_functions` by identifier.
+- `user_find_function(const char *name)`: Scans `s_user_functions` by identifier.
 
-### `eval_function_call`
-1. Evaluates all argument expressions sequentially in the caller's context (`visitor_visit(ctx, ...)`).
-2. Accumulates evaluated argument values into `value_t **argv`.
-3. Looks up function name in `s_functions`.
-4. Delegates execution to the gatekeeper function: `ret = run_function(ctx, &s_functions[i], argv, argc)`.
-5. Cleans up evaluated arguments (`val_free_internal(argv[i])`) and frees `argv`.
+### 5.4. `eval_function_definition`
+- Takes the parsed `AST_FUNCTION_DEFINITION` node.
+- **Redefinition Check:** Verifies that `name` does not collide with either built-in functions (`builtin_find_function`) or previously defined user functions (`user_find_function`). Emits fatal error if a collision occurs.
+- **Allocation:** Expands `s_user_functions` using `tracked_realloc()`.
+- **Parameter Cloning:** If `param_count > 0`, allocates parameter metadata array via `tracked_calloc()` and clones each parameter identifier via `tracked_strdup()`.
+- **Registration:** Populates `name`, `type = FUNC_TI`, `return_type`, `params`, `param_count`, and `def = node`, then increments `s_user_function_count`. Always returns `NULL`.
 
-### `run_function` (Gatekeeper: Type & Count Validation)
-- Declared in `src/include/visitor_internal.h`:
+### 5.5. `eval_function_call`
+1. Evaluates all argument expressions sequentially in the caller's context (`visitor_visit(ctx, args[i])`).
+2. Collects evaluated argument values into `value_t **argv` allocated via `tracked_calloc()`.
+3. **Symbol Resolution Hierarchy:**
+   - First queries user-defined script functions via `user_find_function(func_name)`.
+   - If not found, falls back to native functions via `builtin_find_function(func_name)`.
+   - If neither matches, logs `[Runtime Error] Call to undefined function '%s' at line %d`, halts via `ti_fatal()`, and frees `argv`.
+4. Delegates call execution to `run_function(ctx, func, argv, argc, node)`.
+5. Cleans up evaluated arguments via `val_free(argv[i])` and deallocates `argv` via `tracked_free()`.
+6. Returns the resulting `value_t *`.
+
+### 5.6. `run_function` (Gatekeeper: Type & Count Validation)
+- Signature:
   ```c
-  value_t *run_function(context_t *ctx, function_t *func, value_t **argv, int argc);
+  value_t *run_function(context_t *ctx, function_t *func, value_t **argv, int argc, ast_t *node);
   ```
 - **Execution Flow:**
   1. **Count Check:** If `func->param_count >= 0`, verifies `argc == func->param_count`. Emits fatal error if mismatched.
-  2. **Type Check:** Loops through `0` to `func->param_count - 1`, asserting `argv[i]->type == func->params[i].type`. Emits fatal error with parameter name and type string if mismatched.
+  2. **Type Check:** Loops through `0` to `func->param_count - 1`, asserting `argv[i]->type == func->params[i].type`. Emits fatal error with parameter name, expected type, and actual type at `node->line` if mismatched.
   3. **Dispatch:**
      - `FUNC_BUILTIN`: Calls `func->native_fn(argv, argc)`.
-     - `FUNC_TI`: Calls `run_ti_function(ctx, func, argv, argc)`.
+     - `FUNC_TI`: Calls `run_ti_function(ctx, func, argv, argc, node)`.
 
-### `run_ti_function`
-- Declared in `src/include/visitor_internal.h`:
+### 5.7. `run_ti_function`
+- Signature:
   ```c
-  value_t *run_ti_function(context_t *ctx, function_t *func, value_t **argv, int argc);
+  value_t *run_ti_function(context_t *ctx, function_t *func, value_t **argv, int argc, ast_t *node);
   ```
-- Handles execution of user-defined Ti function definitions in a scoped child context.
+- Handles execution of user-defined Ti function definitions: creates a new stack frame context chained to `visitor_get_global_context()`, binds arguments, evaluates the function body AST, inspects flow state (`FLOW_RETURN`, `FLOW_BREAK`, `FLOW_CONTINUE`), validates return type, and safely unwinds the local frame.
 
 ---
 
