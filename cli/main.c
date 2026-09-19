@@ -54,11 +54,11 @@ int main(int argc, char *argv[])
     //pthread_t thread_id;
     //pthread_create(&thread_id, NULL, do_something, (void*)contents);
     //sleep(3);
-    printf("Main: Created thread successfully.\n");
+    //printf("Main: Created thread successfully.\n");
     contents = read_string_from_file(argv[1]);
     ti_run_string(contents);
     tracked_free(contents);
     //pthread_join(thread_id,NULL);
-    printf("Main: Thread finished execution");
+    //printf("Main: Thread finished execution");
     return 0;
 }
