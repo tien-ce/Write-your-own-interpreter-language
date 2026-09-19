@@ -1,5 +1,10 @@
 #include "TienInterpreter.h"
 #include "include/context.h"
+#include "include/lexer.h"
+#include "include/parser.h"
+#include "include/AST.h"
+#include "include/visitor.h"
+#include "include/tracked_memory.h"
 #include <stdio.h>
 #include <stdlib.h>
 

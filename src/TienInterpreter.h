@@ -6,12 +6,9 @@ extern "C" {
 #endif
 
 #include <stdarg.h>
-#include "include/token.h"
-#include "include/AST.h"
-#include "include/lexer.h"
-#include "include/parser.h"
-#include "include/visitor.h"
-#include "include/tracked_memory.h"
+#include "include/ti_type.h"
+#include "include/value.h"
+#include "include/function.h"
 
 /* -------------------- Platform & Callback Types -------------------- */
 

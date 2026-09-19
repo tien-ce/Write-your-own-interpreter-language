@@ -27,7 +27,7 @@ static char *read_string_from_file(const char *path)
     long length = ftell(file);
     fseek(file, 0, SEEK_SET);
 
-    char *contents = tracked_malloc(length + 1);
+    char *contents = malloc(length + 1);
     fread(contents, 1, length, file);
     contents[length] = '\0';
 
@@ -57,7 +57,7 @@ int main(int argc, char *argv[])
     //printf("Main: Created thread successfully.\n");
     contents = read_string_from_file(argv[1]);
     ti_run_string(contents);
-    tracked_free(contents);
+    free(contents);
     //pthread_join(thread_id,NULL);
     //printf("Main: Thread finished execution");
     return 0;

@@ -1,7 +1,6 @@
 #ifndef TI_CONTEXT_H
 #define TI_CONTEXT_H
 
-#include "function.h"
 #include "value.h"
 
 #ifdef __cplusplus

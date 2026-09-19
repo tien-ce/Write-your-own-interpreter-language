@@ -2,13 +2,15 @@
 #define TI_FUNCTION_H
 
 #include "value.h"
-#include "AST.h"
 #include "ti_type.h"
 #include <stdbool.h>
 
-/* Forward declaration to resolve circular dependency with context.h */
+/* Forward declarations to decouple internal AST and context headers */
 struct CONTEXT_STRUCT;
 typedef struct CONTEXT_STRUCT context_t;
+
+struct AST_STRUCT;
+typedef struct AST_STRUCT ast_t;
 
 #ifdef __cplusplus
 extern "C" {
