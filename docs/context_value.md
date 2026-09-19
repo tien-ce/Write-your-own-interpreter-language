@@ -122,7 +122,20 @@ value_t *context_copy_value(variable_t *variable)
 
 ---
 
-### 2.4. Scope Destruction (`context_free_internal`)
+### 2.4. Modular Destructors Architecture
+
+To ensure strict memory lifecycle control and prevent heap leaks across nested scopes, the runtime implements isolated, single-responsibility destructors:
+
+| Destructor | Target | Responsibility & Memory Invariants |
+| :--- | :--- | :--- |
+| `val_free(value_t *value)` | `value_t *` | Calls `val_free_internal()` to release heap payloads (e.g. `string_val` via `tracked_free`), then deallocates the `value_t` container itself. Tolerates `NULL`. |
+| `variable_free(variable_t *var)` | `variable_t *` | Deallocates variable payload via `val_free(var->value)`, deallocates heap-allocated identifier string `(void *)var->name` via `tracked_free`, and releases the `variable_t` struct. Tolerates `NULL`. |
+| `params_free(param_t *params, int param_count)` | `param_t *` | Traverses parameter metadata array from `0` to `param_count - 1`, frees heap-allocated parameter identifier strings `params[i].name` via `tracked_free`, and releases the `params` contiguous array buffer via `tracked_free`. Tolerates `NULL`. |
+| `function_free(function_t *func)` | `function_t *` | For user-defined functions (`FUNC_TI`), cleans up owned parameter metadata via `params_free(func->params, func->param_count)`, then releases the `function_t` struct via `tracked_free`. Tolerates `NULL`. |
+| `context_free_internal(context_t *ctx)` | `context_t *` | Cleans up local scope bindings: iterates over `ctx->variables`, calling `variable_free` on each entry, and frees `ctx->variables` table. Frees unconsumed `ctx->return_value` via `val_free`. Does not free `ctx` or `ctx->parent`. |
+| `context_free(context_t *ctx)` | `context_t *` | Invokes `context_free_internal(ctx)` to release all scoped bindings, then releases the `context_t` allocation itself via `tracked_free(ctx)`. |
+
+### 2.5. Scope Destruction & Teardown Protocol (`context_free_internal`)
 - **Variable Clean-up:**
   - Iterates through `0` to `ctx->variable_count - 1` invoking `variable_free(ctx->variables[i])`.
   - Frees the `ctx->variables` table via `tracked_free`, resets pointer to `NULL`, and resets count to `0`.

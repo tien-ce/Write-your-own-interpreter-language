@@ -132,13 +132,24 @@ visitor_eval_binary.c  visitor_eval_control.c  visitor_eval_func.c  visitor_eval
 ## 5. Functions & Function Registry (`src/visitor_eval_func.c`, `src/include/function.h`)
 
 ### 5.1. Dual Table Architecture & Co-Occurrent Teardown
-Function management in `src/visitor_eval_func.c` maintains strict separation between native C bindings and user script functions:
+Function management in `src/visitor_eval_func.c` maintains strict separation between native C bindings and user script functions across two distinct tables:
 
-- **Built-in Registry (`s_builtin_functions`):** Static array storing registered host C functions (`native_fn_t`), populated via `register_builtin_function()`.
-- **User Functions Table (`s_user_functions`):** `_Thread_local` dynamic array storing script-defined functions (`FUNC_TI`), isolated per execution thread.
-- **Global Context Binding (`s_global_context`):** `_Thread_local` pointer tracking the active root execution scope via `visitor_set_global_context()` and `visitor_get_global_context()`.
+- **Built-in Registry (`s_builtin_functions`):** Static array (`static function_t *s_builtin_functions`) storing registered host C functions (`native_fn_t`), populated during startup via `register_builtin_function()`.
+- **User Functions Table (`s_user_functions`):** Thread-isolated dynamic array (`static _Thread_local function_t *s_user_functions`) storing script-defined functions (`FUNC_TI`), dynamically resized via `tracked_realloc` as functions are declared at runtime.
+- **Global Context Binding (`s_global_context`):** Thread-local pointer (`static _Thread_local context_t *s_global_context`) tracking the active root execution scope via `visitor_set_global_context()` and `visitor_get_global_context()`.
 - **Co-Occurrent Teardown (`user_functions_clear`):**
-  When execution terminates, `src/TienInterpreter.c` unregisters the root environment via `visitor_set_global_context(NULL)`. This immediately triggers `user_functions_clear()`, which:
+  When execution terminates, `src/TienInterpreter.c` unregisters the root environment via `visitor_set_global_context(NULL)`. This immediately triggers `user_functions_clear()`:
+  ```c
+  void visitor_set_global_context(context_t *ctx)
+  {
+      s_global_context = ctx;
+      if (ctx == NULL) {
+          /* Co-occurrent teardown: Global context cleared -> clear user functions */
+          user_functions_clear();
+      }
+  }
+  ```
+  `user_functions_clear()` executes the following lifecycle cleanups:
   1. Iterates through all registered user functions in `s_user_functions`.
   2. Invokes `params_free()` on `s_user_functions[i].params` to free heap-allocated parameter names and arrays.
   3. Releases the dynamic array via `tracked_free(s_user_functions)`.
@@ -204,12 +215,25 @@ typedef struct FUNCTION_STRUCT {
      - `FUNC_BUILTIN`: Calls `func->native_fn(argv, argc)`.
      - `FUNC_TI`: Calls `run_ti_function(ctx, func, argv, argc, node)`.
 
-### 5.7. `run_ti_function`
+### 5.7. `run_ti_function` (User-Defined Function Call Execution)
 - Signature:
   ```c
   value_t *run_ti_function(context_t *ctx, function_t *func, value_t **argv, int argc, ast_t *node);
   ```
-- Handles execution of user-defined Ti function definitions: creates a new stack frame context chained to `visitor_get_global_context()`, binds arguments, evaluates the function body AST, inspects flow state (`FLOW_RETURN`, `FLOW_BREAK`, `FLOW_CONTINUE`), validates return type, and safely unwinds the local frame.
+- **Step-by-Step Execution Mechanics:**
+  1. **Stack Frame Creation:** Allocates an isolated execution scope `context_t *func_ctx = context_init()`.
+  2. **Static Lexical Binding:** Binds `func_ctx->parent = visitor_get_global_context()` to ensure functions resolve symbols against the global scope rather than dynamically inheriting local variables from the caller frame.
+  3. **Argument-to-Parameter Binding:** Iterates from `0` to `argc - 1`, creating deep clones of arguments via `val_copy(argv[i])` and registering them under each parameter's identifier via `context_add_variable(...)`.
+  4. **Compound Body Execution:** Invokes `visitor_visit(func_ctx, body)` on `func->def->value.function_definition.body`.
+  5. **Control Flow Signal Validation:**
+     - Inspects `func_ctx->flow_state`. If unhandled `FLOW_BREAK` or `FLOW_CONTINUE` flags remain at the function boundary, reports a runtime error (`'break'/'continue' statement not within a loop inside function '%s' at line %d`) and terminates execution via `ti_fatal()`.
+  6. **Return Value Extraction & Consumption:**
+     - If `func_ctx->flow_state == FLOW_RETURN`: extracts `func_ctx->return_value`, transfers ownership by setting `func_ctx->return_value = NULL`, and clears `func_ctx->flow_state = FLOW_NORMAL`.
+     - If execution reached the end of the body without an explicit `return`:
+       - If `func->return_type != VAL_VOID`: reports a runtime error (`Non-void function '%s' reached end of body without returning a value at line %d`) and halts via `ti_fatal()`.
+       - If `func->return_type == VAL_VOID`: generates a default void return payload via `val_new_void()`.
+  7. **Return Type Enforcement:** Verifies `ret_val->type == func->return_type`. If mismatched, reports a runtime type error and halts via `ti_fatal()`.
+  8. **Stack Frame Deallocation:** Reclaims the function's call frame via `context_free(func_ctx)` and returns `ret_val`.
 
 ---
 

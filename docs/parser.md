@@ -28,20 +28,32 @@ The parser uses an **LL(1)** recursive descent strategy with selective **LL(2)**
 ## 2. Fundamental Operations: `parser_eat` & `parser_peek`
 
 ### `parser_eat(parser_t *parser, int expected_type)`
-- **Purpose:** Verifies that the current token matches the grammar's expected terminal symbol, then advances to the next token.
+- **Purpose:** Verifies that the current token matches the grammar's expected terminal symbol, deallocates the eaten token, and advances to the next token.
 - **Internal Mechanics:**
   ```c
-  if (parser->current_token->type != expected_type) {
-      ti_log("[Parser Error] Expected %s, but got %s at line %d\n",
-             token_to_str(expected_type),
+  if ((int)parser->current_token->type == expected_type) {
+      token_t *old_token = parser->current_token;
+      parser->current_token = lexer_get_next_token(parser->lexer);
+      if (old_token->value != NULL) {
+          tracked_free(old_token->value); // Free payload string (e.g. keywords, literals)
+          old_token->value = NULL;
+      }
+      tracked_free(old_token);
+      old_token = NULL;
+  } else {
+      ti_log("[Parser Error] Unexpected token %s ('%s') at line %d\n",
              token_to_str(parser->current_token->type),
+             parser->current_token->value ? parser->current_token->value : "<eof>",
              parser->lexer->line_num);
       ti_log_line(parser->lexer->line);
+      ti_log("Expected token %s, but received %s\n",
+             token_to_str(expected_type),
+             token_to_str(parser->current_token->type));
       ti_fatal();
   }
-  parser->current_token = lexer_get_next_token(parser->lexer);
   ```
 - **Error Behavior:** Any syntax deviation halts the entire interpreter via `ti_fatal()`. It prints the exact offending line from `parser->lexer->line`.
+- **Memory Invariant:** Frees both the eaten `token_t` struct and any associated heap-allocated `value` payload (`tracked_free(old_token->value)`), preventing memory accumulation during parsing.
 
 ### `parser_peek(parser_t *parser)` (Tricky / Hard Logic)
 - **Purpose:** Inspects the *token after next* without consuming anything from the real lexer.
@@ -54,13 +66,17 @@ The parser uses an **LL(1)** recursive descent strategy with selective **LL(2)**
   static token_t *parser_peek(parser_t *parser)
   {
       lexer_t *temp_lexer = lexer_copy(parser->lexer);
-      (void)lexer_get_next_token(temp_lexer);
+      token_t *discarded = lexer_get_next_token(temp_lexer);
+      if (discarded->value != NULL) {
+          tracked_free(discarded->value);
+      }
+      tracked_free(discarded);
       token_t *next_token = lexer_get_next_token(temp_lexer);
       tracked_free((void *)temp_lexer);
       return next_token;
   }
   ```
-- **Maintainer Caveat:** It clones the entire lexer state with `lexer_copy()`, scans ahead on the clone, and immediately destroys the clone. This prevents any side-effects on the master cursor `parser->lexer`.
+- **Maintainer Caveat:** It clones the entire lexer state with `lexer_copy()`, scans ahead on the clone, safely deallocates the intermediate lookahead token (`discarded`), returns `next_token`, and destroys the cloned lexer. The caller (e.g. `parser_parse_definition`) is strictly responsible for freeing `next_token->value` and `next_token` immediately after checking `next_token->type`.
 
 ---
 

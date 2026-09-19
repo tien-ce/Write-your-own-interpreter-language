@@ -33,11 +33,11 @@
 │    ┌──────────────────────────────────────────────────────┐ │
 │    │ Master Dispatcher: `src/visitor.c`                   │ │
 │    └──────────┬───────────────────────────────────────────┘ │
-│               ├──► Expressions:  `src/visitor_eval_binary.c`│ │
-│               ├──► Control Flow: `src/visitor_eval_control.c│ │
-│               ├──► Variables:    `src/visitor_eval_variable.c │
-│               ├──► Functions:    `src/visitor_eval_func.c`  │ │
-│               └──► Literals:     `src/visitor_eval_literal.c│ │
+│               ├──► Expressions:  `src/visitor_eval_binary.c`  │ │
+│               ├──► Control Flow: `src/visitor_eval_control.c` │ │
+│               ├──► Variables:    `src/visitor_eval_variable.c`│ │
+│               ├──► Functions:    `src/visitor_eval_func.c`    │ │
+│               └──► Literals:     `src/visitor_eval_literal.c` │ │
 └─────────────────────────────┬───────────────────────────────┘
                               │
                               ▼
@@ -59,11 +59,11 @@ The codebase consists of **7 major modules** organized cleanly across `src/` and
 | :--- | :--- | :--- | :--- | :--- |
 | **1. Lexer** | `src/lexer.c` | `src/include/lexer.h`<br>`src/include/token.h` | Character-by-character scanner, escape decoder, keyword resolution | [`docs/lexer.md`](docs/lexer.md) |
 | **2. Parser** | `src/parser.c` | `src/include/parser.h` | Recursive descent precedence climbing parser | [`docs/parser.md`](docs/parser.md) |
-| **3. AST & Token** | `src/AST.c`<br>`src/token.c` | `src/include/AST.h`<br>`src/include/token.h`<br>`src/include/ti_type.h` | Tagged union AST definitions, token enums, canonical types, tree deallocation | [`docs/ast.md`](docs/ast.md) |
+| **3. AST & Token** | `src/AST.c`<br>`src/token.c`<br>`src/draw.c` | `src/include/AST.h`<br>`src/include/token.h`<br>`src/include/ti_type.h` | Tagged union AST definitions, token enums, canonical types, tree deallocation, AST visualization | [`docs/ast.md`](docs/ast.md) |
 | **4. Visitor Engine** | `src/visitor.c`<br>`src/visitor_eval_*.c` | `src/include/visitor.h`<br>`src/include/visitor_internal.h` | AST node dispatcher and domain-specific expression/statement evaluators | [`docs/visitor.md`](docs/visitor.md) |
-| **5. Context & Value** | `src/context.c`<br>`src/value.c` | `src/include/visitor_internal.h` | Lexical scope chains, symbol tables, dynamic value wrappers | [`docs/context_value.md`](docs/context_value.md) |
+| **5. Context & Value** | `src/context.c`<br>`src/value.c` | `src/include/context.h`<br>`src/include/value.h`<br>`src/include/function.h` | Lexical scope chains, symbol tables, dynamic value wrappers | [`docs/context_value.md`](docs/context_value.md) |
 | **6. Tracked Memory** | `src/tracked_memory.c` | `src/include/tracked_memory.h` | Allocation tracking table, leak detection, safe pointer inspection | [`docs/tracked_memory.md`](docs/tracked_memory.md) |
-| **7. CLI & Diagnostics**| `cli/main.c`<br>`src/TienInterpreter.c` | `src/TienInterpreter.h`<br>`src/include/debug.h` | File reader, diagnostic loggers (`ti_log`, `ti_fatal`), driver | Code comments |
+| **7. CLI & Diagnostics**| `cli/main.c`<br>`cli/built_in_functions.c`<br>`src/TienInterpreter.c`<br>`src/debug.c` | `src/TienInterpreter.h`<br>`src/include/debug.h` | Entrypoint, host built-in functions, diagnostic loggers (`ti_log`, `ti_fatal`), driver | Code comments |
 
 ---
 
