@@ -51,6 +51,7 @@ static void lexer_go_back(lexer_t *lexer)
  */
 static void lexer_advance(lexer_t *lexer)
 {
+    /* Advance cursor to next character if not yet at end of source buffer */
     uint32_t length = strlen(lexer->contents); 
     if (lexer->c != '\0' && lexer->i < length) {
         lexer->i++;
@@ -64,6 +65,7 @@ static void lexer_advance(lexer_t *lexer)
  */
 static void lexer_skip_whitespace(lexer_t *lexer)
 {
+    /* Skip spaces and newline characters, tracking line numbers and line start pointers */
     while (lexer->c == ' ' || lexer->c == '\n') {
         if (lexer->c == '\n') {
             lexer->line_num++;
@@ -97,7 +99,9 @@ static token_t *lexer_collect_string(lexer_t *lexer)
     char *value = tracked_calloc(lexer->alloc_list, 1, sizeof(char));
     value[0] = '\0';
 
+    /* Accumulate characters until closing double quote or unexpected EOF */
     while (lexer->c != '"' && lexer->c != '\0') {
+        /* Process escape sequences */
         if (lexer->c == '\\') {
             lexer_advance(lexer);
             switch (lexer->c) {
@@ -119,6 +123,7 @@ static token_t *lexer_collect_string(lexer_t *lexer)
         lexer_advance(lexer);
     }
 
+    /* Check for unclosed string literal */
     if (lexer->c == '\0') {
         ti_log("[Lexer Error] Missing close quote at line %d\n", lexer->line_num);
         ti_log_line(lexer->line);
@@ -135,6 +140,7 @@ static token_t *lexer_collect_string(lexer_t *lexer)
  */
 static token_t *lexer_collect_id(lexer_t *lexer)
 {
+    /* Accumulate alphanumeric characters and underscores */
     char *value = tracked_calloc(lexer->alloc_list, 1, sizeof(char));
     while (isalnum(lexer->c) || lexer->c == '_') {
         char *s = lexer_get_current_char_as_string(lexer);
@@ -144,13 +150,14 @@ static token_t *lexer_collect_id(lexer_t *lexer)
         lexer_advance(lexer);
     }
 
-    /* Check KEYWORDS (type alone tells us the value, so don't keep it) */
+    /* Match type keywords (token type alone identifies the keyword, free raw string) */
     if (strcmp(value, "int") == 0)    { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_INT, NULL); }
     if (strcmp(value, "float") == 0)  { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_FLOAT, NULL); }
     if (strcmp(value, "string") == 0) { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_STRING, NULL); }
     if (strcmp(value, "bool") == 0)   { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_BOOL, NULL); }
     if (strcmp(value, "void") == 0)   { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_VOID, NULL); }
 
+    /* Match control flow keywords */
     if (strcmp(value, "if") == 0)       { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_IF, NULL); }
     if (strcmp(value, "else") == 0)     { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_ELSE, NULL); }
     if (strcmp(value, "while") == 0)    { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_WHILE, NULL); }
@@ -158,7 +165,7 @@ static token_t *lexer_collect_id(lexer_t *lexer)
     if (strcmp(value, "break") == 0)    { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_BREAK, NULL); }
     if (strcmp(value, "continue") == 0) { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_CONTINUE, NULL); }
 
-    /* Boolean literals */
+    /* Match boolean literals */
     if (strcmp(value, "true") == 0) {
         return token_init(lexer->alloc_list, TOKEN_BOOL, value);
     }
@@ -166,6 +173,7 @@ static token_t *lexer_collect_id(lexer_t *lexer)
         return token_init(lexer->alloc_list, TOKEN_BOOL, value);
     }
 
+    /* Fall through to generic user identifier */
     return token_init(lexer->alloc_list, TOKEN_ID, value);
 }
 
@@ -176,6 +184,7 @@ static token_t *lexer_collect_id(lexer_t *lexer)
  */
 static token_t *lexer_collect_number(lexer_t *lexer)
 {
+    /* Accumulate integer digit sequence */
     char *value = tracked_calloc(lexer->alloc_list, 1, sizeof(char));
     while (isdigit(lexer->c)) {
         char *s = lexer_get_current_char_as_string(lexer);
@@ -185,6 +194,7 @@ static token_t *lexer_collect_number(lexer_t *lexer)
         lexer_advance(lexer);
     }
 
+    /* Check for decimal point to process floating-point number */
     if (lexer->c == '.') {
         char *dot = lexer_get_current_char_as_string(lexer);
         value = tracked_realloc(lexer->alloc_list, value, strlen(value) + strlen(dot) + 1);
@@ -192,7 +202,7 @@ static token_t *lexer_collect_number(lexer_t *lexer)
         tracked_free(lexer->alloc_list, dot);
         lexer_advance(lexer);
 
-        /* Fractional part */
+        /* Accumulate fractional digits */
         while (isdigit(lexer->c)) {
             char *s = lexer_get_current_char_as_string(lexer);
             value = tracked_realloc(lexer->alloc_list, value, strlen(value) + strlen(s) + 1);
@@ -201,6 +211,7 @@ static token_t *lexer_collect_number(lexer_t *lexer)
             lexer_advance(lexer);
         }
 
+        /* Reject invalid alphanumeric suffixes on float constants */
         if (isalpha(lexer->c) || lexer->c == '_') {
             ti_log("[Lexer Error] Invalid suffix '%c' on float constant '%s' at line %d\n", lexer->c, value, lexer->line_num);
             ti_log_line(lexer->line);
@@ -209,7 +220,7 @@ static token_t *lexer_collect_number(lexer_t *lexer)
         return token_init(lexer->alloc_list, TOKEN_FLOAT, value);
     }
 
-    /* Integer number */
+    /* Reject invalid alphanumeric suffixes on integer constants */
     if (isalpha(lexer->c) || lexer->c == '_') {
         ti_log("[Lexer Error] Invalid suffix '%c' on integer constant '%s' at line %d\n", lexer->c, value, lexer->line_num);
         ti_log_line(lexer->line);
@@ -257,23 +268,28 @@ lexer_t *lexer_copy(lexer_t *lexer)
 token_t *lexer_get_next_token(lexer_t *lexer)
 {
     while (lexer->c != '\0' && lexer->c != EOF && lexer->c != '\000') {
+        /* Skip leading whitespace and blank lines */
         if (lexer->c == ' ' || lexer->c == '\n') {
             lexer_skip_whitespace(lexer);
             continue;
         }
 
+        /* String literal: starts with double quote */
         if (lexer->c == '"') {
             return lexer_collect_string(lexer);
         }
 
+        /* Numeric literal: starts with a digit */
         if (isdigit(lexer->c)) {
             return lexer_collect_number(lexer);
         }
 
+        /* Identifier or keyword: starts with an alphabetic character */
         if (isalpha(lexer->c)) {
             return lexer_collect_id(lexer);
         }
 
+        /* Single-character and two-character operators/delimiters */
         switch (lexer->c) {
         case '(': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_LPAREN, NULL));
         case ')': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_RPAREN, NULL));
@@ -282,6 +298,7 @@ token_t *lexer_get_next_token(lexer_t *lexer)
         case '-': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_MINUS, NULL));
         case ',': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_COMMA, NULL));
         case '&': {
+            /* Check for logical AND (&&) vs bitwise AND (&) */
             lexer_advance(lexer);
             if (lexer->c == '&') {
                 return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_LOGIC_AND, NULL));
@@ -290,6 +307,7 @@ token_t *lexer_get_next_token(lexer_t *lexer)
             return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_AND, NULL));
         }
         case '|': {
+            /* Check for logical OR (||) vs bitwise OR (|) */
             lexer_advance(lexer);
             if (lexer->c == '|') {
                 return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_LOGIC_OR, NULL));
@@ -298,6 +316,7 @@ token_t *lexer_get_next_token(lexer_t *lexer)
             return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_OR, NULL));
         }
         case '=': {
+            /* Check for equality operator (==) vs assignment operator (=) */
             lexer_advance(lexer);
             if (lexer->c == '=') {
                 return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_DEQUALS, NULL));
@@ -306,6 +325,7 @@ token_t *lexer_get_next_token(lexer_t *lexer)
             return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_EQUALS, NULL));
         }
         case '!': {
+            /* Check for inequality (!=) vs logical NOT (!) */
             lexer_advance(lexer);
             if (lexer->c == '=') {
                 return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_NOT_EQUALS, NULL));
@@ -314,6 +334,7 @@ token_t *lexer_get_next_token(lexer_t *lexer)
             return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_NOT, NULL));
         }
         case '<': {
+            /* Check for less-than-or-equal (<=) vs less-than (<) */
             lexer_advance(lexer);
             if (lexer->c == '=') {
                 return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_LTE, NULL));
@@ -322,6 +343,7 @@ token_t *lexer_get_next_token(lexer_t *lexer)
             return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_LT, NULL));
         }
         case '>': {
+            /* Check for greater-than-or-equal (>=) vs greater-than (>) */
             lexer_advance(lexer);
             if (lexer->c == '=') {
                 return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_GTE, NULL));
@@ -337,5 +359,6 @@ token_t *lexer_get_next_token(lexer_t *lexer)
             ti_fatal();
         }
     }
+    /* End of source text reached */
     return token_init(lexer->alloc_list, TOKEN_EOF, NULL);
 }

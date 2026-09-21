@@ -9,10 +9,12 @@
 /* Initialize AST node */
 ast_t *ast_init(alloc_hdr_t **list, int type, int line)
 {
+    /* Allocate zero-initialized AST node container tracked on allocation list */
     ast_t *ast = tracked_calloc(list, 1, sizeof(struct AST_STRUCT));
     if (!ast) {
         return NULL;
     }
+    /* Set node classification type tag and source line for error reporting */
     ast->type = type;
     ast->line = line;
     return ast;
@@ -25,8 +27,10 @@ void ast_free(ast_t *ast)
         return;
     }
 
+    /* Recursively free child nodes and dynamic payload buffers by node type */
     switch (ast->type) {
     case AST_COMPOUND:
+        /* Free all nested statements and statement pointer array */
         for (int i = 0; i < ast->value.compound.statement_count; i++) {
             ast_free(ast->value.compound.statements[i]);
         }
@@ -34,6 +38,7 @@ void ast_free(ast_t *ast)
         break;
 
     case AST_VARIABLE_DEFINITION:
+        /* Free variable name string and initializer expression */
         if (ast->value.variable_definition.variable_name) {
             tracked_free(NULL, ast->value.variable_definition.variable_name);
         }
@@ -41,6 +46,7 @@ void ast_free(ast_t *ast)
         break;
 
     case AST_FUNCTION_DEFINITION: {
+        /* Free parameter nodes, parameter pointer array, function name string, and body */
         int param_count = ast->value.function_definition.param_count;
         for (int i = 0; i < param_count; i++) {
             ast_free(ast->value.function_definition.params[i]);
@@ -57,12 +63,14 @@ void ast_free(ast_t *ast)
     }
 
     case AST_PARAM:
+        /* Free parameter name string */
         if (ast->value.param.param_name) {
             tracked_free(NULL, ast->value.param.param_name);
         }
         break;
 
     case AST_FUNCTION_CALL: {
+        /* Free target function name string, argument expression nodes, and args array */
         if (ast->value.function_call.func_name) {
             tracked_free(NULL, ast->value.function_call.func_name);
         }
@@ -75,28 +83,34 @@ void ast_free(ast_t *ast)
     }
 
     case AST_BINARY_EXPR:
+        /* Free left and right binary operand subtrees */
         ast_free(ast->value.binary_expr.left);
         ast_free(ast->value.binary_expr.right);
         break;
 
     case AST_UNARY_EXPR:
+        /* Free unary operand subtree */
         ast_free(ast->value.unary_expr.operand);
         break;
 
     case AST_ASSIGNMENT:
+        /* Free assignment target and assigned value expression */
         ast_free(ast->value.assignment.target);
         ast_free(ast->value.assignment.value);
         break;
 
     case AST_STRING_LITERAL:
+        /* Free string literal text payload */
         tracked_free(NULL, ast->value.string_value);
         break;
 
     case AST_IDENTIFIER:
+        /* Free identifier name string */
         tracked_free(NULL, ast->value.identifier);
         break;
 
     case AST_ARRAY_ACCESS:
+        /* Free array identifier name string and index expression */
         if (ast->value.array_access.id) {
             tracked_free(NULL, ast->value.array_access.id);
         }
@@ -104,17 +118,20 @@ void ast_free(ast_t *ast)
         break;
 
     case AST_WHILE_STATEMENT:
+        /* Free loop condition and body compound block */
         ast_free(ast->value.while_statement.condition);
         ast_free(ast->value.while_statement.body);
         break;
 
     case AST_IF_STATEMENT:
+        /* Free if condition, true body, and optional else body */
         ast_free(ast->value.if_statement.condition);
         ast_free(ast->value.if_statement.body);
         ast_free(ast->value.if_statement.else_body);
         break;
 
     case AST_RETURN_STATEMENT:
+        /* Free return expression if present */
         ast_free(ast->value.return_statement.value);
         break;
 
@@ -126,6 +143,7 @@ void ast_free(ast_t *ast)
     case AST_FOR_STATEMENT:
     case AST_BREAK_STATEMENT:
     case AST_CONTINUE_STATEMENT:
+        /* Atomic literal or statement nodes with no suballocations */
         break;
 
     default:
@@ -133,5 +151,6 @@ void ast_free(ast_t *ast)
         break;
     }
 
+    /* Free the node container itself */
     tracked_free(NULL, ast);
 }

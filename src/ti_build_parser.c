@@ -71,13 +71,18 @@ static int token_type_to_op(parser_t *parser, int token_type)
  */
 static token_t *parser_peek(parser_t *parser)
 {
+    /* Duplicate lexer state to perform lookahead without advancing active lexer */
     lexer_t *temp_lexer = lexer_copy(parser->lexer);
+
+    /* Discard current token on copied stream to reach the lookahead token */
     token_t *discared = lexer_get_next_token(temp_lexer);
     if (discared->value != NULL) {
         tracked_free(parser->alloc_list, discared->value);
         discared->value = NULL;
     }
     tracked_free(parser->alloc_list, discared);
+
+    /* Fetch and return the lookahead token, then free temporary lexer clone */
     token_t *next_token = lexer_get_next_token(temp_lexer);
     tracked_free(parser->alloc_list, (void *)temp_lexer);
     return next_token;
@@ -104,12 +109,15 @@ static ast_t *parser_parse_param(parser_t *parser)
         ti_fatal();
         break;
     }
+    /* Consume parameter type keyword */
     parser_eat(parser, parser->current_token->type); // Eat <param_type>
 
+    /* Transfer ownership of parameter identifier string from token to AST */
     char *param_name = parser->current_token->value;
     parser->current_token->value = NULL; // Change the owner to ast instead of token
     parser_eat(parser, TOKEN_ID); // Eat param_name
 
+    /* Construct AST parameter node */
     ast_t *param_node = ast_init(parser->alloc_list, AST_PARAM, parser->lexer->line_num);
     param_node->value.param.param_type = param_type;
     param_node->value.param.param_name = param_name;
@@ -138,8 +146,10 @@ static ast_t *parser_parse_function_definition(parser_t *parser)
         ti_fatal();
         break;
     }
+    /* Consume return type keyword */
     parser_eat(parser, parser->current_token->type); // Eat <return_type>
 
+    /* Transfer ownership of function name string from token to AST */
     char *func_name = parser->current_token->value;
     parser->current_token->value = NULL; // Change the owner to ast instead of token
     parser_eat(parser, TOKEN_ID); // Eat func_name
@@ -165,7 +175,10 @@ static ast_t *parser_parse_function_definition(parser_t *parser)
     }
     parser_eat(parser, TOKEN_RPAREN); // Eat ')'
 
+    /* Parse function body compound block */
     ast_t *statements = parser_parse_statements(parser); // Parse '{' ... '}' compound body
+
+    /* Construct AST function definition node */
     ast_t *func_def_node = ast_init(parser->alloc_list, AST_FUNCTION_DEFINITION, parser->lexer->line_num);
     func_def_node->value.function_definition.return_type = return_type;
     func_def_node->value.function_definition.func_name = func_name;
@@ -182,6 +195,7 @@ static ast_t *parser_parse_function_definition(parser_t *parser)
  */
 static ast_t *parser_parse_definition(parser_t *parser)
 {
+    /* Peek ahead to distinguish between function declaration ('(') and variable declaration ('=') */
     token_t *next_token = parser_peek(parser);
     int next_type = (int)next_token->type;
     if (next_token->value != NULL) {
@@ -210,6 +224,7 @@ static ast_t *parser_parse_definition(parser_t *parser)
  */
 static void parser_eat(parser_t *parser, int expected_type)
 {
+    /* Verify token matches expectation, advance lexer, and free consumed token */
     if ((int)parser->current_token->type == expected_type) {
         token_t *old_token = parser->current_token;
         parser->current_token = lexer_get_next_token(parser->lexer);
@@ -220,6 +235,7 @@ static void parser_eat(parser_t *parser, int expected_type)
         tracked_free(parser->alloc_list, old_token);
         old_token = NULL;
     } else {
+        /* Format and log syntax error with offending source line */
         ti_log("[Parser Error] Unexpected token %s ('%s') at line %d\n",
                token_to_str(parser->current_token->type),
                parser->current_token->value ? parser->current_token->value : "<eof>",
@@ -247,11 +263,12 @@ static ast_t *parser_parse_statement(parser_t *parser)
     case TOKEN_KW_VOID:
         return parser_parse_definition(parser);
     case TOKEN_ID: {
+        /* Parse expression starting with identifier; distinguish assignment from call */
         ast_t *expr = parser_parse_expr(parser);
         if (parser->current_token->type == TOKEN_EQUALS) {
             return parser_parse_assignment(parser, expr);
         }
-        /* Function call statement */
+        /* Consume terminating semicolon for expression statement */
         parser_eat(parser, TOKEN_SEMI);
         return expr;
     }
@@ -283,11 +300,13 @@ static ast_t *parser_parse_statement(parser_t *parser)
  */
 static ast_t *parser_parse_statements(parser_t *parser)
 {
+    /* Consume opening brace and initialize compound statement node */
     parser_eat(parser, TOKEN_LBRACE);
     ast_t *compound = ast_init(parser->alloc_list, AST_COMPOUND, parser->lexer->line_num);
     compound->value.compound.statements = NULL;
     compound->value.compound.statement_count = 0;
 
+    /* Parse statements sequentially until closing brace */
     while (parser->current_token->type != TOKEN_RBRACE) {
         ast_t *statement = parser_parse_statement(parser);
         int count = compound->value.compound.statement_count;
@@ -314,10 +333,12 @@ static ast_t *parser_parse_statements(parser_t *parser)
  */
 static ast_t *parser_parse_main_program(parser_t *parser)
 {
+    /* Initialize root compound container for the program */
     ast_t *compound = ast_init(parser->alloc_list, AST_COMPOUND, parser->lexer->line_num);
     compound->value.compound.statements = NULL;
     compound->value.compound.statement_count = 0;
 
+    /* Parse top-level statements until end of input stream */
     while (parser->current_token->type != TOKEN_EOF) {
         ast_t *statement = parser_parse_statement(parser);
         int count = compound->value.compound.statement_count;
@@ -343,7 +364,10 @@ static ast_t *parser_parse_main_program(parser_t *parser)
  */
 static ast_t *parser_parse_expr(parser_t *parser)
 {
+    /* Parse higher precedence comparison expression first */
     ast_t *left = parser_parse_comparison(parser);
+
+    /* Left-associatively chain logical AND/OR operations */
     while (parser->current_token->type == TOKEN_LOGIC_AND ||
            parser->current_token->type == TOKEN_LOGIC_OR) {
         int op = parser->current_token->type;
@@ -365,7 +389,10 @@ static ast_t *parser_parse_expr(parser_t *parser)
  */
 static ast_t *parser_parse_comparison(parser_t *parser)
 {
+    /* Parse higher precedence additive expression first */
     ast_t *left = parser_parse_additive(parser);
+
+    /* Left-associatively chain comparison operations */
     while (parser->current_token->type == TOKEN_DEQUALS ||
            parser->current_token->type == TOKEN_NOT_EQUALS ||
            parser->current_token->type == TOKEN_LT ||
@@ -391,7 +418,10 @@ static ast_t *parser_parse_comparison(parser_t *parser)
  */
 static ast_t *parser_parse_additive(parser_t *parser)
 {
+    /* Parse higher precedence multiplicative term first */
     ast_t *left = parser_parse_term(parser);
+
+    /* Left-associatively chain addition and subtraction operations */
     while (parser->current_token->type == TOKEN_PLUS ||
            parser->current_token->type == TOKEN_MINUS) {
         int op = parser->current_token->type;
@@ -413,7 +443,10 @@ static ast_t *parser_parse_additive(parser_t *parser)
  */
 static ast_t *parser_parse_term(parser_t *parser)
 {
+    /* Parse highest precedence primary atom first */
     ast_t *left = parser_parse_primary(parser);
+
+    /* Left-associatively chain multiplication and division operations */
     while (parser->current_token->type == TOKEN_STAR ||
            parser->current_token->type == TOKEN_SLASH) {
         int op = parser->current_token->type;
@@ -437,18 +470,21 @@ static ast_t *parser_parse_primary(parser_t *parser)
 {
     switch (parser->current_token->type) {
     case TOKEN_INT: {
+        /* Parse integer literal and convert string representation to integer value */
         ast_t *int_node = ast_init(parser->alloc_list, AST_INT_LITERAL, parser->lexer->line_num);
         int_node->value.int_value = atoi(parser->current_token->value);
         parser_eat(parser, TOKEN_INT);
         return int_node;
     }
     case TOKEN_FLOAT: {
+        /* Parse floating-point literal and convert string representation to double */
         ast_t *float_node = ast_init(parser->alloc_list, AST_FLOAT_LITERAL, parser->lexer->line_num);
         float_node->value.float_value = atof(parser->current_token->value);
         parser_eat(parser, TOKEN_FLOAT);
         return float_node;
     }
     case TOKEN_STRING: {
+        /* Parse string literal; transfer ownership of allocated string buffer to AST */
         ast_t *string_node = ast_init(parser->alloc_list, AST_STRING_LITERAL, parser->lexer->line_num);
         string_node->value.string_value = parser->current_token->value;
         parser->current_token->value = NULL; // Change the owner to ast instead of token
@@ -456,6 +492,7 @@ static ast_t *parser_parse_primary(parser_t *parser)
         return string_node;
     }
     case TOKEN_BOOL: {
+        /* Parse boolean literal (true/false) */
         ast_t *bool_node = ast_init(parser->alloc_list, AST_BOOLEAN, parser->lexer->line_num);
         if (strcmp(parser->current_token->value, "true") == 0 || 
             strcmp(parser->current_token->value, "1") == 0) {
@@ -469,6 +506,7 @@ static ast_t *parser_parse_primary(parser_t *parser)
     case TOKEN_NOT:
     case TOKEN_PLUS:
     case TOKEN_MINUS: {
+        /* Parse unary prefix operator (!, +, -) and recursively evaluate primary operand */
         int token_type = parser->current_token->type;
         parser_eat(parser, token_type);
 
@@ -485,6 +523,7 @@ static ast_t *parser_parse_primary(parser_t *parser)
         return unary_node;
     }    
     case TOKEN_ID: {
+        /* Disambiguate identifier reference between function call, array index, or variable */
         char *id_name = parser->current_token->value;
         parser->current_token->value = NULL; // Change the owner to ast instead of token
         parser_eat(parser, TOKEN_ID);
@@ -505,12 +544,13 @@ static ast_t *parser_parse_primary(parser_t *parser)
             return array_access_node;
         }
 
-        /* Simple identifier reference */
+        /* Simple identifier variable reference */
         ast_t *variable_node = ast_init(parser->alloc_list, AST_IDENTIFIER, parser->lexer->line_num);
         variable_node->value.identifier = id_name;
         return variable_node;
     }
     case TOKEN_LPAREN: {
+        /* Parenthesized grouped subexpression (expr) */
         parser_eat(parser, TOKEN_LPAREN);
         ast_t *expr = parser_parse_expr(parser);
         parser_eat(parser, TOKEN_RPAREN);
@@ -549,15 +589,19 @@ static ast_t *parser_parse_variable_definition(parser_t *parser)
         ti_fatal();
         break;
     }
+    /* Consume variable type keyword */
     parser_eat(parser, parser->current_token->type); // Eat <variable_type>
 
+    /* Transfer ownership of variable name identifier to AST */
     char *variable_name = parser->current_token->value;
     parser->current_token->value = NULL; // Give the owner to AST
     parser_eat(parser, TOKEN_ID); // Eat variable_name
 
+    /* Parse assignment operator and initialization expression */
     parser_eat(parser, TOKEN_EQUALS); // Eat '='
-
     ast_t *value = parser_parse_expr(parser);
+
+    /* Construct AST variable definition node */
     ast_t *var_def_node = ast_init(parser->alloc_list, AST_VARIABLE_DEFINITION, parser->lexer->line_num);
     var_def_node->value.variable_definition.variable_type = variable_type;
     var_def_node->value.variable_definition.variable_name = variable_name;
@@ -574,11 +618,13 @@ static ast_t *parser_parse_variable_definition(parser_t *parser)
 /* while (<condition>) { <compound> } */
 static ast_t *parser_parse_while_statement(parser_t *parser)
 {
+    /* Consume 'while' keyword and condition enclosed in parentheses */
     parser_eat(parser, TOKEN_KW_WHILE); // Eat 'while'
     parser_eat(parser, TOKEN_LPAREN);   // Eat '('
     ast_t *condition = parser_parse_expr(parser);
     parser_eat(parser, TOKEN_RPAREN);   // Eat ')'
 
+    /* Parse loop body statements */
     ast_t *body = parser_parse_statements(parser);
     ast_t *while_node = ast_init(parser->alloc_list, AST_WHILE_STATEMENT, parser->lexer->line_num);
     while_node->value.while_statement.condition = condition;
@@ -594,11 +640,13 @@ static ast_t *parser_parse_while_statement(parser_t *parser)
 /* if (<condition>) <compound> [else <compound>] */
 static ast_t *parser_parse_if_statement(parser_t *parser)
 {
+    /* Consume 'if' keyword and condition expression enclosed in parentheses */
     parser_eat(parser, TOKEN_KW_IF);   // Eat 'if'
     parser_eat(parser, TOKEN_LPAREN);  // Eat '('
     ast_t *condition = parser_parse_expr(parser);
     parser_eat(parser, TOKEN_RPAREN);  // Eat ')'
 
+    /* Parse true branch body (either compound block or single statement) */
     ast_t *body = NULL;
     if (parser->current_token->type == TOKEN_LBRACE) {
         body = parser_parse_statements(parser);
@@ -611,6 +659,7 @@ static ast_t *parser_parse_if_statement(parser_t *parser)
     if_node->value.if_statement.body = body;
     if_node->value.if_statement.else_body = NULL;
 
+    /* Parse optional 'else' branch if present */
     if (parser->current_token->type == TOKEN_KW_ELSE) {
         parser_eat(parser, TOKEN_KW_ELSE); // Eat 'else'
         if (parser->current_token->type == TOKEN_LBRACE) {
@@ -635,6 +684,7 @@ static ast_t *parser_parse_function_call(parser_t *parser, char *func_name)
     ast_t **args = NULL;
     int arg_count = 0;
 
+    /* Parse comma-separated argument expression list */
     if (parser->current_token->type != TOKEN_RPAREN) {
         args = tracked_calloc(parser->alloc_list, 1, sizeof(struct AST_STRUCT *));
         ast_t *arg_node = parser_parse_expr(parser);
@@ -650,6 +700,7 @@ static ast_t *parser_parse_function_call(parser_t *parser, char *func_name)
     }
     parser_eat(parser, TOKEN_RPAREN); // Eat ')'
 
+    /* Construct AST function call node */
     ast_t *func_call_node = ast_init(parser->alloc_list, AST_FUNCTION_CALL, parser->lexer->line_num);
     func_call_node->value.function_call.func_name = func_name;
     func_call_node->value.function_call.args = args;
@@ -666,8 +717,11 @@ static ast_t *parser_parse_function_call(parser_t *parser, char *func_name)
 /* <target> = <expr>; */
 static ast_t *parser_parse_assignment(parser_t *parser, ast_t *target)
 {
+    /* Consume assignment operator '=' and parse right-hand side expression */
     parser_eat(parser, TOKEN_EQUALS); // Eat '='
     ast_t *value = parser_parse_expr(parser);
+
+    /* Construct AST assignment node and consume terminating semicolon */
     ast_t *assignment_node = ast_init(parser->alloc_list, AST_ASSIGNMENT, parser->lexer->line_num);
     assignment_node->value.assignment.target = target;
     assignment_node->value.assignment.value = value;
@@ -683,11 +737,13 @@ static ast_t *parser_parse_assignment(parser_t *parser, ast_t *target)
 /* return [<expr>]; */
 static ast_t *parser_parse_return_statement(parser_t *parser)
 {
+    /* Consume 'return' keyword */
     parser_eat(parser, TOKEN_KW_RETURN); // Eat 'return'
 
     ast_t *return_node = ast_init(parser->alloc_list, AST_RETURN_STATEMENT, parser->lexer->line_num);
     return_node->value.return_statement.value = NULL;
 
+    /* Parse optional return expression if semicolon does not follow immediately */
     if (parser->current_token->type != TOKEN_SEMI) {
         return_node->value.return_statement.value = parser_parse_expr(parser);
     }

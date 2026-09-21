@@ -9,20 +9,20 @@
 
 typedef struct AST_STRUCT {
   enum {
-    /* 1. LITERALS & IDENTIFIERS */
+    /* LITERALS & IDENTIFIERS */
     AST_INT_LITERAL,          // 10
     AST_FLOAT_LITERAL,        // 3.14
     AST_STRING_LITERAL,       // "hello"
     AST_BOOLEAN,              // bool 
     AST_IDENTIFIER,           // x, my_var (variable/function reference)
 
-    /* 2. EXPRESSIONS */
+    /* EXPRESSIONS */
     AST_BINARY_EXPR,          // x + y, a == b
     AST_UNARY_EXPR,           // -x, !flag
     AST_FUNCTION_CALL,        // mylove("van anh")
     AST_ARRAY_ACCESS,         // arr[0]
 
-    /* 3. STATEMENTS */
+    /* STATEMENTS */
     AST_COMPOUND,             // Block statement { ... }
     AST_IF_STATEMENT,         // if (cond) { ... } else { ... }
     AST_WHILE_STATEMENT,      // while (cond) { ... }
@@ -37,20 +37,20 @@ typedef struct AST_STRUCT {
 
     AST_NOOP,
 
-    /* 4. ROOT / PROGRAM */
+    /* ROOT / PROGRAM */
     AST_PROGRAM, 
   } type;                     // Node type tag
   int line;                   // Source line number where node was created
 
   union {
-    /* 1. LITERALS and IDENTIFIERS */
+    /* LITERALS and IDENTIFIERS */
     int int_value;
     double float_value;
     bool bool_value;
     char *string_value;
     char *identifier; // Name of variable
 
-    /* 2. EXPRESSIONS */ 
+    /* EXPRESSIONS */ 
     struct {
         enum {
           OP_ADD,             // +

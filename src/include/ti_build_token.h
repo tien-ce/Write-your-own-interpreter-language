@@ -6,14 +6,14 @@
 /* -------------------- Token Types & Structure -------------------- */
 
 typedef enum token_type {
-    /* 1. IDENTIFIERS & LITERALS */
+    /* IDENTIFIERS & LITERALS */
     TOKEN_ID,           // x, my_var, foo
     TOKEN_INT,          // 10, 42
     TOKEN_FLOAT,        // 3.14
     TOKEN_STRING,       // "hello"
     TOKEN_BOOL,         // true, false 
 
-    /* 2. KEYWORDS */
+    /* KEYWORDS */
     TOKEN_KW_VOID,
     TOKEN_KW_INT,       // int
     TOKEN_KW_FLOAT,     // float
@@ -26,7 +26,7 @@ typedef enum token_type {
     TOKEN_KW_BREAK,     // break
     TOKEN_KW_CONTINUE,  // continue
 
-    /* 3. OPERATORS & DELIMITERS */
+    /* OPERATORS & DELIMITERS */
     TOKEN_EQUALS,       // =
     TOKEN_DEQUALS,      // ==
     TOKEN_NOT,          // !

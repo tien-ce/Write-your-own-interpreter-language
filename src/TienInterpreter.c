@@ -79,17 +79,17 @@ void ti_fatal(void)
  * @brief Phase 1 (Build-Time): Compile source text into an immutable AST program.
  *
  * Execution Logic:
- * 1. Validates source text input.
- * 2. Allocates a fresh `ti_program_t` container with its own isolated `alloc_list`.
- * 3. Duplicates source string into the program's allocation list so the lexer can
+ * - Validates source text input.
+ * - Allocates a fresh `ti_program_t` container with its own isolated `alloc_list`.
+ * - Duplicates source string into the program's allocation list so the lexer can
  *    index characters without mutating caller-owned memory.
- * 4. Initializes the lexical scanner (`lexer_init`) and recursive descent parser
+ * - Initializes the lexical scanner (`lexer_init`) and recursive descent parser
  *    (`parser_init`), binding all transient token and AST node allocations directly
  *    to `prog->alloc_list`.
- * 5. Executes syntactic analysis via `parser_parse()`, constructing the AST tree.
- * 6. Deallocates transient frontend objects (`parser`, `lexer`, `contents`) to reclaim
+ * - Executes syntactic analysis via `parser_parse()`, constructing the AST tree.
+ * - Deallocates transient frontend objects (`parser`, `lexer`, `contents`) to reclaim
  *    intermediate heap buffers, while leaving the resulting AST nodes intact on `prog->alloc_list`.
- * 7. Validates compilation success: If parsing encountered fatal syntax errors and produced
+ * - Validates compilation success: If parsing encountered fatal syntax errors and produced
  *    no root AST, tears down the program container via `ti_program_free` and returns NULL.
  */
 ti_program_t *ti_compile(const char *source_code)
@@ -98,32 +98,32 @@ ti_program_t *ti_compile(const char *source_code)
         return NULL;
     }
 
-    /* 1. Allocate compiled program container */
+    /* Allocate compiled program container */
     ti_program_t *prog = ti_program_create();
     if (!prog) {
         return NULL;
     }
 
-    /* 2. Create mutable source buffer tracked on program's build-time memory list */
+    /* Create mutable source buffer tracked on program's build-time memory list */
     char *contents = tracked_strdup(&prog->alloc_list, source_code);
     if (!contents) {
         ti_program_free(prog);
         return NULL;
     }
 
-    /* 3. Initialize frontend lexer and parser bound to program's memory list */
+    /* Initialize frontend lexer and parser bound to program's memory list */
     lexer_t *lexer = lexer_init(&prog->alloc_list, contents);
     parser_t *parser = parser_init(&prog->alloc_list, lexer);
 
-    /* 4. Construct the Abstract Syntax Tree (AST) */
+    /* Construct the Abstract Syntax Tree (AST) */
     prog->root_ast = parser_parse(parser);
 
-    /* 5. Reclaim transient frontend state machines (AST nodes remain on alloc_list) */
+    /* Reclaim transient frontend state machines (AST nodes remain on alloc_list) */
     tracked_free(&prog->alloc_list, parser);
     tracked_free(&prog->alloc_list, lexer);
     tracked_free(&prog->alloc_list, contents);
 
-    /* 6. Verify compilation outcome */
+    /* Verify compilation outcome */
     if (!prog->root_ast) {
         ti_program_free(prog);
         return NULL;
@@ -136,13 +136,13 @@ ti_program_t *ti_compile(const char *source_code)
  * @brief Phase 2 (Run-Time): Execute a compiled AST program on a runtime instance.
  *
  * Execution Logic:
- * 1. Validates preconditions: Ensures both runtime instance and compiled program AST exist.
- * 2. Dispatches recursive tree evaluation from the root node (`prog->root_ast`) using
+ * - Validates preconditions: Ensures both runtime instance and compiled program AST exist.
+ * - Dispatches recursive tree evaluation from the root node (`prog->root_ast`) using
  *    the runtime's root variable scope (`rt->global_context`).
- * 3. Evaluates statement blocks, assignments, loops, and function invocations. All dynamic
+ * - Evaluates statement blocks, assignments, loops, and function invocations. All dynamic
  *    values (`value_t`) and local variable scopes (`context_t`) created during evaluation
  *    are tracked on `rt->alloc_list`.
- * 4. Inspects post-execution control flow state:
+ * - Inspects post-execution control flow state:
  *    - `FLOW_BREAK`: If unconsumed break escaped to top-level, raises runtime error
  *      ("break statement not within a loop").
  *    - `FLOW_CONTINUE`: If unconsumed continue escaped to top-level, raises runtime error
@@ -156,10 +156,10 @@ void ti_execute(ti_runtime_t *rt, ti_program_t *prog)
         return;
     }
 
-    /* 1. Walk and evaluate the AST graph from root */
+    /* Walk and evaluate the AST graph from root */
     visitor_visit(rt, rt->global_context, prog->root_ast);
 
-    /* 2. Validate control flow invariants at script completion */
+    /* Validate control flow invariants at script completion */
     if (rt->global_context->flow_state == FLOW_BREAK) {
         ti_log("[Runtime Error] 'break' statement not within a loop\n");
         ti_fatal();
@@ -176,14 +176,14 @@ void ti_execute(ti_runtime_t *rt, ti_program_t *prog)
  * @brief High-level helper: Compile and execute a Ti script from raw text in one step.
  *
  * Execution Logic:
- * 1. Compiles source text via `ti_compile()` into an immutable `ti_program_t`.
- * 2. Creates a dedicated, isolated execution runtime via `ti_runtime_create()`.
- * 3. Executes the compiled program on the runtime instance via `ti_execute()`.
- * 4. Performs deterministic cleanup:
+ * - Compiles source text via `ti_compile()` into an immutable `ti_program_t`.
+ * - Creates a dedicated, isolated execution runtime via `ti_runtime_create()`.
+ * - Executes the compiled program on the runtime instance via `ti_execute()`.
+ * - Performs deterministic cleanup:
  *    - Destroys the runtime instance (`ti_runtime_destroy`), reclaiming all runtime
  *      variables, local context scopes, and dynamic value allocations.
  *    - Frees the compiled program (`ti_program_free`), reclaiming all AST nodes and tokens.
- * 5. Guarantees zero residual heap allocations on script completion.
+ * - Guarantees zero residual heap allocations on script completion.
  */
 void ti_run_string(const char *source_code)
 {
@@ -191,23 +191,23 @@ void ti_run_string(const char *source_code)
         return;
     }
 
-    /* 1. Phase 1: Compile source text to AST */
+    /* Phase 1: Compile source text to AST */
     ti_program_t *prog = ti_compile(source_code);
     if (!prog) {
         return; /* Syntax error occurred and was logged; abort execution */
     }
 
-    /* 2. Phase 2: Create execution runtime */
+    /* Phase 2: Create execution runtime */
     ti_runtime_t *rt = ti_runtime_create();
     if (!rt) {
         ti_program_free(prog);
         return;
     }
 
-    /* 3. Execute script */
+    /* Execute script */
     ti_execute(rt, prog);
 
-    /* 4. Phase 3: Deterministic teardown of both execution environments */
+    /* Phase 3: Deterministic teardown of both execution environments */
     ti_runtime_destroy(rt);
     ti_program_free(prog);
 }
