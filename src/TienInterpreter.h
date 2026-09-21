@@ -7,8 +7,10 @@ extern "C" {
 
 #include <stdarg.h>
 #include "include/ti_type.h"
-#include "include/value.h"
-#include "include/function.h"
+#include "include/ti_type_value.h"
+#include "include/ti_type_func.h"
+#include "include/ti_runtime.h"
+#include "include/ti_build_program.h"
 
 /* -------------------- Platform & Callback Types -------------------- */
 
@@ -37,7 +39,7 @@ void ti_log(const char *fmt, ...);
 void ti_log_line(char *line);
 
 /**
- * @brief Handles an unrecoverable fatal interpreter error (frees memory and halts/exits).
+ * @brief Handles an unrecoverable fatal interpreter error (halts/exits).
  */
 void ti_fatal(void);
 
@@ -61,10 +63,31 @@ void ti_register_fatal(ti_fatal_callback_t func);
 void ti_init_builtin(void);
 
 /**
- * @brief High-level helper to execute a Ti script from a source string.
+ * @brief Compile a Ti language source code string into an immutable AST program.
+ * @param source_code Null-terminated source code string.
+ * @return Newly allocated ti_program_t, or NULL on syntax error.
+ */
+ti_program_t *ti_compile(const char *source_code);
+
+/**
+ * @brief Execute a compiled program on the specified runtime instance.
+ * @param rt Pointer to runtime instance.
+ * @param prog Pointer to compiled program.
+ */
+void ti_execute(ti_runtime_t *rt, ti_program_t *prog);
+
+/**
+ * @brief High-level helper to compile and execute a Ti script in one step.
  * @param source_code Null-terminated Ti language source code string.
  */
 void ti_run_string(const char *source_code);
+
+/**
+ * @brief Request execution cancellation to immediately halt running script.
+ * Can be called from another task/thread to stop loops cleanly.
+ * @param rt Pointer to runtime instance.
+ */
+void ti_stop(ti_runtime_t *rt);
 
 #ifdef __cplusplus
 }

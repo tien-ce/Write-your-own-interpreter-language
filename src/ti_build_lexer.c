@@ -1,5 +1,5 @@
-#include "include/lexer.h"
-#include "include/token.h"
+#include "include/ti_build_lexer.h"
+#include "include/ti_build_token.h"
 #include "include/tracked_memory.h"
 #include "TienInterpreter.h"
 #include <stdio.h>
@@ -80,7 +80,7 @@ static void lexer_skip_whitespace(lexer_t *lexer)
  */
 static char *lexer_get_current_char_as_string(lexer_t *lexer)
 {
-    char *str = tracked_calloc(2, sizeof(char));
+    char *str = tracked_calloc(lexer->alloc_list, 2, sizeof(char));
     str[0] = lexer->c;
     str[1] = '\0';
     return str;
@@ -94,7 +94,7 @@ static char *lexer_get_current_char_as_string(lexer_t *lexer)
 static token_t *lexer_collect_string(lexer_t *lexer)
 {        
     lexer_advance(lexer); // go through open quote
-    char *value = tracked_calloc(1, sizeof(char));
+    char *value = tracked_calloc(lexer->alloc_list, 1, sizeof(char));
     value[0] = '\0';
 
     while (lexer->c != '"' && lexer->c != '\0') {
@@ -113,9 +113,9 @@ static token_t *lexer_collect_string(lexer_t *lexer)
             }
         }
         char *s = lexer_get_current_char_as_string(lexer);
-        value = tracked_realloc(value, strlen(value) + strlen(s) + 1);
+        value = tracked_realloc(lexer->alloc_list, value, strlen(value) + strlen(s) + 1);
         strcat(value, s);
-        tracked_free(s);
+        tracked_free(lexer->alloc_list, s);
         lexer_advance(lexer);
     }
 
@@ -125,7 +125,7 @@ static token_t *lexer_collect_string(lexer_t *lexer)
         ti_fatal();
     }
     lexer_advance(lexer); // Skip close quote
-    return token_init(TOKEN_STRING, value);
+    return token_init(lexer->alloc_list, TOKEN_STRING, value);
 }
 
 /**
@@ -135,38 +135,38 @@ static token_t *lexer_collect_string(lexer_t *lexer)
  */
 static token_t *lexer_collect_id(lexer_t *lexer)
 {
-    char *value = tracked_calloc(1, sizeof(char));
+    char *value = tracked_calloc(lexer->alloc_list, 1, sizeof(char));
     while (isalnum(lexer->c) || lexer->c == '_') {
         char *s = lexer_get_current_char_as_string(lexer);
-        value = tracked_realloc(value, strlen(value) + strlen(s) + 1);
+        value = tracked_realloc(lexer->alloc_list, value, strlen(value) + strlen(s) + 1);
         strcat(value, s);
-        tracked_free(s);
+        tracked_free(lexer->alloc_list, s);
         lexer_advance(lexer);
     }
 
     /* Check KEYWORDS (type alone tells us the value, so don't keep it) */
-    if (strcmp(value, "int") == 0)    { tracked_free(value); return token_init(TOKEN_KW_INT, NULL); }
-    if (strcmp(value, "float") == 0)  { tracked_free(value); return token_init(TOKEN_KW_FLOAT, NULL); }
-    if (strcmp(value, "string") == 0) { tracked_free(value); return token_init(TOKEN_KW_STRING, NULL); }
-    if (strcmp(value, "bool") == 0)   { tracked_free(value); return token_init(TOKEN_KW_BOOL, NULL); }
-    if (strcmp(value, "void") == 0)   { tracked_free(value); return token_init(TOKEN_KW_VOID, NULL); }
+    if (strcmp(value, "int") == 0)    { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_INT, NULL); }
+    if (strcmp(value, "float") == 0)  { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_FLOAT, NULL); }
+    if (strcmp(value, "string") == 0) { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_STRING, NULL); }
+    if (strcmp(value, "bool") == 0)   { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_BOOL, NULL); }
+    if (strcmp(value, "void") == 0)   { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_VOID, NULL); }
 
-    if (strcmp(value, "if") == 0)       { tracked_free(value); return token_init(TOKEN_KW_IF, NULL); }
-    if (strcmp(value, "else") == 0)     { tracked_free(value); return token_init(TOKEN_KW_ELSE, NULL); }
-    if (strcmp(value, "while") == 0)    { tracked_free(value); return token_init(TOKEN_KW_WHILE, NULL); }
-    if (strcmp(value, "return") == 0)   { tracked_free(value); return token_init(TOKEN_KW_RETURN, NULL); }
-    if (strcmp(value, "break") == 0)    { tracked_free(value); return token_init(TOKEN_KW_BREAK, NULL); }
-    if (strcmp(value, "continue") == 0) { tracked_free(value); return token_init(TOKEN_KW_CONTINUE, NULL); }
+    if (strcmp(value, "if") == 0)       { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_IF, NULL); }
+    if (strcmp(value, "else") == 0)     { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_ELSE, NULL); }
+    if (strcmp(value, "while") == 0)    { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_WHILE, NULL); }
+    if (strcmp(value, "return") == 0)   { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_RETURN, NULL); }
+    if (strcmp(value, "break") == 0)    { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_BREAK, NULL); }
+    if (strcmp(value, "continue") == 0) { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_CONTINUE, NULL); }
 
     /* Boolean literals */
     if (strcmp(value, "true") == 0) {
-        return token_init(TOKEN_BOOL, value);
+        return token_init(lexer->alloc_list, TOKEN_BOOL, value);
     }
     if (strcmp(value, "false") == 0) {
-        return token_init(TOKEN_BOOL, value);
+        return token_init(lexer->alloc_list, TOKEN_BOOL, value);
     }
 
-    return token_init(TOKEN_ID, value);
+    return token_init(lexer->alloc_list, TOKEN_ID, value);
 }
 
 /**
@@ -176,28 +176,28 @@ static token_t *lexer_collect_id(lexer_t *lexer)
  */
 static token_t *lexer_collect_number(lexer_t *lexer)
 {
-    char *value = tracked_calloc(1, sizeof(char));
+    char *value = tracked_calloc(lexer->alloc_list, 1, sizeof(char));
     while (isdigit(lexer->c)) {
         char *s = lexer_get_current_char_as_string(lexer);
-        value = tracked_realloc(value, strlen(value) + strlen(s) + 1);
+        value = tracked_realloc(lexer->alloc_list, value, strlen(value) + strlen(s) + 1);
         strcat(value, s);
-        tracked_free(s);
+        tracked_free(lexer->alloc_list, s);
         lexer_advance(lexer);
     }
 
     if (lexer->c == '.') {
         char *dot = lexer_get_current_char_as_string(lexer);
-        value = tracked_realloc(value, strlen(value) + strlen(dot) + 1);
+        value = tracked_realloc(lexer->alloc_list, value, strlen(value) + strlen(dot) + 1);
         strcat(value, dot);
-        tracked_free(dot);
+        tracked_free(lexer->alloc_list, dot);
         lexer_advance(lexer);
 
         /* Fractional part */
         while (isdigit(lexer->c)) {
             char *s = lexer_get_current_char_as_string(lexer);
-            value = tracked_realloc(value, strlen(value) + strlen(s) + 1);
+            value = tracked_realloc(lexer->alloc_list, value, strlen(value) + strlen(s) + 1);
             strcat(value, s);
-            tracked_free(s);
+            tracked_free(lexer->alloc_list, s);
             lexer_advance(lexer);
         }
 
@@ -206,7 +206,7 @@ static token_t *lexer_collect_number(lexer_t *lexer)
             ti_log_line(lexer->line);
             ti_fatal();
         }
-        return token_init(TOKEN_FLOAT, value);
+        return token_init(lexer->alloc_list, TOKEN_FLOAT, value);
     }
 
     /* Integer number */
@@ -215,15 +215,19 @@ static token_t *lexer_collect_number(lexer_t *lexer)
         ti_log_line(lexer->line);
         ti_fatal();
     } 
-    return token_init(TOKEN_INT, value);
+    return token_init(lexer->alloc_list, TOKEN_INT, value);
 }
 
 /* -------------------- Public Functions -------------------- */
 
 /* Initialize a new lexer for the given source string */
-lexer_t *lexer_init(char *str) 
+lexer_t *lexer_init(alloc_hdr_t **list, char *str) 
 {
-    lexer_t *lexer = tracked_calloc(1, sizeof(struct LEXER_STRUCT));
+    lexer_t *lexer = tracked_calloc(list, 1, sizeof(struct LEXER_STRUCT));
+    if (!lexer) {
+        return NULL;
+    }
+    lexer->alloc_list = list;
     lexer->contents = str;
     lexer->i = 0;
     lexer->c = lexer->contents[lexer->i];
@@ -235,7 +239,12 @@ lexer_t *lexer_init(char *str)
 /* Create a shallow copy of the given lexer state */
 lexer_t *lexer_copy(lexer_t *lexer)
 {
-    lexer_t *new_lexer = tracked_calloc(1, sizeof(struct LEXER_STRUCT));
+    alloc_hdr_t **list = lexer ? lexer->alloc_list : NULL;
+    lexer_t *new_lexer = tracked_calloc(list, 1, sizeof(struct LEXER_STRUCT));
+    if (!new_lexer || !lexer) {
+        return new_lexer;
+    }
+    new_lexer->alloc_list = lexer->alloc_list;
     new_lexer->contents = lexer->contents;
     new_lexer->i = lexer->i;
     new_lexer->c = lexer->c;
@@ -266,67 +275,67 @@ token_t *lexer_get_next_token(lexer_t *lexer)
         }
 
         switch (lexer->c) {
-        case '(': return lexer_advance_with_token(lexer, token_init(TOKEN_LPAREN, NULL));
-        case ')': return lexer_advance_with_token(lexer, token_init(TOKEN_RPAREN, NULL));
-        case ';': return lexer_advance_with_token(lexer, token_init(TOKEN_SEMI, NULL));
-        case '+': return lexer_advance_with_token(lexer, token_init(TOKEN_PLUS, NULL));
-        case '-': return lexer_advance_with_token(lexer, token_init(TOKEN_MINUS, NULL));
-        case ',': return lexer_advance_with_token(lexer, token_init(TOKEN_COMMA, NULL));
+        case '(': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_LPAREN, NULL));
+        case ')': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_RPAREN, NULL));
+        case ';': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_SEMI, NULL));
+        case '+': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_PLUS, NULL));
+        case '-': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_MINUS, NULL));
+        case ',': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_COMMA, NULL));
         case '&': {
             lexer_advance(lexer);
             if (lexer->c == '&') {
-                return lexer_advance_with_token(lexer, token_init(TOKEN_LOGIC_AND, NULL));
+                return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_LOGIC_AND, NULL));
             }
             lexer_go_back(lexer);
-            return lexer_advance_with_token(lexer, token_init(TOKEN_AND, NULL));
+            return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_AND, NULL));
         }
         case '|': {
             lexer_advance(lexer);
             if (lexer->c == '|') {
-                return lexer_advance_with_token(lexer, token_init(TOKEN_LOGIC_OR, NULL));
+                return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_LOGIC_OR, NULL));
             }
             lexer_go_back(lexer);
-            return lexer_advance_with_token(lexer, token_init(TOKEN_OR, NULL));
+            return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_OR, NULL));
         }
         case '=': {
             lexer_advance(lexer);
             if (lexer->c == '=') {
-                return lexer_advance_with_token(lexer, token_init(TOKEN_DEQUALS, NULL));
+                return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_DEQUALS, NULL));
             }
             lexer_go_back(lexer);
-            return lexer_advance_with_token(lexer, token_init(TOKEN_EQUALS, NULL));
+            return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_EQUALS, NULL));
         }
         case '!': {
             lexer_advance(lexer);
             if (lexer->c == '=') {
-                return lexer_advance_with_token(lexer, token_init(TOKEN_NOT_EQUALS, NULL));
+                return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_NOT_EQUALS, NULL));
             }
             lexer_go_back(lexer);
-            return lexer_advance_with_token(lexer, token_init(TOKEN_NOT, NULL));
+            return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_NOT, NULL));
         }
         case '<': {
             lexer_advance(lexer);
             if (lexer->c == '=') {
-                return lexer_advance_with_token(lexer, token_init(TOKEN_LTE, NULL));
+                return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_LTE, NULL));
             }
             lexer_go_back(lexer);
-            return lexer_advance_with_token(lexer, token_init(TOKEN_LT, NULL));
+            return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_LT, NULL));
         }
         case '>': {
             lexer_advance(lexer);
             if (lexer->c == '=') {
-                return lexer_advance_with_token(lexer, token_init(TOKEN_GTE, NULL));
+                return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_GTE, NULL));
             }
             lexer_go_back(lexer);
-            return lexer_advance_with_token(lexer, token_init(TOKEN_GT, NULL));
+            return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_GT, NULL));
         }
-        case '{': return lexer_advance_with_token(lexer, token_init(TOKEN_LBRACE, NULL));
-        case '}': return lexer_advance_with_token(lexer, token_init(TOKEN_RBRACE, NULL));
+        case '{': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_LBRACE, NULL));
+        case '}': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_RBRACE, NULL));
         default:
             ti_log("[Lexer Error] Unexpected character %c, at line %d\n", lexer->c, lexer->line_num);
             ti_log_line(lexer->line);
             ti_fatal();
         }
     }
-    return token_init(TOKEN_EOF, NULL);
+    return token_init(lexer->alloc_list, TOKEN_EOF, NULL);
 }

@@ -91,8 +91,8 @@ Every AST node represents a syntactical construct. Rather than declaring dozens 
 
 Because an AST is an arbitrarily deep recursive hierarchy, deallocation must strictly follow tree traversal rules:
 
-### `ast_init(int type, int line)`
-- Allocates zero-initialized memory (`tracked_calloc(1, sizeof(struct AST_STRUCT))`) for a new node of the given `type`.
+### `ast_init(alloc_hdr_t **list, int type, int line)`
+- Allocates zero-initialized memory (`tracked_calloc(list, 1, sizeof(struct AST_STRUCT))`) for a new node of the given `type`, linked to the provided build-time `alloc_hdr_t **list`.
 - Captures the source code `line` to enable consistent runtime error diagnostics (`[Runtime Error] <message> at line %d`).
 
 ### `ast_free(ast_t *ast)` (Hard / Critical Logic)

@@ -1,6 +1,6 @@
 #include "include/debug.h"
-#include "include/token.h"
-#include "include/AST.h"
+#include "include/ti_build_token.h"
+#include "include/ti_type_ast.h"
 
 /* -------------------- Public Functions -------------------- */
 

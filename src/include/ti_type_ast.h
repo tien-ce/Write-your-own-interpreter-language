@@ -1,9 +1,10 @@
-#ifndef AST_H
-#define AST_H
+#ifndef TI_TYPE_AST_H
+#define TI_TYPE_AST_H
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
 #include "ti_type.h"
+#include "tracked_memory.h"
 /* -------------------- AST Structure & Definitions -------------------- */
 
 typedef struct AST_STRUCT {
@@ -147,11 +148,12 @@ typedef struct AST_STRUCT {
 
 /**
  * @brief Allocate and initialize an AST node with the given type and source line.
+ * @param list Pointer to head of allocation list (can be NULL if unlinked).
  * @param type Node type enum.
  * @param line Source line number.
  * @return Pointer to newly allocated ast_t.
  */
-ast_t *ast_init(int type, int line);
+ast_t *ast_init(alloc_hdr_t **list, int type, int line);
 
 /**
  * @brief Recursively free an AST node and all its children.
@@ -159,4 +161,4 @@ ast_t *ast_init(int type, int line);
  */
 void ast_free(ast_t *ast);
 
-#endif /* !AST_H */
+#endif /* !TI_TYPE_AST_H */

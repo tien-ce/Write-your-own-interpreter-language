@@ -1,15 +1,16 @@
 # Maintainer Guide: Lexer Module
 
-> **Audience:** Developers and maintainers modifying `src/lexer.c` or extending tokenization in TienInterpreter.
+> **Audience:** Developers and maintainers modifying `src/ti_build_lexer.c` or extending tokenization in TienInterpreter.
 
 ---
 
 ## 1. Struct: `lexer_t` (`struct LEXER_STRUCT`)
 
-Defined in `src/include/lexer.h`:
+Defined in `src/include/ti_build_lexer.h`:
 
 ```c
 typedef struct LEXER_STRUCT {
+    alloc_hdr_t **alloc_list; // Dedicated allocation list pointer
     char c;                 // Current character under cursor
     unsigned int i;         // Byte offset index in contents
     unsigned int line_num;  // 1-based line counter for error diagnostics
@@ -23,6 +24,7 @@ The `lexer_t` struct encapsulates the complete traversal state of the tokenizer.
 
 | Field | Type | Purpose & Contribution to Logic |
 | :--- | :--- | :--- |
+| `alloc_list` | `alloc_hdr_t **` | **Allocation List Reference:** Pointer to the program's build-time allocation list head pointer. Used by all token creation and string accumulation routines. |
 | `c` | `char` | **Active character cache:** Stores `contents[i]` so that functions inspect `lexer->c` directly rather than constantly dereferencing `lexer->contents[lexer->i]`. When at the end of input, `c` becomes `'\0'`. |
 | `i` | `unsigned int` | **Byte index cursor:** Tracks the exact byte position within `contents`. Incremented by `lexer_advance()` and decremented by `lexer_go_back()`. |
 | `line_num` | `unsigned int` | **Diagnostics line tracker:** 1-based counter incremented whenever `\n` is encountered in `lexer_skip_whitespace()`. Passed to `ti_log()` when reporting syntax errors. |
@@ -136,7 +138,7 @@ The `lexer_t` struct encapsulates the complete traversal state of the tokenizer.
      - Control flow: `"if"` (`TOKEN_KW_IF`), `"else"` (`TOKEN_KW_ELSE`), `"while"` (`TOKEN_KW_WHILE`), `"return"` (`TOKEN_KW_RETURN`), `"break"` (`TOKEN_KW_BREAK`), `"continue"` (`TOKEN_KW_CONTINUE`).
      - **Why Keywords Free `value` and Pass `NULL`:**
        ```c
-       // src/lexer.c line 147:
+       // src/ti_build_lexer.c:
        if (strcmp(value, "int") == 0) { 
            tracked_free(value); 
            return token_init(TOKEN_KW_INT, NULL); 
@@ -200,9 +202,9 @@ For operators that can be either single-character or compound:
 
 ### 2.5. Lifecycle & Backtracking Functions
 
-#### `lexer_init(char *str)`
-- **Purpose:** Allocates and configures a new `lexer_t`.
-- **Mechanics:** Calls `tracked_calloc(1, sizeof(struct LEXER_STRUCT))`, points `contents` and `line` to `str`, sets `line_num = 1`, `i = 0`, and `c = str[0]`.
+#### `lexer_init(alloc_hdr_t **list, char *str)`
+- **Purpose:** Allocates and configures a new `lexer_t` tied to the build allocation list.
+- **Mechanics:** Calls `tracked_calloc(list, 1, sizeof(struct LEXER_STRUCT))`, sets `alloc_list = list`, points `contents` and `line` to `str`, sets `line_num = 1`, `i = 0`, and `c = str[0]`.
 
 #### `lexer_copy(lexer_t *lexer)`
 - **Purpose:** Clones the lexer state for speculative parsing (backtracking in parser).

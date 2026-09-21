@@ -29,36 +29,44 @@ Allocation pointer (from malloc) `(hdr + 1)` (pointer returned to caller)
 
 | Field | Type | Purpose & Contribution to Logic |
 | :--- | :--- | :--- |
-| `next` | `alloc_hdr_t *` | Pointer to the next tracked block in the global doubly linked list `s_alloc_list`. |
+| `next` | `alloc_hdr_t *` | Pointer to the next tracked block in the intrusive doubly linked list `*list`. |
 | `previous` | `alloc_hdr_t *` | Pointer to the previous tracked block. Enables $O(1)$ removal from the list without traversing. |
 
 ---
 
 ## 2. Allocation & Deallocation Mechanics
 
+All tracking functions accept an optional `alloc_hdr_t **list` parameter, allowing per-instance memory tracking (such as `&rt->alloc_list` or `&prog->alloc_list`), or fallback to the global tracking list `s_alloc_list` if `list == NULL`:
+
 ### 2.1. `tracked_malloc` / `tracked_calloc`
+- Signatures:
+  ```c
+  void *tracked_malloc(alloc_hdr_t **list, size_t size);
+  void *tracked_calloc(alloc_hdr_t **list, size_t num, size_t size);
+  ```
 1. Requests `sizeof(alloc_hdr_t) + payload_size` from system `malloc()`.
-2. Inserts `hdr` at the head of `s_alloc_list` ($O(1)$).
+2. Inserts `hdr` at the head of `*list` ($O(1)$), setting `hdr->previous = NULL` and `hdr->next = *list`.
 3. Returns `(void *)(hdr + 1)`, hiding the header completely from caller code.
 
-### 2.2. `tracked_free(void *ptr)` (Header Recovery & $O(1)$ Unlinking)
+### 2.2. `tracked_free(alloc_hdr_t **list, void *ptr)` (Header Recovery & $O(1)$ Unlinking)
 1. Recovers the header by pointer arithmetic:
    ```c
    alloc_hdr_t *hdr = (alloc_hdr_t *)ptr - 1;
    ```
-2. Unlinks `hdr` from `s_alloc_list` via `list_remove(hdr)`.
+2. Unlinks `hdr` from `*list` via `list_remove(list, hdr)`:
+   - Validates that `*list == hdr` before unlinking the head to prevent cross-list corruption.
+   - Clears `hdr->previous = NULL` and `hdr->next = NULL` upon unlinking.
 3. Calls system `free(hdr)`.
 
-### 2.3. `tracked_realloc(void *ptr, size_t new_size)`
+### 2.3. `tracked_realloc(alloc_hdr_t **list, void *ptr, size_t new_size)`
 1. Shifts pointer back to find `hdr = (alloc_hdr_t *)ptr - 1`.
 2. Calls system `realloc(hdr, sizeof(alloc_hdr_t) + new_size)`.
-3. If the block was moved to a new address by `realloc`, updates the neighbor `previous` and `next` pointers to point to the new header address.
+3. If the block was moved to a new address by `realloc`, updates the neighbor `previous` and `next` pointers to point to the new header address, maintaining doubly linked list integrity.
 
 ---
 
-## 3. Global Bulk Cleanup (`free_all`)
+## 3. Bulk Cleanup (`free_all`)
 
-When a fatal script error occurs (via `ti_fatal()`) or when the interpreter shuts down, `free_all()` is invoked:
-- Traverses `s_alloc_list` from head to tail.
-- Frees every remaining allocation in memory in a single loop.
-- Guarantees zero residual heap leaks even on abnormal script crashes.
+When an isolated runtime or program context terminates, or during fatal script termination:
+- `free_all(alloc_hdr_t **list)`: Traverses `*list` from head to tail, releasing every remaining allocation in memory in a single sweep and setting `*list = NULL`.
+- Guarantees zero residual heap leaks even on abnormal script interruptions.

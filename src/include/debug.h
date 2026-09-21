@@ -1,7 +1,7 @@
 #ifndef DEBUG_H
 #define DEBUG_H
 
-#include "AST.h"
+#include "ti_type_ast.h"
 
 /* -------------------- Public String Conversion & Debug API -------------------- */
 

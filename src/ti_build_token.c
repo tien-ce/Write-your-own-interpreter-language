@@ -1,16 +1,32 @@
-#include "include/token.h"
+#include "include/ti_build_token.h"
 #include "include/tracked_memory.h"
 #include <stdlib.h>
 
 /* -------------------- Public Functions -------------------- */
 
 /* Allocate and initialize a new token */
-token_t *token_init(int type, char *value)
+token_t *token_init(alloc_hdr_t **list, int type, char *value)
 {
-    token_t *token = tracked_calloc(1, sizeof(struct TOKEN_STRUCT));
+    token_t *token = tracked_calloc(list, 1, sizeof(struct TOKEN_STRUCT));
+    if (!token) {
+        return NULL;
+    }
     token->type = type;
     token->value = value;
     return token;
+}
+
+/* Free a token and its value payload */
+void token_free(alloc_hdr_t **list, token_t *token)
+{
+    if (!token) {
+        return;
+    }
+    if (token->value) {
+        tracked_free(list, token->value);
+        token->value = NULL;
+    }
+    tracked_free(list, token);
 }
 
 /* Convert token type to human-readable string */

@@ -1,4 +1,4 @@
-#include "include/AST.h"
+#include "include/ti_type_ast.h"
 #include "include/tracked_memory.h"
 #include "TienInterpreter.h"
 #include <stdlib.h>
@@ -7,9 +7,12 @@
 /* -------------------- Public Functions -------------------- */
 
 /* Initialize AST node */
-ast_t *ast_init(int type, int line)
+ast_t *ast_init(alloc_hdr_t **list, int type, int line)
 {
-    ast_t *ast = tracked_calloc(1, sizeof(struct AST_STRUCT));
+    ast_t *ast = tracked_calloc(list, 1, sizeof(struct AST_STRUCT));
+    if (!ast) {
+        return NULL;
+    }
     ast->type = type;
     ast->line = line;
     return ast;
@@ -27,12 +30,12 @@ void ast_free(ast_t *ast)
         for (int i = 0; i < ast->value.compound.statement_count; i++) {
             ast_free(ast->value.compound.statements[i]);
         }
-        tracked_free(ast->value.compound.statements);
+        tracked_free(NULL, ast->value.compound.statements);
         break;
 
     case AST_VARIABLE_DEFINITION:
         if (ast->value.variable_definition.variable_name) {
-            tracked_free(ast->value.variable_definition.variable_name);
+            tracked_free(NULL, ast->value.variable_definition.variable_name);
         }
         ast_free(ast->value.variable_definition.value);
         break;
@@ -43,11 +46,11 @@ void ast_free(ast_t *ast)
             ast_free(ast->value.function_definition.params[i]);
         }
         if (ast->value.function_definition.params) {
-            tracked_free(ast->value.function_definition.params);
+            tracked_free(NULL, ast->value.function_definition.params);
         }
         if (ast->value.function_definition.func_name) 
         {
-            tracked_free(ast->value.function_definition.func_name);
+            tracked_free(NULL, ast->value.function_definition.func_name);
         }
         ast_free(ast->value.function_definition.body);
         break;
@@ -55,19 +58,19 @@ void ast_free(ast_t *ast)
 
     case AST_PARAM:
         if (ast->value.param.param_name) {
-            tracked_free(ast->value.param.param_name);
+            tracked_free(NULL, ast->value.param.param_name);
         }
         break;
 
     case AST_FUNCTION_CALL: {
         if (ast->value.function_call.func_name) {
-            tracked_free(ast->value.function_call.func_name);
+            tracked_free(NULL, ast->value.function_call.func_name);
         }
         int arg_count = ast->value.function_call.arg_count;
         for (int i = 0; i < arg_count; i++) {
             ast_free(ast->value.function_call.args[i]);
         }
-        tracked_free(ast->value.function_call.args);
+        tracked_free(NULL, ast->value.function_call.args);
         break;
     }
 
@@ -86,16 +89,16 @@ void ast_free(ast_t *ast)
         break;
 
     case AST_STRING_LITERAL:
-        tracked_free(ast->value.string_value);
+        tracked_free(NULL, ast->value.string_value);
         break;
 
     case AST_IDENTIFIER:
-        tracked_free(ast->value.identifier);
+        tracked_free(NULL, ast->value.identifier);
         break;
 
     case AST_ARRAY_ACCESS:
         if (ast->value.array_access.id) {
-            tracked_free(ast->value.array_access.id);
+            tracked_free(NULL, ast->value.array_access.id);
         }
         ast_free(ast->value.array_access.index_expr);
         break;
@@ -130,5 +133,5 @@ void ast_free(ast_t *ast)
         break;
     }
 
-    tracked_free(ast);
+    tracked_free(NULL, ast);
 }

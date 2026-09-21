@@ -1,7 +1,7 @@
-#include "include/parser.h"
-#include "include/AST.h"
-#include "include/lexer.h"
-#include "include/token.h"
+#include "include/ti_build_parser.h"
+#include "include/ti_type_ast.h"
+#include "include/ti_build_lexer.h"
+#include "include/ti_build_token.h"
 #include "include/tracked_memory.h"
 #include "TienInterpreter.h"
 #include <stdio.h>
@@ -73,13 +73,13 @@ static token_t *parser_peek(parser_t *parser)
 {
     lexer_t *temp_lexer = lexer_copy(parser->lexer);
     token_t *discared = lexer_get_next_token(temp_lexer);
-    if(discared->value != NULL)
-    {
-      tracked_free(discared->value);
+    if (discared->value != NULL) {
+        tracked_free(parser->alloc_list, discared->value);
+        discared->value = NULL;
     }
-    tracked_free(discared);
+    tracked_free(parser->alloc_list, discared);
     token_t *next_token = lexer_get_next_token(temp_lexer);
-    tracked_free((void *)temp_lexer);
+    tracked_free(parser->alloc_list, (void *)temp_lexer);
     return next_token;
 }
 
@@ -107,10 +107,10 @@ static ast_t *parser_parse_param(parser_t *parser)
     parser_eat(parser, parser->current_token->type); // Eat <param_type>
 
     char *param_name = parser->current_token->value;
-    parser->current_token->value = NULL; // Change the onwer to ast instead of token
+    parser->current_token->value = NULL; // Change the owner to ast instead of token
     parser_eat(parser, TOKEN_ID); // Eat param_name
 
-    ast_t *param_node = ast_init(AST_PARAM, parser->lexer->line_num);
+    ast_t *param_node = ast_init(parser->alloc_list, AST_PARAM, parser->lexer->line_num);
     param_node->value.param.param_type = param_type;
     param_node->value.param.param_name = param_name;
     return param_node;
@@ -141,7 +141,7 @@ static ast_t *parser_parse_function_definition(parser_t *parser)
     parser_eat(parser, parser->current_token->type); // Eat <return_type>
 
     char *func_name = parser->current_token->value;
-    parser->current_token->value = NULL; // Change the onwer to ast instead of token
+    parser->current_token->value = NULL; // Change the owner to ast instead of token
     parser_eat(parser, TOKEN_ID); // Eat func_name
 
     parser_eat(parser, TOKEN_LPAREN); // Eat '('
@@ -150,14 +150,14 @@ static ast_t *parser_parse_function_definition(parser_t *parser)
 
     /* Parse parameter list: <type> param1, <type> param2, ... */
     if (parser->current_token->type != TOKEN_RPAREN) {
-        params = tracked_calloc(1, sizeof(struct AST_STRUCT *));
+        params = tracked_calloc(parser->alloc_list, 1, sizeof(struct AST_STRUCT *));
         ast_t *param_node = parser_parse_param(parser);
         params[param_count] = param_node;
         param_count++;
 
         while (parser->current_token->type == TOKEN_COMMA) {
             parser_eat(parser, TOKEN_COMMA); // Eat ','
-            params = tracked_realloc(params, (param_count + 1) * sizeof(struct AST_STRUCT *));
+            params = tracked_realloc(parser->alloc_list, params, (param_count + 1) * sizeof(struct AST_STRUCT *));
             ast_t *next_param_node = parser_parse_param(parser);
             params[param_count] = next_param_node;
             param_count++;
@@ -166,7 +166,7 @@ static ast_t *parser_parse_function_definition(parser_t *parser)
     parser_eat(parser, TOKEN_RPAREN); // Eat ')'
 
     ast_t *statements = parser_parse_statements(parser); // Parse '{' ... '}' compound body
-    ast_t *func_def_node = ast_init(AST_FUNCTION_DEFINITION, parser->lexer->line_num);
+    ast_t *func_def_node = ast_init(parser->alloc_list, AST_FUNCTION_DEFINITION, parser->lexer->line_num);
     func_def_node->value.function_definition.return_type = return_type;
     func_def_node->value.function_definition.func_name = func_name;
     func_def_node->value.function_definition.param_count = param_count;
@@ -185,10 +185,10 @@ static ast_t *parser_parse_definition(parser_t *parser)
     token_t *next_token = parser_peek(parser);
     int next_type = (int)next_token->type;
     if (next_token->value != NULL) {
-        tracked_free(next_token->value);
+        tracked_free(parser->alloc_list, next_token->value);
         next_token->value = NULL;
     }
-    tracked_free(next_token);
+    tracked_free(parser->alloc_list, next_token);
     switch (next_type) {
     case TOKEN_LPAREN:
         return parser_parse_function_definition(parser);
@@ -213,12 +213,11 @@ static void parser_eat(parser_t *parser, int expected_type)
     if ((int)parser->current_token->type == expected_type) {
         token_t *old_token = parser->current_token;
         parser->current_token = lexer_get_next_token(parser->lexer);
-        if(old_token->value != NULL)
-        {
-          tracked_free(old_token->value); // Free the value of old token
-          old_token->value = NULL;
+        if (old_token->value != NULL) {
+            tracked_free(parser->alloc_list, old_token->value); // Free the value of old token
+            old_token->value = NULL;
         }
-        tracked_free(old_token);
+        tracked_free(parser->alloc_list, old_token);
         old_token = NULL;
     } else {
         ti_log("[Parser Error] Unexpected token %s ('%s') at line %d\n",
@@ -285,7 +284,7 @@ static ast_t *parser_parse_statement(parser_t *parser)
 static ast_t *parser_parse_statements(parser_t *parser)
 {
     parser_eat(parser, TOKEN_LBRACE);
-    ast_t *compound = ast_init(AST_COMPOUND, parser->lexer->line_num);
+    ast_t *compound = ast_init(parser->alloc_list, AST_COMPOUND, parser->lexer->line_num);
     compound->value.compound.statements = NULL;
     compound->value.compound.statement_count = 0;
 
@@ -293,9 +292,10 @@ static ast_t *parser_parse_statements(parser_t *parser)
         ast_t *statement = parser_parse_statement(parser);
         int count = compound->value.compound.statement_count;
         if (compound->value.compound.statements == NULL) {
-            compound->value.compound.statements = tracked_calloc(1, sizeof(struct AST_STRUCT *));
+            compound->value.compound.statements = tracked_calloc(parser->alloc_list, 1, sizeof(struct AST_STRUCT *));
         } else {
             compound->value.compound.statements = tracked_realloc(
+                parser->alloc_list,
                 compound->value.compound.statements,
                 (count + 1) * sizeof(struct AST_STRUCT *)
             );
@@ -314,7 +314,7 @@ static ast_t *parser_parse_statements(parser_t *parser)
  */
 static ast_t *parser_parse_main_program(parser_t *parser)
 {
-    ast_t *compound = ast_init(AST_COMPOUND, parser->lexer->line_num);
+    ast_t *compound = ast_init(parser->alloc_list, AST_COMPOUND, parser->lexer->line_num);
     compound->value.compound.statements = NULL;
     compound->value.compound.statement_count = 0;
 
@@ -322,9 +322,10 @@ static ast_t *parser_parse_main_program(parser_t *parser)
         ast_t *statement = parser_parse_statement(parser);
         int count = compound->value.compound.statement_count;
         if (compound->value.compound.statements == NULL) {
-            compound->value.compound.statements = tracked_calloc(1, sizeof(struct AST_STRUCT *));
+            compound->value.compound.statements = tracked_calloc(parser->alloc_list, 1, sizeof(struct AST_STRUCT *));
         } else {
             compound->value.compound.statements = tracked_realloc(
+                parser->alloc_list,
                 compound->value.compound.statements,
                 (count + 1) * sizeof(struct AST_STRUCT *)
             );
@@ -348,7 +349,7 @@ static ast_t *parser_parse_expr(parser_t *parser)
         int op = parser->current_token->type;
         parser_eat(parser, op);
         ast_t *right = parser_parse_comparison(parser);
-        ast_t *binary_node = ast_init(AST_BINARY_EXPR, parser->lexer->line_num);
+        ast_t *binary_node = ast_init(parser->alloc_list, AST_BINARY_EXPR, parser->lexer->line_num);
         binary_node->value.binary_expr.op = token_type_to_op(parser, op);
         binary_node->value.binary_expr.left = left;
         binary_node->value.binary_expr.right = right;
@@ -374,7 +375,7 @@ static ast_t *parser_parse_comparison(parser_t *parser)
         int op = parser->current_token->type;
         parser_eat(parser, op);
         ast_t *right = parser_parse_additive(parser);
-        ast_t *binary_node = ast_init(AST_BINARY_EXPR, parser->lexer->line_num);
+        ast_t *binary_node = ast_init(parser->alloc_list, AST_BINARY_EXPR, parser->lexer->line_num);
         binary_node->value.binary_expr.op = token_type_to_op(parser, op);
         binary_node->value.binary_expr.left = left;
         binary_node->value.binary_expr.right = right;
@@ -396,7 +397,7 @@ static ast_t *parser_parse_additive(parser_t *parser)
         int op = parser->current_token->type;
         parser_eat(parser, op);
         ast_t *right = parser_parse_term(parser);
-        ast_t *binary_node = ast_init(AST_BINARY_EXPR, parser->lexer->line_num);
+        ast_t *binary_node = ast_init(parser->alloc_list, AST_BINARY_EXPR, parser->lexer->line_num);
         binary_node->value.binary_expr.op = token_type_to_op(parser, op);
         binary_node->value.binary_expr.left = left;
         binary_node->value.binary_expr.right = right;
@@ -418,7 +419,7 @@ static ast_t *parser_parse_term(parser_t *parser)
         int op = parser->current_token->type;
         parser_eat(parser, op);
         ast_t *right = parser_parse_primary(parser);
-        ast_t *binary_node = ast_init(AST_BINARY_EXPR, parser->lexer->line_num);
+        ast_t *binary_node = ast_init(parser->alloc_list, AST_BINARY_EXPR, parser->lexer->line_num);
         binary_node->value.binary_expr.op = token_type_to_op(parser, op);
         binary_node->value.binary_expr.left = left;
         binary_node->value.binary_expr.right = right;
@@ -436,26 +437,26 @@ static ast_t *parser_parse_primary(parser_t *parser)
 {
     switch (parser->current_token->type) {
     case TOKEN_INT: {
-        ast_t *int_node = ast_init(AST_INT_LITERAL, parser->lexer->line_num);
+        ast_t *int_node = ast_init(parser->alloc_list, AST_INT_LITERAL, parser->lexer->line_num);
         int_node->value.int_value = atoi(parser->current_token->value);
         parser_eat(parser, TOKEN_INT);
         return int_node;
     }
     case TOKEN_FLOAT: {
-        ast_t *float_node = ast_init(AST_FLOAT_LITERAL, parser->lexer->line_num);
+        ast_t *float_node = ast_init(parser->alloc_list, AST_FLOAT_LITERAL, parser->lexer->line_num);
         float_node->value.float_value = atof(parser->current_token->value);
         parser_eat(parser, TOKEN_FLOAT);
         return float_node;
     }
     case TOKEN_STRING: {
-        ast_t *string_node = ast_init(AST_STRING_LITERAL, parser->lexer->line_num);
+        ast_t *string_node = ast_init(parser->alloc_list, AST_STRING_LITERAL, parser->lexer->line_num);
         string_node->value.string_value = parser->current_token->value;
-        parser->current_token->value = NULL; // Change the onwer to ast instead of token
+        parser->current_token->value = NULL; // Change the owner to ast instead of token
         parser_eat(parser, TOKEN_STRING);
         return string_node;
     }
     case TOKEN_BOOL: {
-        ast_t *bool_node = ast_init(AST_BOOLEAN, parser->lexer->line_num);
+        ast_t *bool_node = ast_init(parser->alloc_list, AST_BOOLEAN, parser->lexer->line_num);
         if (strcmp(parser->current_token->value, "true") == 0 || 
             strcmp(parser->current_token->value, "1") == 0) {
             bool_node->value.bool_value = 1;
@@ -471,7 +472,7 @@ static ast_t *parser_parse_primary(parser_t *parser)
         int token_type = parser->current_token->type;
         parser_eat(parser, token_type);
 
-        ast_t *unary_node = ast_init(AST_UNARY_EXPR, parser->lexer->line_num);
+        ast_t *unary_node = ast_init(parser->alloc_list, AST_UNARY_EXPR, parser->lexer->line_num);
         if (token_type == TOKEN_NOT) {
             unary_node->value.unary_expr.op = OP_NOT;
         } else if (token_type == TOKEN_PLUS) {
@@ -485,7 +486,7 @@ static ast_t *parser_parse_primary(parser_t *parser)
     }    
     case TOKEN_ID: {
         char *id_name = parser->current_token->value;
-        parser->current_token->value = NULL; // Change the onwer to ast instead of token
+        parser->current_token->value = NULL; // Change the owner to ast instead of token
         parser_eat(parser, TOKEN_ID);
 
         /* Function call: id(...) */
@@ -498,14 +499,14 @@ static ast_t *parser_parse_primary(parser_t *parser)
             parser_eat(parser, TOKEN_LBRACKET);
             ast_t *index_expr = parser_parse_expr(parser);
             parser_eat(parser, TOKEN_RBRACKET);
-            ast_t *array_access_node = ast_init(AST_ARRAY_ACCESS, parser->lexer->line_num);
+            ast_t *array_access_node = ast_init(parser->alloc_list, AST_ARRAY_ACCESS, parser->lexer->line_num);
             array_access_node->value.array_access.id = id_name;
             array_access_node->value.array_access.index_expr = index_expr;
             return array_access_node;
         }
 
         /* Simple identifier reference */
-        ast_t *variable_node = ast_init(AST_IDENTIFIER, parser->lexer->line_num);
+        ast_t *variable_node = ast_init(parser->alloc_list, AST_IDENTIFIER, parser->lexer->line_num);
         variable_node->value.identifier = id_name;
         return variable_node;
     }
@@ -551,13 +552,13 @@ static ast_t *parser_parse_variable_definition(parser_t *parser)
     parser_eat(parser, parser->current_token->type); // Eat <variable_type>
 
     char *variable_name = parser->current_token->value;
-    parser->current_token->value = NULL; // Give the onwer to AST
+    parser->current_token->value = NULL; // Give the owner to AST
     parser_eat(parser, TOKEN_ID); // Eat variable_name
 
     parser_eat(parser, TOKEN_EQUALS); // Eat '='
 
     ast_t *value = parser_parse_expr(parser);
-    ast_t *var_def_node = ast_init(AST_VARIABLE_DEFINITION, parser->lexer->line_num);
+    ast_t *var_def_node = ast_init(parser->alloc_list, AST_VARIABLE_DEFINITION, parser->lexer->line_num);
     var_def_node->value.variable_definition.variable_type = variable_type;
     var_def_node->value.variable_definition.variable_name = variable_name;
     var_def_node->value.variable_definition.value = value;
@@ -579,7 +580,7 @@ static ast_t *parser_parse_while_statement(parser_t *parser)
     parser_eat(parser, TOKEN_RPAREN);   // Eat ')'
 
     ast_t *body = parser_parse_statements(parser);
-    ast_t *while_node = ast_init(AST_WHILE_STATEMENT, parser->lexer->line_num);
+    ast_t *while_node = ast_init(parser->alloc_list, AST_WHILE_STATEMENT, parser->lexer->line_num);
     while_node->value.while_statement.condition = condition;
     while_node->value.while_statement.body = body;
     return while_node;
@@ -605,7 +606,7 @@ static ast_t *parser_parse_if_statement(parser_t *parser)
         body = parser_parse_statement(parser);
     }
 
-    ast_t *if_node = ast_init(AST_IF_STATEMENT, parser->lexer->line_num);
+    ast_t *if_node = ast_init(parser->alloc_list, AST_IF_STATEMENT, parser->lexer->line_num);
     if_node->value.if_statement.condition = condition;
     if_node->value.if_statement.body = body;
     if_node->value.if_statement.else_body = NULL;
@@ -635,21 +636,21 @@ static ast_t *parser_parse_function_call(parser_t *parser, char *func_name)
     int arg_count = 0;
 
     if (parser->current_token->type != TOKEN_RPAREN) {
-        args = tracked_calloc(1, sizeof(struct AST_STRUCT *));
+        args = tracked_calloc(parser->alloc_list, 1, sizeof(struct AST_STRUCT *));
         ast_t *arg_node = parser_parse_expr(parser);
         args[arg_count] = arg_node;
         arg_count++;
     }
     while (parser->current_token->type == TOKEN_COMMA) {
         parser_eat(parser, TOKEN_COMMA); // Eat ','
-        args = tracked_realloc(args, (arg_count + 1) * sizeof(struct AST_STRUCT *));
+        args = tracked_realloc(parser->alloc_list, args, (arg_count + 1) * sizeof(struct AST_STRUCT *));
         ast_t *arg_node = parser_parse_expr(parser);
         args[arg_count] = arg_node;
         arg_count++;
     }
     parser_eat(parser, TOKEN_RPAREN); // Eat ')'
 
-    ast_t *func_call_node = ast_init(AST_FUNCTION_CALL, parser->lexer->line_num);
+    ast_t *func_call_node = ast_init(parser->alloc_list, AST_FUNCTION_CALL, parser->lexer->line_num);
     func_call_node->value.function_call.func_name = func_name;
     func_call_node->value.function_call.args = args;
     func_call_node->value.function_call.arg_count = arg_count;
@@ -667,7 +668,7 @@ static ast_t *parser_parse_assignment(parser_t *parser, ast_t *target)
 {
     parser_eat(parser, TOKEN_EQUALS); // Eat '='
     ast_t *value = parser_parse_expr(parser);
-    ast_t *assignment_node = ast_init(AST_ASSIGNMENT, parser->lexer->line_num);
+    ast_t *assignment_node = ast_init(parser->alloc_list, AST_ASSIGNMENT, parser->lexer->line_num);
     assignment_node->value.assignment.target = target;
     assignment_node->value.assignment.value = value;
     parser_eat(parser, TOKEN_SEMI);   // Eat ';'
@@ -684,7 +685,7 @@ static ast_t *parser_parse_return_statement(parser_t *parser)
 {
     parser_eat(parser, TOKEN_KW_RETURN); // Eat 'return'
 
-    ast_t *return_node = ast_init(AST_RETURN_STATEMENT, parser->lexer->line_num);
+    ast_t *return_node = ast_init(parser->alloc_list, AST_RETURN_STATEMENT, parser->lexer->line_num);
     return_node->value.return_statement.value = NULL;
 
     if (parser->current_token->type != TOKEN_SEMI) {
@@ -706,7 +707,7 @@ static ast_t *parser_parse_break_statement(parser_t *parser)
     parser_eat(parser, TOKEN_KW_BREAK); // Eat 'break'
     parser_eat(parser, TOKEN_SEMI);     // Eat ';'
 
-    return ast_init(AST_BREAK_STATEMENT, parser->lexer->line_num);
+    return ast_init(parser->alloc_list, AST_BREAK_STATEMENT, parser->lexer->line_num);
 }
 
 /**
@@ -720,15 +721,19 @@ static ast_t *parser_parse_continue_statement(parser_t *parser)
     parser_eat(parser, TOKEN_KW_CONTINUE); // Eat 'continue'
     parser_eat(parser, TOKEN_SEMI);         // Eat ';'
 
-    return ast_init(AST_CONTINUE_STATEMENT, parser->lexer->line_num);
+    return ast_init(parser->alloc_list, AST_CONTINUE_STATEMENT, parser->lexer->line_num);
 }
 
 /* -------------------- Public Functions -------------------- */
 
 /* Initialize a new parser using the given lexer */
-parser_t *parser_init(lexer_t *lexer)
+parser_t *parser_init(alloc_hdr_t **list, lexer_t *lexer)
 {
-    parser_t *parser = tracked_calloc(1, sizeof(struct PARSER_STRUCT));
+    parser_t *parser = tracked_calloc(list, 1, sizeof(struct PARSER_STRUCT));
+    if (!parser) {
+        return NULL;
+    }
+    parser->alloc_list = list;
     parser->lexer = lexer;
     parser->current_token = lexer_get_next_token(parser->lexer);
     return parser;

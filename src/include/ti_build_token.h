@@ -1,5 +1,7 @@
-#ifndef TOKEN_H
-#define TOKEN_H
+#ifndef TI_BUILD_TOKEN_H
+#define TI_BUILD_TOKEN_H
+
+#include "tracked_memory.h"
 
 /* -------------------- Token Types & Structure -------------------- */
 
@@ -61,11 +63,19 @@ typedef struct TOKEN_STRUCT {
 
 /**
  * @brief Allocate and initialize a new token.
+ * @param list Pointer to head of allocation list (can be NULL if unlinked).
  * @param type Token type enum.
  * @param value String payload of the token (or NULL).
  * @return Pointer to newly allocated token_t.
  */
-token_t *token_init(int type, char *value);
+token_t *token_init(alloc_hdr_t **list, int type, char *value);
+
+/**
+ * @brief Free a token and its value payload.
+ * @param list Pointer to head of allocation list (can be NULL).
+ * @param token Pointer to token to free.
+ */
+void token_free(alloc_hdr_t **list, token_t *token);
 
 /**
  * @brief Convert token type enum to human-readable string.
@@ -74,4 +84,4 @@ token_t *token_init(int type, char *value);
  */
 const char *token_to_str(int token_type);
 
-#endif /* !TOKEN_H */
+#endif /* !TI_BUILD_TOKEN_H */

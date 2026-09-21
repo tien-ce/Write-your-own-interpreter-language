@@ -1,5 +1,5 @@
-#include "include/visitor.h"
-#include "include/function.h"
+#include "include/ti_runtime_visitor.h"
+#include "include/ti_type_func.h"
 #include "TienInterpreter.h"
 #include <stdarg.h>
 #include <stdio.h>
@@ -88,7 +88,7 @@ static value_t *built_in_print(value_t **argv, int argc)
         }
     }
     printf("\n");
-    return val_new_null();
+    return val_new_null(NULL);
 }
 
 /**
@@ -102,7 +102,7 @@ static value_t *built_in_delay(value_t **argv, int argc)
     if (argc != 1) {
         ti_log("[ERROR]: delay() expects 1 argument (milliseconds)\n");
         ti_fatal();
-        return val_new_null();
+        return val_new_null(NULL);
     }
 
     int ms = 0;
@@ -113,7 +113,7 @@ static value_t *built_in_delay(value_t **argv, int argc)
     } else {
         ti_log("[ERROR]: delay() argument must be an integer or float\n");
         ti_fatal();
-        return val_new_null();
+        return val_new_null(NULL);
     }
 
     if (ms > 0) {
@@ -124,7 +124,7 @@ static value_t *built_in_delay(value_t **argv, int argc)
 #endif
     }
 
-    return val_new_null();
+    return val_new_null(NULL);
 }
 
 /**
@@ -137,7 +137,7 @@ static value_t *built_in_relay_get_state(value_t **argv, int argc)
 {
     (void)argv;
     (void)argc;
-    return val_new_int(s_relay_state);
+    return val_new_int(NULL, s_relay_state);
 }
 
 /**
@@ -151,7 +151,7 @@ static value_t *built_in_relay_set_state(value_t **argv, int argc)
     if (argc >= 2 && argv[1]->type == VAL_INT) {
         s_relay_state = argv[1]->int_val;
     }
-    return val_new_null();
+    return val_new_null(NULL);
 }
 
 /**
@@ -165,7 +165,7 @@ static value_t *built_in_autonics_tk_set_slave_address(value_t **argv, int argc)
     if (argc >= 1 && argv[0]->type == VAL_INT) {
         s_autonics_slave_addr = argv[0]->int_val;
     }
-    return val_new_null();
+    return val_new_null(NULL);
 }
 
 /**
@@ -178,7 +178,7 @@ static value_t *built_in_autonics_tk_get_pv(value_t **argv, int argc)
 {
     (void)argv;
     (void)argc;
-    return val_new_float(28.5f);
+    return val_new_float(NULL, 28.5f);
 }
 
 /**
@@ -191,7 +191,7 @@ static value_t *built_in_autonics_tk_get_sv(value_t **argv, int argc)
 {
     (void)argv;
     (void)argc;
-    return val_new_float(85.0f);
+    return val_new_float(NULL, 85.0f);
 }
 
 /**
@@ -203,21 +203,21 @@ static value_t *built_in_autonics_tk_get_sv(value_t **argv, int argc)
 static value_t *built_in_nvs_read(value_t **argv, int argc)
 {
     if (argc < 2) {
-        return val_new_null();
+        return val_new_null(NULL);
     }
 
     value_t *def = argv[1];
     switch (def->type) {
     case VAL_INT:
-        return val_new_int(def->int_val);
+        return val_new_int(NULL, def->int_val);
     case VAL_FLOAT:
-        return val_new_float(def->float_val);
+        return val_new_float(NULL, def->float_val);
     case VAL_STRING:
-        return val_new_string(def->string_val);
+        return val_new_string(NULL, def->string_val);
     case VAL_BOOL:
-        return val_new_bool(def->bool_val);
+        return val_new_bool(NULL, def->bool_val);
     default:
-        return val_new_null();
+        return val_new_null(NULL);
     }
 }
 
@@ -232,7 +232,7 @@ static value_t *built_in_http_get(value_t **argv, int argc)
     (void)argv;
     (void)argc;
     const char *fixed_response = "{\"code\": 200, \"payload\": \"{\\\"UPPER_TEMP_MAX\\\": 80.0, \\\"UPPER_TEMP_MIN\\\": 40.0}\"}";
-    return val_new_string(fixed_response);
+    return val_new_string(NULL, fixed_response);
 }
 
 /**
@@ -246,7 +246,7 @@ static value_t *built_in_get_json(value_t **argv, int argc)
     if (argc < 2 || argv[0]->type != VAL_STRING || argv[1]->type != VAL_STRING) {
         ti_log("[ERROR]: get_json() expects (string json, string key)\n");
         ti_fatal();
-        return val_new_null();
+        return val_new_null(NULL);
     }
 
     const char *json_str = argv[0]->string_val ? argv[0]->string_val : "";
@@ -254,7 +254,7 @@ static value_t *built_in_get_json(value_t **argv, int argc)
 
     cJSON *root = cJSON_Parse(json_str);
     if (!root) {
-        return val_new_null();
+        return val_new_null(NULL);
     }
 
     cJSON *item = cJSON_GetObjectItemCaseSensitive(root, key);
@@ -264,13 +264,13 @@ static value_t *built_in_get_json(value_t **argv, int argc)
 
     if (!item) {
         cJSON_Delete(root);
-        return val_new_null();
+        return val_new_null(NULL);
     }
 
     value_t *result = NULL;
     if (cJSON_IsNumber(item)) {
         if (item->valuedouble != (double)item->valueint) {
-            result = val_new_float((float)item->valuedouble);
+            result = val_new_float(NULL, (float)item->valuedouble);
         } else {
             const char *p = strstr(json_str, key);
             bool has_dot = false;
@@ -290,27 +290,27 @@ static value_t *built_in_get_json(value_t **argv, int argc)
                 }
             }
             if (has_dot) {
-                result = val_new_float((float)item->valuedouble);
+                result = val_new_float(NULL, (float)item->valuedouble);
             } else {
-                result = val_new_int(item->valueint);
+                result = val_new_int(NULL, item->valueint);
             }
         }
     } else if (cJSON_IsString(item)) {
-        result = val_new_string(item->valuestring);
+        result = val_new_string(NULL, item->valuestring);
     } else if (cJSON_IsBool(item)) {
-        result = val_new_bool(cJSON_IsTrue(item));
+        result = val_new_bool(NULL, cJSON_IsTrue(item));
     } else if (cJSON_IsObject(item) || cJSON_IsArray(item)) {
         char *printed = cJSON_PrintUnformatted(item);
-        result = val_new_string(printed ? printed : "");
+        result = val_new_string(NULL, printed ? printed : "");
         if (printed) {
             free(printed);
         }
     } else {
-        result = val_new_null();
+        result = val_new_null(NULL);
     }
 
     cJSON_Delete(root);
-    return result ? result : val_new_null();
+    return result ? result : val_new_null(NULL);
 }
 
 /* -------------------- Public Functions -------------------- */

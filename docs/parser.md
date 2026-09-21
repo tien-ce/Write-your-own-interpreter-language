@@ -1,15 +1,16 @@
 # Maintainer Guide: Parser Module
 
-> **Audience:** Developers maintaining or extending the recursive descent parser in `src/parser.c`.
+> **Audience:** Developers maintaining or extending the recursive descent parser in `src/ti_build_parser.c`.
 
 ---
 
 ## 1. Struct: `parser_t` (`struct PARSER_STRUCT`)
 
-Defined in `src/include/parser.h`:
+Defined in `src/include/ti_build_parser.h`:
 
 ```c
 typedef struct PARSER_STRUCT {
+    alloc_hdr_t **alloc_list; // Dedicated allocation list pointer
     lexer_t *lexer;         // Underlying lexer token generator
     token_t *current_token; // Active lookahead token (LL(1) window)
 } parser_t;
@@ -20,6 +21,7 @@ The parser uses an **LL(1)** recursive descent strategy with selective **LL(2)**
 
 | Field | Type | Purpose & Contribution to Logic |
 | :--- | :--- | :--- |
+| `alloc_list` | `alloc_hdr_t **` | **Build Allocation Tracking List:** Pointer to build-time allocation list head pointer. Passed to all `ast_init` calls and dynamic array resizes. |
 | `lexer` | `lexer_t *` | **Input Token Producer:** Retains a reference to the active lexer. Called whenever the parser needs to consume and advance the token stream. |
 | `current_token` | `token_t *` | **Lookahead Window:** Always stores the token currently being inspected. Functions query `parser->current_token->type` to decide grammar branches without consuming input prematurely. |
 

@@ -1,6 +1,6 @@
 # Maintainer Guide: Context & Value Runtime System
 
-> **Audience:** Developers modifying runtime execution scopes, variable storage, or dynamic value representation in `src/context.c`, `src/value.c`, `src/include/value.h`, and `src/include/context.h`.
+> **Audience:** Developers modifying runtime execution scopes, variable storage, or dynamic value representation in `src/ti_runtime_context.c`, `src/ti_type_value.c`, `src/include/ti_type_value.h`, and `src/include/ti_runtime_context.h`.
 
 ---
 
@@ -65,17 +65,17 @@ typedef struct CONTEXT_STRUCT {
     int variable_count;            // Number of variables in this scope
     flow_state_t flow_state;       // Active flow interruption flag
     value_t *return_value;         // Evaluated return payload (owned by this context)
+    alloc_hdr_t **alloc_list;      // Pointer to associated runtime allocation list
 } context_t;
 ```
-- **Purpose:** Implements a lexical environment frame (call frame / block scope) augmented with control flow signal propagation.
-- **Decoupled Function Storage:** Functions are decoupled from `context_t`. Built-in functions and user-defined script functions reside in dedicated symbol tables within `src/visitor_eval_func.c`. User function lifecycle is coordinated with the global execution context through co-occurrent teardown (`visitor_set_global_context(NULL)` triggering `user_functions_clear()`).
+- **Purpose:** Implements a lexical environment frame (call frame / block scope) augmented with control flow signal propagation and allocation tracking association.
+- **Instance-Isolated Function Storage:** Functions are decoupled from `context_t`. Built-in functions reside in host symbol tables, while user-defined script functions reside directly inside the owning `ti_runtime_t` instance (`rt->user_functions`).
 - **Scope Hierarchy:**
   - Root scope has `parent = NULL`.
   - Child scopes (inside `if`, `while`, or function bodies) point their `parent` pointer to the enclosing context.
 - **Control Flow Interruption:**
   - When non-sequential control flow occurs (`return`, `break`, `continue`), `flow_state` is updated from `FLOW_NORMAL` to the corresponding flag.
   - If returning a value, `return_value` holds the evaluated `value_t *`.
-
 
 ---
 
@@ -104,42 +104,43 @@ variable_t *context_find_variable(context_t *ctx, const char *variable_name)
 
 ### 2.2. Value Isolation via Deep Copying (`context_copy_value`)
 ```c
-value_t *context_copy_value(variable_t *variable)
+value_t *context_copy_value(alloc_hdr_t **list, variable_t *variable)
 ```
 - **Why this function is critical:**
   When an AST node evaluates an identifier (e.g. evaluating `x` in `x + 1`), it **must not** return the raw pointer to `variable->value`. If it did:
   1. The binary evaluator would deallocate `left` after addition, destroying the variable's value inside the symbol table!
   2. Mutating operations would cause unexpected side effects across references.
-- **Deep Copy Rule:** For strings, calls `tracked_strdup(variable->value->string_val)` to ensure a completely isolated copy on the heap.
+- **Deep Copy Rule:** For strings, calls `tracked_strdup(list, variable->value->string_val)` to ensure a completely isolated copy on the tracked heap.
 
 ---
 
 ### 2.3. Redefinition Collision Detection (`context_add_variable`)
+- Prototype: `void context_add_variable(alloc_hdr_t **list, context_t *ctx, const char *variable_name, value_t *value)`.
 - Checks only the **current local scope** (`ctx->variables[0..variable_count]`):
   - If a variable with `name` already exists in *this* scope, logs an error (`"Redefinition of variable"`) and calls `ti_fatal()`.
   - Shadowing an outer variable from a parent scope is permitted.
-- Dynamically resizes the `ctx->variables` pointer array using `tracked_realloc`.
+- Dynamically resizes the `ctx->variables` pointer array using `tracked_realloc(list, ...)`.
 
 ---
 
 ### 2.4. Modular Destructors Architecture
 
-To ensure strict memory lifecycle control and prevent heap leaks across nested scopes, the runtime implements isolated, single-responsibility destructors:
+To ensure strict memory lifecycle control and prevent heap leaks across nested scopes, the runtime implements isolated, single-responsibility destructors passing allocation lists:
 
 | Destructor | Target | Responsibility & Memory Invariants |
 | :--- | :--- | :--- |
-| `val_free(value_t *value)` | `value_t *` | Calls `val_free_internal()` to release heap payloads (e.g. `string_val` via `tracked_free`), then deallocates the `value_t` container itself. Tolerates `NULL`. |
-| `variable_free(variable_t *var)` | `variable_t *` | Deallocates variable payload via `val_free(var->value)`, deallocates heap-allocated identifier string `(void *)var->name` via `tracked_free`, and releases the `variable_t` struct. Tolerates `NULL`. |
-| `params_free(param_t *params, int param_count)` | `param_t *` | Traverses parameter metadata array from `0` to `param_count - 1`, frees heap-allocated parameter identifier strings `params[i].name` via `tracked_free`, and releases the `params` contiguous array buffer via `tracked_free`. Tolerates `NULL`. |
-| `function_free(function_t *func)` | `function_t *` | For user-defined functions (`FUNC_TI`), cleans up owned parameter metadata via `params_free(func->params, func->param_count)`, then releases the `function_t` struct via `tracked_free`. Tolerates `NULL`. |
-| `context_free_internal(context_t *ctx)` | `context_t *` | Cleans up local scope bindings: iterates over `ctx->variables`, calling `variable_free` on each entry, and frees `ctx->variables` table. Frees unconsumed `ctx->return_value` via `val_free`. Does not free `ctx` or `ctx->parent`. |
-| `context_free(context_t *ctx)` | `context_t *` | Invokes `context_free_internal(ctx)` to release all scoped bindings, then releases the `context_t` allocation itself via `tracked_free(ctx)`. |
+| `val_free(alloc_hdr_t **list, value_t *value)` | `value_t *` | Calls `val_free_internal()` to release heap payloads (e.g. `string_val` via `tracked_free`), then deallocates the `value_t` container itself. Tolerates `NULL`. |
+| `variable_free(alloc_hdr_t **list, variable_t *var)` | `variable_t *` | Deallocates variable payload via `val_free(list, var->value)`, deallocates heap-allocated identifier string `(void *)var->name` via `tracked_free`, and releases the `variable_t` struct. Tolerates `NULL`. |
+| `params_free(alloc_hdr_t **list, param_t *params, int param_count)` | `param_t *` | Traverses parameter metadata array from `0` to `param_count - 1`, frees heap-allocated parameter identifier strings `params[i].name` via `tracked_free`, and releases the `params` contiguous array buffer via `tracked_free`. Tolerates `NULL`. |
+| `function_free(alloc_hdr_t **list, function_t *func)` | `function_t *` | For user-defined functions (`FUNC_TI`), cleans up owned parameter metadata via `params_free(list, func->params, func->param_count)`, then releases the `function_t` struct via `tracked_free`. Tolerates `NULL`. |
+| `context_free_internal(alloc_hdr_t **list, context_t *ctx)` | `context_t *` | Cleans up local scope bindings: iterates over `ctx->variables`, calling `variable_free` on each entry, and frees `ctx->variables` table. Frees unconsumed `ctx->return_value` via `val_free`. Does not free `ctx` or `ctx->parent`. |
+| `context_free(alloc_hdr_t **list, context_t *ctx)` | `context_t *` | Invokes `context_free_internal(list, ctx)` to release all scoped bindings, then releases the `context_t` allocation itself via `tracked_free(list, ctx)`. |
 
 ### 2.5. Scope Destruction & Teardown Protocol (`context_free_internal`)
 - **Variable Clean-up:**
-  - Iterates through `0` to `ctx->variable_count - 1` invoking `variable_free(ctx->variables[i])`.
-  - Frees the `ctx->variables` table via `tracked_free`, resets pointer to `NULL`, and resets count to `0`.
-- **Return Value Safety:** If `ctx->return_value != NULL` (e.g. unconsumed return payload due to an error, loop break, or premature termination), safely deallocates `ctx->return_value` via `val_free(ctx->return_value)` and clears pointer to `NULL`.
+  - Iterates through `0` to `ctx->variable_count - 1` invoking `variable_free(list, ctx->variables[i])`.
+  - Frees the `ctx->variables` table via `tracked_free(list, ...)`, resets pointer to `NULL`, and resets count to `0`.
+- **Return Value Safety:** If `ctx->return_value != NULL` (e.g. unconsumed return payload due to an error, loop break, or premature termination), safely deallocates `ctx->return_value` via `val_free(list, ctx->return_value)` and clears pointer to `NULL`.
 - **Note:** Does **not** modify or free `ctx->parent`, as the parent context belongs to the enclosing caller.
-- **Decoupled Function Teardown:** `context_t` no longer holds or frees function tables. Function records are managed in `src/visitor_eval_func.c` and freed when `visitor_set_global_context(NULL)` triggers `user_functions_clear()`.
+- **Instance-Isolated Function Teardown:** `context_t` does not hold function tables. Script functions reside inside `ti_runtime_t->user_functions` and are reclaimed via `function_free(&rt->alloc_list, &rt->user_functions[i])` during `ti_runtime_destroy(rt)`.
 
