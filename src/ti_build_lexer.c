@@ -297,6 +297,36 @@ token_t *lexer_get_next_token(lexer_t *lexer)
         case '+': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_PLUS, NULL));
         case '-': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_MINUS, NULL));
         case ',': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_COMMA, NULL));
+        case '*': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_STAR, NULL));
+        case '/': {
+            /* Check for single-line (//) or multi-line comments vs division operator (/) */
+            lexer_advance(lexer);
+            if (lexer->c == '/') {
+                /* Consume rest of the line for single-line comment */
+                while (lexer->c != '\n' && lexer->c != '\0' && lexer->c != EOF) {
+                    lexer_advance(lexer);
+                }
+                continue; /* Skip to next token */
+            } else if (lexer->c == '*') {
+                /* Consume multi-line comment block */
+                lexer_advance(lexer);
+                while (lexer->c != '\0' && lexer->c != EOF) {
+                    if (lexer->c == '*') {
+                        lexer_advance(lexer);
+                        if (lexer->c == '/') {
+                            lexer_advance(lexer);
+                            break; /* End of multi-line comment */
+                        }
+                    } else {
+                        lexer_advance(lexer);
+                    }
+                }
+                continue; /* Skip to next token */
+            }
+            /* Not a comment, rollback lookahead and return slash operator */
+            lexer_go_back(lexer);
+            return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_SLASH, NULL));
+        }
         case '&': {
             /* Check for logical AND (&&) vs bitwise AND (&) */
             lexer_advance(lexer);
