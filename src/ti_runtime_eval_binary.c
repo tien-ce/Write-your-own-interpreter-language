@@ -478,6 +478,12 @@ value_t *eval_binary_expr(ti_runtime_t *rt, context_t *ctx, ast_t *node)
     value_t *result = NULL;
 
     /* Validate both operand expressions produced valid values */
+    if (rt != NULL && rt->is_interrupted) {
+        if (left) val_free(left);
+        if (right) val_free(right);
+        return NULL;
+    }
+
     if (left == NULL || right == NULL) {
         ti_log("[Runtime Error] Binary expression operand evaluated to NULL at line %d\n", node->line);
         ti_fatal();
@@ -541,6 +547,11 @@ value_t *eval_unary_expr(ti_runtime_t *rt, context_t *ctx, ast_t *node)
 {
     /* Recursively evaluate the operand expression */
     value_t *operand = visitor_visit(rt, ctx, node->value.unary_expr.operand); 
+    if (rt != NULL && rt->is_interrupted) {
+        if (operand) val_free(operand);
+        return NULL;
+    }
+
     if (operand == NULL || operand->type == VAL_NULL) {
         ti_log("[Runtime Error] Unary expression operand evaluated to NULL at line %d\n", node->line);
         ti_fatal();

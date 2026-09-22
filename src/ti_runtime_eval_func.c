@@ -273,6 +273,16 @@ value_t *eval_function_call(ti_runtime_t *rt, context_t *ctx, ast_t *node)
     /* Evaluate all argument expressions before invocation */
     for (int i = 0; i < argc; i++) {
         value_t *value = visitor_visit(rt, ctx, node->value.function_call.args[i]);
+        
+        if (rt != NULL && rt->is_interrupted) {
+            if (value) val_free(value);
+            for (int j = 0; j < i; j++) {
+                if (argv[j]) val_free(argv[j]);
+            }
+            tracked_free(&rt->alloc_list, argv);
+            return NULL;
+        }
+
         if (value == NULL) {
             ti_log("[Runtime Error] Argument %d in call to '%s' evaluated to NULL at line %d\n", i, func_name, node->line);
             ti_fatal();

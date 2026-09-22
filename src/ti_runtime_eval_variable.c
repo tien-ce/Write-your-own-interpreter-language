@@ -22,6 +22,12 @@ value_t *eval_variable_definition(ti_runtime_t *rt, context_t *ctx, ast_t *node)
 
     /* Recursively evaluate initializer expression */
     value_t *value = visitor_visit(rt, ctx, node->value.variable_definition.value);
+    
+    if (rt != NULL && rt->is_interrupted) {
+        if (value) val_free(value);
+        return NULL;
+    }
+
     if (value == NULL) {
         ti_log("[Runtime Error] Variable definition '%s' evaluated to NULL at line %d\n", variable_name, node->line);
         ti_fatal();
@@ -59,6 +65,12 @@ value_t *eval_assignment(ti_runtime_t *rt, context_t *ctx, ast_t *node)
     if (variable != NULL) {
         /* Evaluate right-hand side expression */
         value_t *val = visitor_visit(rt, ctx, value_node); 
+        
+        if (rt != NULL && rt->is_interrupted) {
+            if (val) val_free(val);
+            return NULL;
+        }
+
         if (val == NULL) {
             ti_log("[Runtime Error] Assignment expression for '%s' evaluated to NULL at line %d\n", target_node->value.identifier, node->line);
             ti_fatal();

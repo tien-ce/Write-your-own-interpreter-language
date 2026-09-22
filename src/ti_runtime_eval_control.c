@@ -20,6 +20,12 @@ static bool eval_boolean_condition(ti_runtime_t *rt, context_t *ctx, ast_t *cond
     /* Evaluate the condition expression node */
     value_t *value = visitor_visit(rt, ctx, cond_node);
 
+    /* Check if execution was interrupted to bubble up the cancellation gracefully */
+    if (rt != NULL && rt->is_interrupted) {
+        if (value) val_free(value);
+        return false;
+    }
+
     /* Enforce boolean type requirement; halt execution on type mismatch */
     if (!value || value->type != VAL_BOOL) {
         ti_log("[Runtime Error] Unexpected type %d, only expect bool value at line %d\n", value ? (int)value->type : -1, cond_node->line);
@@ -184,6 +190,10 @@ value_t *eval_return_statement(ti_runtime_t *rt, context_t *ctx, ast_t *node)
     value_t *ret_val = NULL;
     if (node->value.return_statement.value != NULL) {
         ret_val = visitor_visit(rt, ctx, node->value.return_statement.value);
+        if (rt != NULL && rt->is_interrupted) {
+            if (ret_val) val_free(ret_val);
+            return NULL;
+        }
     } else {
         ret_val = val_new_void();
     }
