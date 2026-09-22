@@ -12,7 +12,8 @@
  */
 value_t *eval_string_literal(context_t *ctx, ast_t *node)
 {
-    return val_new_string(ctx ? ctx->alloc_list : NULL, node->value.string_value);
+    (void)ctx;
+    return val_new_string(node->value.string_value);
 }
 
 /**
@@ -23,7 +24,8 @@ value_t *eval_string_literal(context_t *ctx, ast_t *node)
  */
 value_t *eval_int_literal(context_t *ctx, ast_t *node)
 {
-    return val_new_int(ctx ? ctx->alloc_list : NULL, node->value.int_value);
+    (void)ctx;
+    return val_new_int(node->value.int_value);
 }
 
 /**
@@ -34,7 +36,8 @@ value_t *eval_int_literal(context_t *ctx, ast_t *node)
  */
 value_t *eval_float_literal(context_t *ctx, ast_t *node)
 {
-    return val_new_float(ctx ? ctx->alloc_list : NULL, node->value.float_value);
+    (void)ctx;
+    return val_new_float(node->value.float_value);
 }
 
 /**
@@ -45,5 +48,6 @@ value_t *eval_float_literal(context_t *ctx, ast_t *node)
  */
 value_t *eval_boolean_literal(context_t *ctx, ast_t *node)
 {
-    return val_new_bool(ctx ? ctx->alloc_list : NULL, node->value.bool_value);
+    (void)ctx;
+    return val_new_bool(node->value.bool_value);
 }

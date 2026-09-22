@@ -31,10 +31,12 @@ typedef struct VALUE_STRUCT {
 - **Purpose:** Represents dynamically typed runtime values during AST execution.
 - **Tagged Union Design:**
   - `type`: Discriminating tag identifying which union field is valid.
-  - `string_val`: The only field requiring heap management (`tracked_strdup` / `tracked_free`).
+  - `string_val`: The only field requiring heap management (`ti_raw_strdup` / `ti_raw_free`).
+- **Memory Allocation (`ti_raw_calloc`, `ti_raw_strdup`, `ti_raw_free`):**
+  - All `value_t` instances and their string payloads are allocated via raw unmanaged memory functions (`ti_raw_calloc`, `ti_raw_strdup`, `ti_raw_free`), decoupling value creation and lifecycle from intrusive allocation tracking headers.
 - **Destructor (`val_free_internal` & `val_free`):**
-  - `val_free_internal`: Frees internal dynamic payload (`string_val` when `type == VAL_STRING`). Does not deallocate the `value_t` container.
-  - `val_free`: Complete destructor. Checks for `NULL`, invokes `val_free_internal`, and releases the `value_t` container via `tracked_free`.
+  - `val_free_internal(value_t *value)`: Frees internal dynamic payload (`string_val` when `type == VAL_STRING` via `ti_raw_free`). Does not deallocate the `value_t` container.
+  - `val_free(value_t *value)`: Complete destructor. Checks for `NULL`, invokes `val_free_internal(value)`, and releases the `value_t` container via `ti_raw_free`.
 
 ---
 
@@ -110,7 +112,7 @@ value_t *context_copy_value(alloc_hdr_t **list, variable_t *variable)
   When an AST node evaluates an identifier (e.g. evaluating `x` in `x + 1`), it **must not** return the raw pointer to `variable->value`. If it did:
   1. The binary evaluator would deallocate `left` after addition, destroying the variable's value inside the symbol table!
   2. Mutating operations would cause unexpected side effects across references.
-- **Deep Copy Rule:** For strings, calls `tracked_strdup(list, variable->value->string_val)` to ensure a completely isolated copy on the tracked heap.
+- **Deep Copy Rule:** Calls `val_copy(variable->value)`. For strings, `val_copy` duplicates string contents via `ti_raw_strdup(variable->value->string_val)` to ensure a completely isolated copy in raw memory.
 
 ---
 
@@ -129,8 +131,8 @@ To ensure strict memory lifecycle control and prevent heap leaks across nested s
 
 | Destructor | Target | Responsibility & Memory Invariants |
 | :--- | :--- | :--- |
-| `val_free(alloc_hdr_t **list, value_t *value)` | `value_t *` | Calls `val_free_internal()` to release heap payloads (e.g. `string_val` via `tracked_free`), then deallocates the `value_t` container itself. Tolerates `NULL`. |
-| `variable_free(alloc_hdr_t **list, variable_t *var)` | `variable_t *` | Deallocates variable payload via `val_free(list, var->value)`, deallocates heap-allocated identifier string `(void *)var->name` via `tracked_free`, and releases the `variable_t` struct. Tolerates `NULL`. |
+| `val_free(value_t *value)` | `value_t *` | Calls `val_free_internal(value)` to release dynamic payloads (e.g. `string_val` via `ti_raw_free`), then deallocates the `value_t` container itself via `ti_raw_free`. Tolerates `NULL`. |
+| `variable_free(alloc_hdr_t **list, variable_t *var)` | `variable_t *` | Deallocates variable payload via `val_free(var->value)`, deallocates heap-allocated identifier string `(void *)var->name` via `tracked_free`, and releases the `variable_t` struct. Tolerates `NULL`. |
 | `params_free(alloc_hdr_t **list, param_t *params, int param_count)` | `param_t *` | Traverses parameter metadata array from `0` to `param_count - 1`, frees heap-allocated parameter identifier strings `params[i].name` via `tracked_free`, and releases the `params` contiguous array buffer via `tracked_free`. Tolerates `NULL`. |
 | `function_free(alloc_hdr_t **list, function_t *func)` | `function_t *` | For user-defined functions (`FUNC_TI`), cleans up owned parameter metadata via `params_free(list, func->params, func->param_count)`, then releases the `function_t` struct via `tracked_free`. Tolerates `NULL`. |
 | `context_free_internal(alloc_hdr_t **list, context_t *ctx)` | `context_t *` | Cleans up local scope bindings: iterates over `ctx->variables`, calling `variable_free` on each entry, and frees `ctx->variables` table. Frees unconsumed `ctx->return_value` via `val_free`. Does not free `ctx` or `ctx->parent`. |
@@ -140,7 +142,7 @@ To ensure strict memory lifecycle control and prevent heap leaks across nested s
 - **Variable Clean-up:**
   - Iterates through `0` to `ctx->variable_count - 1` invoking `variable_free(list, ctx->variables[i])`.
   - Frees the `ctx->variables` table via `tracked_free(list, ...)`, resets pointer to `NULL`, and resets count to `0`.
-- **Return Value Safety:** If `ctx->return_value != NULL` (e.g. unconsumed return payload due to an error, loop break, or premature termination), safely deallocates `ctx->return_value` via `val_free(list, ctx->return_value)` and clears pointer to `NULL`.
+- **Return Value Safety:** If `ctx->return_value != NULL` (e.g. unconsumed return payload due to an error, loop break, or premature termination), safely deallocates `ctx->return_value` via `val_free(ctx->return_value)` and clears pointer to `NULL`.
 - **Note:** Does **not** modify or free `ctx->parent`, as the parent context belongs to the enclosing caller.
 - **Instance-Isolated Function Teardown:** `context_t` does not hold function tables. Script functions reside inside `ti_runtime_t->user_functions` and are reclaimed via `function_free(&rt->alloc_list, &rt->user_functions[i])` during `ti_runtime_destroy(rt)`.
 

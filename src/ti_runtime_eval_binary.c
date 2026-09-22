@@ -7,28 +7,28 @@
 
 /* -------------------- Static Function Prototypes -------------------- */
 
-static value_t *binary_add(alloc_hdr_t **list, value_t *left, value_t *right, int line);
-static value_t *binary_sub(alloc_hdr_t **list, value_t *left, value_t *right, int line);
-static value_t *binary_mul(alloc_hdr_t **list, value_t *left, value_t *right, int line);
-static value_t *binary_div(alloc_hdr_t **list, value_t *left, value_t *right, int line);
-static value_t *binary_equal(alloc_hdr_t **list, value_t *left, value_t *right, int line);
-static value_t *binary_greater(alloc_hdr_t **list, value_t *left, value_t *right, int line);
-static value_t *binary_less(alloc_hdr_t **list, value_t *left, value_t *right, int line);
-static value_t *binary_greater_equal(alloc_hdr_t **list, value_t *left, value_t *right, int line);
-static value_t *binary_less_equal(alloc_hdr_t **list, value_t *left, value_t *right, int line);
-static value_t *binary_logical_and(alloc_hdr_t **list, value_t *left, value_t *right, int line);
-static value_t *binary_logical_or(alloc_hdr_t **list, value_t *left, value_t *right, int line);
+static value_t *binary_add(value_t *left, value_t *right, int line);
+static value_t *binary_sub(value_t *left, value_t *right, int line);
+static value_t *binary_mul(value_t *left, value_t *right, int line);
+static value_t *binary_div(value_t *left, value_t *right, int line);
+static value_t *binary_equal(value_t *left, value_t *right, int line);
+static value_t *binary_greater(value_t *left, value_t *right, int line);
+static value_t *binary_less(value_t *left, value_t *right, int line);
+static value_t *binary_greater_equal(value_t *left, value_t *right, int line);
+static value_t *binary_less_equal(value_t *left, value_t *right, int line);
+static value_t *binary_logical_and(value_t *left, value_t *right, int line);
+static value_t *binary_logical_or(value_t *left, value_t *right, int line);
 
 /* -------------------- Static Operator Functions -------------------- */
 
 /**
  * @brief Evaluate binary addition for integers, floats, or strings (concatenation).
- * @param list Pointer to head of allocation list.
  * @param left Left operand value.
  * @param right Right operand value.
+ * @param line Source line number for error reporting.
  * @return Newly allocated addition result value_t.
  */
-static value_t *binary_add(alloc_hdr_t **list, value_t *left, value_t *right, int line)
+static value_t *binary_add(value_t *left, value_t *right, int line)
 {
     /* Validate operands are non-null; halt execution on runtime error */
     if (left == NULL || right == NULL) {
@@ -38,7 +38,7 @@ static value_t *binary_add(alloc_hdr_t **list, value_t *left, value_t *right, in
     }
 
     /* Initialize result value container matching the left operand type */
-    value_t *value = val_init(list, left->type);
+    value_t *value = val_init(left->type);
     switch (left->type) {
     case VAL_INT:
         /* Evaluate integer addition */
@@ -50,11 +50,11 @@ static value_t *binary_add(alloc_hdr_t **list, value_t *left, value_t *right, in
         break;
     case VAL_STRING: {
         /* String concatenation: calculate combined length including null terminator,
-         * allocate tracked memory buffer via tracked_calloc, and concatenate operands */
+         * allocate raw memory buffer via ti_raw_calloc, and concatenate operands */
         const char *s_left = left->string_val ? left->string_val : "";
         const char *s_right = right->string_val ? right->string_val : "";
         int length = strlen(s_left) + strlen(s_right) + 1;
-        value->string_val = tracked_calloc(list, 1, sizeof(char) * length);
+        value->string_val = ti_raw_calloc(1, sizeof(char) * length);
         strcat(value->string_val, s_left);
         strcat(value->string_val, s_right);
         break;
@@ -70,12 +70,12 @@ static value_t *binary_add(alloc_hdr_t **list, value_t *left, value_t *right, in
 
 /**
  * @brief Evaluate binary subtraction for integers or floats.
- * @param list Pointer to head of allocation list.
  * @param left Left operand value.
  * @param right Right operand value.
+ * @param line Source line number for error reporting.
  * @return Newly allocated subtraction result value_t.
  */
-static value_t *binary_sub(alloc_hdr_t **list, value_t *left, value_t *right, int line)
+static value_t *binary_sub(value_t *left, value_t *right, int line)
 {
     /* Validate operands are non-null; halt execution on runtime error */
     if (left == NULL || right == NULL) {
@@ -85,7 +85,7 @@ static value_t *binary_sub(alloc_hdr_t **list, value_t *left, value_t *right, in
     }
 
     /* Initialize result value container matching the left operand type */
-    value_t *value = val_init(list, left->type);
+    value_t *value = val_init(left->type);
     switch (left->type) {
     case VAL_INT:
         /* Evaluate integer subtraction */
@@ -106,12 +106,12 @@ static value_t *binary_sub(alloc_hdr_t **list, value_t *left, value_t *right, in
 
 /**
  * @brief Evaluate binary multiplication for integers or floats.
- * @param list Pointer to head of allocation list.
  * @param left Left operand value.
  * @param right Right operand value.
+ * @param line Source line number for error reporting.
  * @return Newly allocated multiplication result value_t.
  */
-static value_t *binary_mul(alloc_hdr_t **list, value_t *left, value_t *right, int line)
+static value_t *binary_mul(value_t *left, value_t *right, int line)
 {
     /* Validate operands are non-null; halt execution on runtime error */
     if (left == NULL || right == NULL) {
@@ -121,7 +121,7 @@ static value_t *binary_mul(alloc_hdr_t **list, value_t *left, value_t *right, in
     }
 
     /* Initialize result value container matching the left operand type */
-    value_t *value = val_init(list, left->type);
+    value_t *value = val_init(left->type);
     switch (left->type) {
     case VAL_INT:
         /* Evaluate integer multiplication */
@@ -142,12 +142,12 @@ static value_t *binary_mul(alloc_hdr_t **list, value_t *left, value_t *right, in
 
 /**
  * @brief Evaluate binary division for integers or floats (with division-by-zero check).
- * @param list Pointer to head of allocation list.
  * @param left Left operand value.
  * @param right Right operand value.
+ * @param line Source line number for error reporting.
  * @return Newly allocated division result value_t.
  */
-static value_t *binary_div(alloc_hdr_t **list, value_t *left, value_t *right, int line)
+static value_t *binary_div(value_t *left, value_t *right, int line)
 {
     /* Validate operands are non-null; halt execution on runtime error */
     if (left == NULL || right == NULL) {
@@ -157,7 +157,7 @@ static value_t *binary_div(alloc_hdr_t **list, value_t *left, value_t *right, in
     }
 
     /* Initialize result value container matching the left operand type */
-    value_t *value = val_init(list, left->type);
+    value_t *value = val_init(left->type);
     switch (left->type) {
     case VAL_INT:
         /* Guard against integer division by zero */
@@ -190,12 +190,12 @@ static value_t *binary_div(alloc_hdr_t **list, value_t *left, value_t *right, in
 
 /**
  * @brief Evaluate equality comparison (==) between two values.
- * @param list Pointer to head of allocation list.
  * @param left Left operand value.
  * @param right Right operand value.
+ * @param line Source line number for error reporting.
  * @return Newly allocated boolean value_t.
  */
-static value_t *binary_equal(alloc_hdr_t **list, value_t *left, value_t *right, int line)
+static value_t *binary_equal(value_t *left, value_t *right, int line)
 {
     /* Validate operands are non-null; halt execution on runtime error */
     if (left == NULL || right == NULL) {
@@ -205,7 +205,7 @@ static value_t *binary_equal(alloc_hdr_t **list, value_t *left, value_t *right, 
     }
 
     /* Initialize boolean result value */
-    value_t *value = val_init(list, VAL_BOOL);
+    value_t *value = val_init(VAL_BOOL);
     switch (left->type) {
     case VAL_INT:
         /* Compare integer values */
@@ -241,12 +241,12 @@ static value_t *binary_equal(alloc_hdr_t **list, value_t *left, value_t *right, 
 
 /**
  * @brief Evaluate greater-than comparison (>) between two values.
- * @param list Pointer to head of allocation list.
  * @param left Left operand value.
  * @param right Right operand value.
+ * @param line Source line number for error reporting.
  * @return Newly allocated boolean value_t.
  */
-static value_t *binary_greater(alloc_hdr_t **list, value_t *left, value_t *right, int line)
+static value_t *binary_greater(value_t *left, value_t *right, int line)
 {
     /* Validate operands are non-null; halt execution on runtime error */
     if (left == NULL || right == NULL) {
@@ -256,7 +256,7 @@ static value_t *binary_greater(alloc_hdr_t **list, value_t *left, value_t *right
     }
 
     /* Initialize boolean result value */
-    value_t *value = val_init(list, VAL_BOOL);
+    value_t *value = val_init(VAL_BOOL);
     switch (left->type) {
     case VAL_INT:
         /* Compare integer values */
@@ -284,12 +284,12 @@ static value_t *binary_greater(alloc_hdr_t **list, value_t *left, value_t *right
 
 /**
  * @brief Evaluate less-than comparison (<) between two values.
- * @param list Pointer to head of allocation list.
  * @param left Left operand value.
  * @param right Right operand value.
+ * @param line Source line number for error reporting.
  * @return Newly allocated boolean value_t.
  */
-static value_t *binary_less(alloc_hdr_t **list, value_t *left, value_t *right, int line)
+static value_t *binary_less(value_t *left, value_t *right, int line)
 {
     /* Validate operands are non-null; halt execution on runtime error */
     if (left == NULL || right == NULL) {
@@ -299,7 +299,7 @@ static value_t *binary_less(alloc_hdr_t **list, value_t *left, value_t *right, i
     }
 
     /* Initialize boolean result value */
-    value_t *value = val_init(list, VAL_BOOL);
+    value_t *value = val_init(VAL_BOOL);
     switch (left->type) {
     case VAL_INT:
         /* Compare integer values */
@@ -327,12 +327,12 @@ static value_t *binary_less(alloc_hdr_t **list, value_t *left, value_t *right, i
 
 /**
  * @brief Evaluate greater-than-or-equal comparison (>=) between two values.
- * @param list Pointer to head of allocation list.
  * @param left Left operand value.
  * @param right Right operand value.
+ * @param line Source line number for error reporting.
  * @return Newly allocated boolean value_t.
  */
-static value_t *binary_greater_equal(alloc_hdr_t **list, value_t *left, value_t *right, int line)
+static value_t *binary_greater_equal(value_t *left, value_t *right, int line)
 {
     /* Validate operands are non-null; halt execution on runtime error */
     if (left == NULL || right == NULL) {
@@ -342,7 +342,7 @@ static value_t *binary_greater_equal(alloc_hdr_t **list, value_t *left, value_t 
     }
 
     /* Initialize boolean result value */
-    value_t *value = val_init(list, VAL_BOOL);
+    value_t *value = val_init(VAL_BOOL);
     switch (left->type) {
     case VAL_INT:
         /* Compare integer values */
@@ -370,12 +370,12 @@ static value_t *binary_greater_equal(alloc_hdr_t **list, value_t *left, value_t 
 
 /**
  * @brief Evaluate less-than-or-equal comparison (<=) between two values.
- * @param list Pointer to head of allocation list.
  * @param left Left operand value.
  * @param right Right operand value.
+ * @param line Source line number for error reporting.
  * @return Newly allocated boolean value_t.
  */
-static value_t *binary_less_equal(alloc_hdr_t **list, value_t *left, value_t *right, int line)
+static value_t *binary_less_equal(value_t *left, value_t *right, int line)
 {
     /* Validate operands are non-null; halt execution on runtime error */
     if (left == NULL || right == NULL) {
@@ -385,7 +385,7 @@ static value_t *binary_less_equal(alloc_hdr_t **list, value_t *left, value_t *ri
     }
 
     /* Initialize boolean result value */
-    value_t *value = val_init(list, VAL_BOOL);
+    value_t *value = val_init(VAL_BOOL);
     switch (left->type) {
     case VAL_INT:
         /* Compare integer values */
@@ -413,12 +413,12 @@ static value_t *binary_less_equal(alloc_hdr_t **list, value_t *left, value_t *ri
 
 /**
  * @brief Evaluate binary logical AND (&&) between two boolean values.
- * @param list Pointer to head of allocation list.
  * @param left Left operand value.
  * @param right Right operand value.
+ * @param line Source line number for error reporting.
  * @return Newly allocated boolean value_t.
  */
-static value_t *binary_logical_and(alloc_hdr_t **list, value_t *left, value_t *right, int line)
+static value_t *binary_logical_and(value_t *left, value_t *right, int line)
 {
     /* Validate operands are non-null */
     if (left == NULL || right == NULL) {
@@ -434,19 +434,19 @@ static value_t *binary_logical_and(alloc_hdr_t **list, value_t *left, value_t *r
     }
 
     /* Initialize boolean result and evaluate logical AND */
-    value_t *value = val_init(list, VAL_BOOL);
+    value_t *value = val_init(VAL_BOOL);
     value->bool_val = (left->bool_val && right->bool_val);
     return value;
 }
 
 /**
  * @brief Evaluate binary logical OR (||) between two boolean values.
- * @param list Pointer to head of allocation list.
  * @param left Left operand value.
  * @param right Right operand value.
+ * @param line Source line number for error reporting.
  * @return Newly allocated boolean value_t.
  */
-static value_t *binary_logical_or(alloc_hdr_t **list, value_t *left, value_t *right, int line)
+static value_t *binary_logical_or(value_t *left, value_t *right, int line)
 {
     /* Validate operands are non-null */
     if (left == NULL || right == NULL) {
@@ -462,7 +462,7 @@ static value_t *binary_logical_or(alloc_hdr_t **list, value_t *left, value_t *ri
     }
 
     /* Initialize boolean result and evaluate logical OR */
-    value_t *value = val_init(list, VAL_BOOL);
+    value_t *value = val_init(VAL_BOOL);
     value->bool_val = (left->bool_val || right->bool_val);
     return value;
 }
@@ -492,37 +492,37 @@ value_t *eval_binary_expr(ti_runtime_t *rt, context_t *ctx, ast_t *node)
     /* Dispatch operator evaluation to the corresponding handler */
     switch (node->value.binary_expr.op) {
     case OP_ADD:
-        result = binary_add(&rt->alloc_list, left, right, node->line);
+        result = binary_add(left, right, node->line);
         break;
     case OP_SUB:
-        result = binary_sub(&rt->alloc_list, left, right, node->line);
+        result = binary_sub(left, right, node->line);
         break;
     case OP_MUL:
-        result = binary_mul(&rt->alloc_list, left, right, node->line);
+        result = binary_mul(left, right, node->line);
         break;
     case OP_DIV:
-        result = binary_div(&rt->alloc_list, left, right, node->line);
+        result = binary_div(left, right, node->line);
         break;
     case OP_DEQ:
-        result = binary_equal(&rt->alloc_list, left, right, node->line);
+        result = binary_equal(left, right, node->line);
         break;
     case OP_GT:
-        result = binary_greater(&rt->alloc_list, left, right, node->line);
+        result = binary_greater(left, right, node->line);
         break;
     case OP_LT:
-        result = binary_less(&rt->alloc_list, left, right, node->line);
+        result = binary_less(left, right, node->line);
         break;
     case OP_GTE:
-        result = binary_greater_equal(&rt->alloc_list, left, right, node->line);
+        result = binary_greater_equal(left, right, node->line);
         break;
     case OP_LTE:
-        result = binary_less_equal(&rt->alloc_list, left, right, node->line);
+        result = binary_less_equal(left, right, node->line);
         break;
     case OP_LOGICAL_AND:
-        result = binary_logical_and(&rt->alloc_list, left, right, node->line);
+        result = binary_logical_and(left, right, node->line);
         break;
     case OP_LOGICAL_OR:
-        result = binary_logical_or(&rt->alloc_list, left, right, node->line);
+        result = binary_logical_or(left, right, node->line);
         break;
     default:
         ti_log("[Runtime Error] Unknown operator: %d at line %d\n", node->value.binary_expr.op, node->line);
@@ -531,10 +531,8 @@ value_t *eval_binary_expr(ti_runtime_t *rt, context_t *ctx, ast_t *node)
     }
 
     /* Free intermediate operand values to prevent memory leaks */
-    val_free_internal(&rt->alloc_list, left);
-    val_free_internal(&rt->alloc_list, right);
-    tracked_free(&rt->alloc_list, left);
-    tracked_free(&rt->alloc_list, right);
+    val_free(left);
+    val_free(right);
     return result;
 }
 
@@ -555,9 +553,9 @@ value_t *eval_unary_expr(ti_runtime_t *rt, context_t *ctx, ast_t *node)
     case OP_POS:
         /* Unary plus: preserve integer or float value */
         if (operand->type == VAL_INT) {
-            result = val_new_int(&rt->alloc_list, +operand->int_val);
+            result = val_new_int(+operand->int_val);
         } else if (operand->type == VAL_FLOAT) {
-            result = val_new_float(&rt->alloc_list, +operand->float_val);
+            result = val_new_float(+operand->float_val);
         } else {
             ti_log("[Runtime Error] Unary '+' only supports int and float, got type %d at line %d\n", operand->type, node->line);
             ti_fatal();
@@ -567,9 +565,9 @@ value_t *eval_unary_expr(ti_runtime_t *rt, context_t *ctx, ast_t *node)
     case OP_NEG:
         /* Unary minus: negate integer or float value */
         if (operand->type == VAL_INT) {
-            result = val_new_int(&rt->alloc_list, -operand->int_val);
+            result = val_new_int(-operand->int_val);
         } else if (operand->type == VAL_FLOAT) {
-            result = val_new_float(&rt->alloc_list, -operand->float_val);
+            result = val_new_float(-operand->float_val);
         } else {
             ti_log("[Runtime Error] Unary '-' only supports int and float, got type %d at line %d\n", operand->type, node->line);
             ti_fatal();
@@ -579,7 +577,7 @@ value_t *eval_unary_expr(ti_runtime_t *rt, context_t *ctx, ast_t *node)
     case OP_NOT:
         /* Logical negation: invert boolean state */
         if (operand->type == VAL_BOOL) {
-            result = val_new_bool(&rt->alloc_list, !operand->bool_val);
+            result = val_new_bool(!operand->bool_val);
         } else {
             ti_log("[Runtime Error] Unary '!' only supports bool, got type %d at line %d\n", operand->type, node->line);
             ti_fatal();
@@ -593,7 +591,6 @@ value_t *eval_unary_expr(ti_runtime_t *rt, context_t *ctx, ast_t *node)
     }
 
     /* Free intermediate operand value */
-    val_free_internal(&rt->alloc_list, operand);
-    tracked_free(&rt->alloc_list, operand);
+    val_free(operand);
     return result;
 }

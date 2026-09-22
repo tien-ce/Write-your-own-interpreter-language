@@ -28,8 +28,7 @@ static bool eval_boolean_condition(ti_runtime_t *rt, context_t *ctx, ast_t *cond
 
     /* Extract boolean result and reclaim temporary evaluation value */
     bool res = value->bool_val;
-    val_free_internal(&rt->alloc_list, value);
-    tracked_free(&rt->alloc_list, value);
+    val_free(value);
     return res;
 }
 
@@ -53,8 +52,7 @@ static void visitor_execute_body(ti_runtime_t *rt, context_t *parent_ctx, ast_t 
     value_t *capture = visitor_visit(rt, local_ctx, body_node);
     if (capture != NULL) {
         ti_log("[Warning]: Compound return value, please check it\n");
-        val_free_internal(&rt->alloc_list, capture);
-        tracked_free(&rt->alloc_list, capture);
+        val_free(capture);
     }
 
     /* Propagate control flow state (return, break, continue) and payload to parent context */
@@ -159,8 +157,7 @@ value_t *eval_compound_statement(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         /* Evaluate statement node sequentially */
         value_t *value = visitor_visit(rt, ctx, node->value.compound.statements[i]);
         if (value != NULL) {
-            val_free_internal(&rt->alloc_list, value);
-            tracked_free(&rt->alloc_list, value);
+            val_free(value);
         }
 
         /* Check control flow state: break statement loop if flow is interrupted */
@@ -188,7 +185,7 @@ value_t *eval_return_statement(ti_runtime_t *rt, context_t *ctx, ast_t *node)
     if (node->value.return_statement.value != NULL) {
         ret_val = visitor_visit(rt, ctx, node->value.return_statement.value);
     } else {
-        ret_val = val_new_void(&rt->alloc_list);
+        ret_val = val_new_void();
     }
 
     /* Record return payload and signal FLOW_RETURN to halt further statement execution */

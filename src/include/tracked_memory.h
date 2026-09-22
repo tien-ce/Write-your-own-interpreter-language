@@ -28,7 +28,45 @@ typedef void *(*ti_realloc_fn_t)(void *ptr, size_t size);
  */
 void ti_register_allocator(ti_malloc_fn_t malloc_fn, ti_free_fn_t free_fn, ti_realloc_fn_t realloc_fn);
 
-/* -------------------- Public Allocator API -------------------- */
+/* -------------------- Raw Allocator API (Untracked) -------------------- */
+
+/**
+ * @brief Allocate raw unmanaged memory (respects custom allocator hooks if registered).
+ * @param size Number of bytes to allocate.
+ * @return Pointer to allocated memory, or NULL on failure.
+ */
+void *ti_raw_malloc(size_t size);
+
+/**
+ * @brief Allocate and zero-initialize raw unmanaged memory for an array.
+ * @param num Number of elements.
+ * @param size Size of each element in bytes.
+ * @return Pointer to allocated zeroed memory, or NULL on failure.
+ */
+void *ti_raw_calloc(size_t num, size_t size);
+
+/**
+ * @brief Reallocate an existing raw unmanaged memory block.
+ * @param ptr Pointer to existing memory block.
+ * @param size New size in bytes.
+ * @return Pointer to reallocated memory, or NULL on failure.
+ */
+void *ti_raw_realloc(void *ptr, size_t size);
+
+/**
+ * @brief Free a raw unmanaged memory block.
+ * @param ptr Pointer to memory to release.
+ */
+void ti_raw_free(void *ptr);
+
+/**
+ * @brief Duplicate a null-terminated string into raw unmanaged memory.
+ * @param s String to duplicate.
+ * @return Newly allocated copy of string, or NULL on failure.
+ */
+char *ti_raw_strdup(const char *s);
+
+/* -------------------- Public Tracked Allocator API -------------------- */
 
 /**
  * @brief Allocate tracked memory block and link to the specified tracking list.

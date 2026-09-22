@@ -63,13 +63,14 @@ variable_t *context_find_variable(context_t *ctx, const char *variable_name)
 /* Create a deep copy of a variable's value_t */
 value_t *context_copy_value(alloc_hdr_t **list, variable_t *variable)
 {
+    (void)list;
     if (variable == NULL || variable->value == NULL) {
         ti_log("[ERROR]: Attempted to access NULL variable\n");
         ti_fatal();
         return NULL;
     }
 
-    return val_copy(list, variable->value);
+    return val_copy(variable->value);
 }
 
 /* Add a newly defined variable to the given context scope */
@@ -106,7 +107,7 @@ void variable_free(alloc_hdr_t **list, variable_t *var)
         return;
     }
     if (var->value != NULL) {
-        val_free(list, var->value);
+        val_free(var->value);
         var->value = NULL;
     }
     if (var->name != NULL) {
@@ -162,7 +163,7 @@ void context_free_internal(alloc_hdr_t **list, context_t *ctx)
 
     /* Free unconsumed return value */
     if (ctx->return_value != NULL) {
-        val_free(list, ctx->return_value);
+        val_free(ctx->return_value);
         ctx->return_value = NULL;
     }
 }

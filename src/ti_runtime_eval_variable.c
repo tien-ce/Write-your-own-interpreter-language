@@ -76,8 +76,7 @@ value_t *eval_assignment(ti_runtime_t *rt, context_t *ctx, ast_t *node)
 
         /* Free previous value to prevent leaks, then assign new value */
         if (variable->value != NULL) {
-            val_free_internal(&rt->alloc_list, variable->value);
-            tracked_free(&rt->alloc_list, variable->value);
+            val_free(variable->value);
         }
         variable->value = val;
     } else {

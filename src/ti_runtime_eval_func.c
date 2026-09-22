@@ -114,7 +114,7 @@ value_t *run_ti_function(ti_runtime_t *rt, context_t *ctx, function_t *func, val
 
     /* Deep copy evaluated arguments and bind them to parameter variables in local context */
     for (int i = 0; i < argc; i++) {
-        value_t *param_val = val_copy(&rt->alloc_list, argv[i]);
+        value_t *param_val = val_copy(argv[i]);
         context_add_variable(&rt->alloc_list, func_ctx, tracked_strdup(&rt->alloc_list, func->params[i].name), param_val);
     }
 
@@ -143,7 +143,7 @@ value_t *run_ti_function(ti_runtime_t *rt, context_t *ctx, function_t *func, val
             ti_log("[Runtime Error] Non-void function '%s' reached end of body without returning a value at line %d\n", func->name, node->line);
             ti_fatal();
         } else {
-            ret_val = val_new_void(&rt->alloc_list);
+            ret_val = val_new_void();
         }
     }
 
@@ -292,7 +292,7 @@ value_t *eval_function_call(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         ti_fatal();
         for (int i = 0; i < argc; i++) {
             if (argv[i] != NULL) {
-                val_free(&rt->alloc_list, argv[i]);
+                val_free(argv[i]);
             }
         }
         tracked_free(&rt->alloc_list, argv);
@@ -305,7 +305,7 @@ value_t *eval_function_call(ti_runtime_t *rt, context_t *ctx, ast_t *node)
     /* Free intermediate argument values and argument array */
     for (int i = 0; i < argc; i++) {
         if (argv[i] != NULL) {
-            val_free(&rt->alloc_list, argv[i]);
+            val_free(argv[i]);
         }
     }
     tracked_free(&rt->alloc_list, argv);
