@@ -261,6 +261,7 @@ static ast_t *parser_parse_statement(parser_t *parser)
     case TOKEN_KW_STRING:
     case TOKEN_KW_BOOL:
     case TOKEN_KW_VOID:
+    case TOKEN_KW_DICT:
         return parser_parse_definition(parser);
     case TOKEN_ID: {
         /* Parse expression starting with identifier; distinguish assignment from call */
@@ -549,6 +550,72 @@ static ast_t *parser_parse_primary(parser_t *parser)
         variable_node->value.identifier = id_name;
         return variable_node;
     }
+    case TOKEN_LBRACE: {
+        /* Parse Dictionary Literal: { "key": value, ... } */
+        parser_eat(parser, TOKEN_LBRACE); // Eat '{'
+        
+        char **keys = NULL;
+        ast_t **values = NULL;
+        int pair_count = 0;
+        
+        /* Loop until we hit the closing brace */
+        while (parser->current_token->type != TOKEN_RBRACE) {
+            /* 1. Strict Validation: Key MUST be a string literal */
+            if (parser->current_token->type != TOKEN_STRING) {
+                ti_log("[Parser Error] Dictionary key must be a string literal at line %d\n", parser->lexer->line_num);
+                ti_log_line(parser->lexer->line);
+                ti_fatal();
+            }
+            
+            /* Extract string and transfer ownership to AST */
+            char *key_str = parser->current_token->value;
+            parser->current_token->value = NULL;
+            parser_eat(parser, TOKEN_STRING);
+            
+            /* 2. Strict Validation: Expect Colon ':' */
+            if (parser->current_token->type != TOKEN_COLON) {
+                ti_log("[Parser Error] Expected ':' after dictionary key at line %d\n", parser->lexer->line_num);
+                ti_log_line(parser->lexer->line);
+                ti_fatal();
+            }
+            parser_eat(parser, TOKEN_COLON);
+            
+            /* 3. Strict Validation: Value MUST be a primitive literal (Int, Float, String, Bool) */
+            int v_type = parser->current_token->type;
+            if (v_type != TOKEN_INT && v_type != TOKEN_FLOAT && v_type != TOKEN_STRING && v_type != TOKEN_BOOL) {
+                ti_log("[Parser Error] Dictionary value must be a primitive literal at line %d\n", parser->lexer->line_num);
+                ti_log_line(parser->lexer->line);
+                ti_fatal();
+            }
+            /* Parse the literal value into an AST node */
+            ast_t *val_node = parser_parse_primary(parser);
+            
+            /* 4. Store the pair dynamically */
+            keys = tracked_realloc(parser->alloc_list, keys, (pair_count + 1) * sizeof(char *));
+            values = tracked_realloc(parser->alloc_list, values, (pair_count + 1) * sizeof(ast_t *));
+            keys[pair_count] = key_str;
+            values[pair_count] = val_node;
+            pair_count++;
+            
+            /* Handle optional comma separator */
+            if (parser->current_token->type == TOKEN_COMMA) {
+                parser_eat(parser, TOKEN_COMMA);
+            } else if (parser->current_token->type != TOKEN_RBRACE) {
+                /* If not a comma and not a right brace, it's a syntax error */
+                ti_log("[Parser Error] Expected ',' or '}' in dictionary literal at line %d\n", parser->lexer->line_num);
+                ti_log_line(parser->lexer->line);
+                ti_fatal();
+            }
+        }
+        parser_eat(parser, TOKEN_RBRACE); // Eat '}'
+        
+        /* Construct and return the AST_DICT_LITERAL node */
+        ast_t *dict_node = ast_init(parser->alloc_list, AST_DICT_LITERAL, parser->lexer->line_num);
+        dict_node->value.dict_literal.keys = keys;
+        dict_node->value.dict_literal.values = values;
+        dict_node->value.dict_literal.pair_count = pair_count;
+        return dict_node;
+    }
     case TOKEN_LPAREN: {
         /* Parenthesized grouped subexpression (expr) */
         parser_eat(parser, TOKEN_LPAREN);
@@ -582,12 +649,13 @@ static ast_t *parser_parse_variable_definition(parser_t *parser)
     case TOKEN_KW_STRING: variable_type = VAL_STRING; break;
     case TOKEN_KW_BOOL:   variable_type = VAL_BOOL;   break;
     case TOKEN_KW_VOID:   variable_type = VAL_VOID;   break;
+    case TOKEN_KW_DICT:   variable_type = VAL_DICT;   break;
     default:
         ti_log("[Parser Error] Unexpected type %s in variable definition, at line %d\n",
                token_to_str(parser->current_token->type), parser->lexer->line_num);
         ti_log_line(parser->lexer->line);
         ti_fatal();
-        break;
+        return NULL;
     }
     /* Consume variable type keyword */
     parser_eat(parser, parser->current_token->type); // Eat <variable_type>

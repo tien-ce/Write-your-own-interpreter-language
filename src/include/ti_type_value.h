@@ -11,6 +11,20 @@ extern "C" {
 
 /* -------------------- Value Type -------------------- */
 
+/* Forward declaration for the generic hash map struct from external library */
+struct CHASHMAP_STRUCT;
+
+typedef struct DICT_STRUCT dict_t;
+
+/**
+ * @brief Encapsulates the state and structure of a hash table based dictionary.
+ * Uses the external chashmap library for internal storage.
+ */
+struct DICT_STRUCT {
+    struct CHASHMAP_STRUCT *map; /* Pointer to the core generic hashmap */
+    int refcount;                /* Counter tracking active references to manage memory deallocation */
+};
+
 typedef struct VALUE_STRUCT {
     val_type_t type;
     union {
@@ -18,6 +32,7 @@ typedef struct VALUE_STRUCT {
         float float_val;
         char *string_val;
         bool bool_val;
+        dict_t *dict_val;
     };
 } value_t;
 
@@ -88,6 +103,37 @@ void val_free(value_t *value);
  * @return Newly allocated value_t clone, or NULL if source is NULL.
  */
 value_t *val_copy(const value_t *val);
+
+/* -------------------- Dictionary Functions -------------------- */
+
+/**
+ * @brief Create a new dictionary value_t.
+ * @return Newly allocated VAL_DICT value_t.
+ */
+value_t *val_new_dict(void);
+
+/**
+ * @brief Set a key-value pair in a dictionary.
+ * @param dict Pointer to dictionary.
+ * @param key Key string.
+ * @param value Value to insert.
+ */
+void dict_set(dict_t *dict, const char *key, struct VALUE_STRUCT *value);
+
+/**
+ * @brief Get a value from a dictionary by key.
+ * @param dict Pointer to dictionary.
+ * @param key Key string.
+ * @return Value associated with key, or NULL if not found.
+ */
+struct VALUE_STRUCT *dict_get(dict_t *dict, const char *key);
+
+/**
+ * @brief Remove a key-value pair from a dictionary.
+ * @param dict Pointer to dictionary.
+ * @param key Key string.
+ */
+void dict_remove(dict_t *dict, const char *key);
 #ifdef __cplusplus
 }
 #endif

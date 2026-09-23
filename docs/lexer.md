@@ -53,7 +53,7 @@ The `lexer_t` struct encapsulates the complete traversal state of the tokenizer.
 
 #### `lexer_advance_with_token(lexer_t *lexer, token_t *token)`
 - **Purpose:** Helper to consume the current character and immediately return a token.
-- **Logic:** Calls `lexer_advance(lexer)` and returns `token`. Used for single-character delimiters (`(`, `)`, `;`, `+`, `-`, `,`, `{`, `}`) and after recognizing the second character of compound operators.
+- **Logic:** Calls `lexer_advance(lexer)` and returns `token`. Used for single-character delimiters (`(`, `)`, `;`, `:`, `+`, `-`, `,`, `{`, `}`) and after recognizing the second character of compound operators.
 
 #### `lexer_skip_whitespace(lexer_t *lexer)`
 - **Purpose:** Consumes contiguous whitespace and updates line tracking.
@@ -134,7 +134,7 @@ The `lexer_t` struct encapsulates the complete traversal state of the tokenizer.
   1. Loops while `isalnum(lexer->c) || lexer->c == '_'`.
   2. Appends characters to `value`.
   3. **Keyword resolution:** Compares `value` against known keywords:
-     - Types: `"int"` (`TOKEN_KW_INT`), `"float"` (`TOKEN_KW_FLOAT`), `"string"` (`TOKEN_KW_STRING`), `"bool"` (`TOKEN_KW_BOOL`), `"void"` (`TOKEN_KW_VOID`).
+     - Types: `"int"` (`TOKEN_KW_INT`), `"float"` (`TOKEN_KW_FLOAT`), `"string"` (`TOKEN_KW_STRING`), `"bool"` (`TOKEN_KW_BOOL`), `"dict"` (`TOKEN_KW_DICT`), `"void"` (`TOKEN_KW_VOID`).
      - Control flow: `"if"` (`TOKEN_KW_IF`), `"else"` (`TOKEN_KW_ELSE`), `"while"` (`TOKEN_KW_WHILE`), `"return"` (`TOKEN_KW_RETURN`), `"break"` (`TOKEN_KW_BREAK`), `"continue"` (`TOKEN_KW_CONTINUE`).
      - **Why Keywords Free `value` and Pass `NULL`:**
        ```c

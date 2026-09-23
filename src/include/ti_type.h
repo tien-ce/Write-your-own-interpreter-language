@@ -18,6 +18,7 @@ typedef enum {
     VAL_BOOL,    // Boolean type
     VAL_VOID,    // Void return type for functions
     VAL_FUNC,
+    VAL_DICT,
 } val_type_t;
 
 typedef enum {

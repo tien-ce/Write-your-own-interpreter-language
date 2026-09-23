@@ -14,6 +14,7 @@ typedef struct AST_STRUCT {
     AST_FLOAT_LITERAL,        // 3.14
     AST_STRING_LITERAL,       // "hello"
     AST_BOOLEAN,              // bool 
+    AST_DICT_LITERAL,         // { "key": 1 }
     AST_IDENTIFIER,           // x, my_var (variable/function reference)
 
     /* EXPRESSIONS */
@@ -85,6 +86,13 @@ typedef struct AST_STRUCT {
       char *id;
       struct AST_STRUCT *index_expr;
     } array_access;
+
+    /* Dictionary Literal */
+    struct {
+      char **keys;                  // Array of raw C-strings for keys
+      struct AST_STRUCT **values;   // Array of AST nodes for values
+      int pair_count;               // Number of key-value pairs
+    } dict_literal;
 
     /* Variable definition statement */
     struct {

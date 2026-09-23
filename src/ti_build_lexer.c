@@ -155,6 +155,7 @@ static token_t *lexer_collect_id(lexer_t *lexer)
     if (strcmp(value, "float") == 0)  { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_FLOAT, NULL); }
     if (strcmp(value, "string") == 0) { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_STRING, NULL); }
     if (strcmp(value, "bool") == 0)   { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_BOOL, NULL); }
+    if (strcmp(value, "dict") == 0)   { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_DICT, NULL); }
     if (strcmp(value, "void") == 0)   { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_VOID, NULL); }
 
     /* Match control flow keywords */
@@ -294,6 +295,7 @@ token_t *lexer_get_next_token(lexer_t *lexer)
         case '(': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_LPAREN, NULL));
         case ')': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_RPAREN, NULL));
         case ';': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_SEMI, NULL));
+        case ':': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_COLON, NULL));
         case '+': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_PLUS, NULL));
         case '-': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_MINUS, NULL));
         case ',': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_COMMA, NULL));

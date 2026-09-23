@@ -43,6 +43,7 @@ const char *token_to_str(int token_type)
     case TOKEN_KW_FLOAT:    return "'float'";
     case TOKEN_KW_STRING:   return "'string'";
     case TOKEN_KW_BOOL:     return "'bool'";
+    case TOKEN_KW_DICT:     return "'dict'";
     case TOKEN_KW_IF:       return "'if'";
     case TOKEN_KW_ELSE:     return "'else'";
     case TOKEN_KW_WHILE:    return "'while'";
@@ -62,6 +63,7 @@ const char *token_to_str(int token_type)
     case TOKEN_STAR:        return "'*'";
     case TOKEN_SLASH:       return "'/'";
     case TOKEN_SEMI:        return "';'";
+    case TOKEN_COLON:       return "':'";
     case TOKEN_LPAREN:      return "'('";
     case TOKEN_RPAREN:      return "')'";
     case TOKEN_LBRACE:      return "'{'";

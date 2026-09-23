@@ -74,3 +74,11 @@ The codebase consists of **8 major modules** organized cleanly across `src/` and
 - **Unified Visitor Header Contract:** All visitor sub-modules (`ti_runtime_eval_binary.c`, `ti_runtime_eval_control.c`, etc.) and caller subsystems communicate through `src/include/ti_runtime_visitor.h` as the unified visitor header.
 - **Mutual Recursion Contract:** Because expressions require evaluation of arbitrary child nodes (e.g. function call arguments, short-circuit operands), evaluators call `visitor_visit(rt, ctx, ...)` directly. `src/include/ti_runtime_visitor.h` provides the shared function prototype mediator across all evaluator translation units.
 - **Tracked Heap Allocation:** All dynamic memory throughout the pipeline uses `tracked_calloc`, `tracked_realloc`, `tracked_strdup`, and `tracked_free` to guarantee zero memory leaks upon script termination.
+
+---
+
+## 4. Dependencies & External Libraries
+
+The project relies on external libraries located in the `lib/` directory:
+
+- **chashmap**: A C library for dictionary and symbol table implementations. Located at `lib/chashmap` (symlinked). Used extensively for variable scope resolution and environment contexts.

@@ -61,6 +61,11 @@ static function_t *user_find_function(ti_runtime_t *rt, const char *name)
  */
 bool register_builtin_function(const char *name, val_type_t return_type, param_t *params, int param_count, native_fn_t function) 
 {
+    if (params == NULL || param_count == -1 )
+    {
+        //Variadic function
+        return true;
+    }
     for (int i = 0; i < s_builtin_function_count; i++) {
         if (strcmp(name, s_builtin_functions[i].name) == 0) {
             ti_log("Function name already exists\n");
