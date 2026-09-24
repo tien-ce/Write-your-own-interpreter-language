@@ -10,11 +10,12 @@
 #include <string.h>
 #include <stdbool.h>
 
+#include "chashmap.h"
+
 /* -------------------- Function Registry Table -------------------- */
 
 /* This is shared between multiple threads and registered at interpreter startup */
-static function_t *s_builtin_functions = NULL;
-static int s_builtin_function_count = 0;
+static chashmap_t *s_builtin_map = NULL;
 
 /**
  * @brief Find a built-in native function by name.
@@ -23,12 +24,10 @@ static int s_builtin_function_count = 0;
  */
 static function_t *builtin_find_function(const char *name)
 {
-    for (int i = 0; i < s_builtin_function_count; i++) {
-        if (strcmp(name, s_builtin_functions[i].name) == 0) {
-            return &s_builtin_functions[i];
-        }
+    if (s_builtin_map == NULL) {
+        return NULL;
     }
-    return NULL;
+    return (function_t *)chashmap_get(s_builtin_map, name);
 }
 
 /**
@@ -61,27 +60,33 @@ static function_t *user_find_function(ti_runtime_t *rt, const char *name)
  */
 bool register_builtin_function(const char *name, val_type_t return_type, param_t *params, int param_count, native_fn_t function) 
 {
-    for (int i = 0; i < s_builtin_function_count; i++) {
-        if (strcmp(name, s_builtin_functions[i].name) == 0) {
-            ti_log("Function name already exists\n");
-            return false;
-        }
+    /* Lazy initialize the hashmap if it doesn't exist */
+    if (s_builtin_map == NULL) {
+        s_builtin_map = chashmap_create(32, NULL); 
     }
 
-    function_t *temp = tracked_realloc(NULL, s_builtin_functions, sizeof(function_t) * (s_builtin_function_count + 1));
-    if (temp == NULL) {
+    /* O(1) Check for existing function */
+    if (chashmap_get(s_builtin_map, name) != NULL) {
+        ti_log("Function name already exists\n");
+        return false;
+    }
+
+    /* Allocate an independent function_t object on the heap */
+    function_t *func = tracked_calloc(NULL, 1, sizeof(function_t));
+    if (func == NULL) {
         ti_log("Memory issue\n");
         return false;
     }
 
-    s_builtin_functions = temp;
-    s_builtin_functions[s_builtin_function_count].name = name;
-    s_builtin_functions[s_builtin_function_count].type = FUNC_BUILTIN;
-    s_builtin_functions[s_builtin_function_count].return_type = return_type;
-    s_builtin_functions[s_builtin_function_count].params = params;
-    s_builtin_functions[s_builtin_function_count].param_count = param_count;
-    s_builtin_functions[s_builtin_function_count].native_fn = function;
-    s_builtin_function_count++;
+    func->name = name;
+    func->type = FUNC_BUILTIN;
+    func->return_type = return_type;
+    func->params = params;
+    func->param_count = param_count;
+    func->native_fn = function;
+
+    /* Insert the function pointer into the hashmap */
+    chashmap_set(s_builtin_map, name, (void *)func);
     return true;
 }
 

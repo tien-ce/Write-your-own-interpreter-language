@@ -8,6 +8,7 @@ extern "C" {
 #include <stdarg.h>
 #include "include/ti_type.h"
 #include "include/ti_type_value.h"
+#include "include/ti_type_value_dict.h"
 #include "include/ti_type_func.h"
 #include "include/ti_runtime.h"
 #include "include/ti_build_program.h"
