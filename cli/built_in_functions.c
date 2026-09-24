@@ -1,5 +1,6 @@
 #include "include/ti_runtime_visitor.h"
 #include "include/ti_type_func.h"
+#include "include/ti_type_value_dict.h"
 #include "include/debug.h"
 #include "TienInterpreter.h"
 #include <stdarg.h>
@@ -316,6 +317,27 @@ static value_t *built_in_get_json(value_t **argv, int argc)
 
 /* -------------------- Public Functions -------------------- */
 
+/**
+ * @brief Built-in native function returning a Dictionary.
+ * Usage in Ti script: dict info = get_system_info();
+ */
+static value_t *built_in_get_system_info(value_t **argv, int argc)
+{
+    (void)argv;
+    (void)argc;
+
+    /* 1. Khởi tạo một đối tượng Dictionary trống */
+    value_t *sys_dict = val_new_dict();
+
+    /* 2. Bơm dữ liệu vào Dictionary (Ownership Transfer) */
+    val_dict_set(sys_dict->dict_val, "status", val_new_string("running"));
+    val_dict_set(sys_dict->dict_val, "uptime", val_new_int(3600));
+    val_dict_set(sys_dict->dict_val, "is_ready", val_new_bool(true));
+
+    /* 3. Trả về Dictionary cho Trình thông dịch */
+    return sys_dict;
+}
+
 /* Initialize built-in interpreter native functions */
 void ti_init_builtin(void)
 {
@@ -338,6 +360,9 @@ void ti_init_builtin(void)
     register_builtin_function("nvs_read", VAL_INT, nvs_read_params, 2, built_in_nvs_read);
     register_builtin_function("http_get", VAL_STRING, NULL, 0, built_in_http_get);
     register_builtin_function("get_json", VAL_STRING, get_json_params, 2, built_in_get_json);
+    
+    // Đăng ký hàm trả về DICT
+    register_builtin_function("get_system_info", VAL_DICT, NULL, 0, built_in_get_system_info);
 }
 
 void init_builtin(void)

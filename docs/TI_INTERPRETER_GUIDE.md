@@ -128,3 +128,31 @@ void init_variadic_builtins(void) {
     register_builtin_function("custom_print", VAL_VOID, NULL, -1, builtin_custom_print);
 }
 ```
+
+#### Example 3: Native Function Returning a Dictionary
+To return a native `dict` object instead of a JSON string, use the `val_new_dict()` API and populate it using `val_dict_set()`. This employs zero-copy ownership transfer, meaning you do not need to call `val_free()` on the values you insert.
+
+```c
+/**
+ * @brief Native C function returning a Dictionary
+ * Usage in Ti script: dict info = get_system_info();
+ */
+value_t *builtin_get_system_info(value_t **args, int argc) {
+    (void)args; (void)argc;
+
+    /* Allocate a new dictionary wrapper */
+    value_t *sys_dict = val_new_dict();
+
+    /* Populate the dictionary with key-value pairs (Ownership Transfer) */
+    val_dict_set(sys_dict->dict_val, "status", val_new_string("running"));
+    val_dict_set(sys_dict->dict_val, "uptime", val_new_int(3600));
+    val_dict_set(sys_dict->dict_val, "is_ready", val_new_bool(true));
+
+    return sys_dict;
+}
+
+void init_dict_builtins(void) {
+    /* Register with VAL_DICT return type */
+    register_builtin_function("get_system_info", VAL_DICT, NULL, 0, builtin_get_system_info);
+}
+```
