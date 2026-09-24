@@ -1,5 +1,6 @@
 #include "include/ti_runtime_visitor.h"
 #include "include/ti_type_func.h"
+#include "include/debug.h"
 #include "TienInterpreter.h"
 #include <stdarg.h>
 #include <stdio.h>
@@ -83,7 +84,7 @@ static value_t *built_in_print(value_t **argv, int argc)
             printf("%s", argv[i]->bool_val ? "true" : "false");
             break;
         default:
-            printf("Unexpected type %d", argv[i]->type);
+            printf("Unexpected type %s", val_type_to_str(argv[i]->type));
             break;
         }
     }

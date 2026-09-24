@@ -1,0 +1,35 @@
+{
+  "name": "TienInterpreter",
+  "version": "2.0.0",
+  "description": "A lightweight, C-based embedded script interpreter with garbage collection and strict typing.",
+  "keywords": [
+    "interpreter",
+    "scripting",
+    "ast",
+    "language",
+    "embedded",
+    "vm"
+  ],
+  "authors": [
+    {
+      "name": "Tien",
+      "maintainer": true
+    }
+  ],
+  "frameworks": [
+    "arduino",
+    "espidf",
+    "zephyr"
+  ],
+  "platforms": [
+    "*"
+  ],
+  "dependencies": {
+    "chashmap": "*"
+  },
+  "build": {
+    "flags": [
+      "-Isrc/include"
+    ]
+  }
+}

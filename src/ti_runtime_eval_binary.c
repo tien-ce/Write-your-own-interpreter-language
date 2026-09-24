@@ -1,5 +1,6 @@
 #include "include/ti_runtime_visitor.h"
 #include "include/tracked_memory.h"
+#include "include/debug.h"
 #include "TienInterpreter.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -61,7 +62,7 @@ static value_t *binary_add(value_t *left, value_t *right, int line)
     }
     default:
         /* Handle unsupported operand types and signal fatal error */
-        ti_log("[Runtime Error] Unexpected operands %d, %d in binary add at line %d\n", left->type, right->type, line);
+        ti_log("[Runtime Error] Unexpected operands %s, %s in binary add at line %d\n", val_type_to_str(left->type), val_type_to_str(right->type), line);
         ti_fatal();
         break;
     }
@@ -97,7 +98,7 @@ static value_t *binary_sub(value_t *left, value_t *right, int line)
         break;
     default:
         /* Handle unsupported operand types and signal fatal error */
-        ti_log("[Runtime Error] Unexpected operands %d, %d in binary sub at line %d\n", left->type, right->type, line);
+        ti_log("[Runtime Error] Unexpected operands %s, %s in binary sub at line %d\n", val_type_to_str(left->type), val_type_to_str(right->type), line);
         ti_fatal();
         break;
     }
@@ -133,7 +134,7 @@ static value_t *binary_mul(value_t *left, value_t *right, int line)
         break;
     default:
         /* Handle unsupported operand types and signal fatal error */
-        ti_log("[Runtime Error] Unexpected operands %d, %d in binary mul at line %d\n", left->type, right->type, line);
+        ti_log("[Runtime Error] Unexpected operands %s, %s in binary mul at line %d\n", val_type_to_str(left->type), val_type_to_str(right->type), line);
         ti_fatal();
         break;
     }
@@ -181,7 +182,7 @@ static value_t *binary_div(value_t *left, value_t *right, int line)
         break;
     default:
         /* Handle unsupported operand types and signal fatal error */
-        ti_log("[Runtime Error] Unexpected operands %d, %d in binary div at line %d\n", left->type, right->type, line);
+        ti_log("[Runtime Error] Unexpected operands %s, %s in binary div at line %d\n", val_type_to_str(left->type), val_type_to_str(right->type), line);
         ti_fatal();
         break;
     }
@@ -232,7 +233,7 @@ static value_t *binary_equal(value_t *left, value_t *right, int line)
         break;
     default:
         /* Handle unsupported operand types and signal fatal error */
-        ti_log("[Runtime Error] Unexpected operands %d, %d in binary equal at line %d\n", left->type, right->type, line);
+        ti_log("[Runtime Error] Unexpected operands %s, %s in binary equal at line %d\n", val_type_to_str(left->type), val_type_to_str(right->type), line);
         ti_fatal();
         break;
     }
@@ -275,7 +276,7 @@ static value_t *binary_greater(value_t *left, value_t *right, int line)
     }
     default:
         /* Handle unsupported operand types and signal fatal error */
-        ti_log("[Runtime Error] Unexpected operands %d, %d in binary greater at line %d\n", left->type, right->type, line);
+        ti_log("[Runtime Error] Unexpected operands %s, %s in binary greater at line %d\n", val_type_to_str(left->type), val_type_to_str(right->type), line);
         ti_fatal();
         break;
     }
@@ -318,7 +319,7 @@ static value_t *binary_less(value_t *left, value_t *right, int line)
     }
     default:
         /* Handle unsupported operand types and signal fatal error */
-        ti_log("[Runtime Error] Unexpected operands %d, %d in binary less at line %d\n", left->type, right->type, line);
+        ti_log("[Runtime Error] Unexpected operands %s, %s in binary less at line %d\n", val_type_to_str(left->type), val_type_to_str(right->type), line);
         ti_fatal();
         break;
     }
@@ -361,7 +362,7 @@ static value_t *binary_greater_equal(value_t *left, value_t *right, int line)
     }
     default:
         /* Handle unsupported operand types and signal fatal error */
-        ti_log("[Runtime Error] Unexpected operands %d, %d in binary greater equal at line %d\n", left->type, right->type, line);
+        ti_log("[Runtime Error] Unexpected operands %s, %s in binary greater equal at line %d\n", val_type_to_str(left->type), val_type_to_str(right->type), line);
         ti_fatal();
         break;
     }
@@ -404,7 +405,7 @@ static value_t *binary_less_equal(value_t *left, value_t *right, int line)
     }
     default:
         /* Handle unsupported operand types and signal fatal error */
-        ti_log("[Runtime Error] Unexpected operands %d, %d in binary less equal at line %d\n", left->type, right->type, line);
+        ti_log("[Runtime Error] Unexpected operands %s, %s in binary less equal at line %d\n", val_type_to_str(left->type), val_type_to_str(right->type), line);
         ti_fatal();
         break;
     }
@@ -428,7 +429,7 @@ static value_t *binary_logical_and(value_t *left, value_t *right, int line)
     }
     /* Enforce boolean operand types for logical operations */
     if (left->type != VAL_BOOL || right->type != VAL_BOOL) {
-        ti_log("[Runtime Error] Logical AND expects bool operands, got %d and %d at line %d\n", left->type, right->type, line);
+        ti_log("[Runtime Error] Logical AND expects bool operands, got %s and %s at line %d\n", val_type_to_str(left->type), val_type_to_str(right->type), line);
         ti_fatal();
         return NULL;
     }
@@ -456,7 +457,7 @@ static value_t *binary_logical_or(value_t *left, value_t *right, int line)
     }
     /* Enforce boolean operand types for logical operations */
     if (left->type != VAL_BOOL || right->type != VAL_BOOL) {
-        ti_log("[Runtime Error] Logical OR expects bool operands, got %d and %d at line %d\n", left->type, right->type, line);
+        ti_log("[Runtime Error] Logical OR expects bool operands, got %s and %s at line %d\n", val_type_to_str(left->type), val_type_to_str(right->type), line);
         ti_fatal();
         return NULL;
     }
@@ -491,7 +492,7 @@ value_t *eval_binary_expr(ti_runtime_t *rt, context_t *ctx, ast_t *node)
 
     /* Enforce type symmetry between left and right operands */
     if (left->type != right->type) {
-        ti_log("[Runtime Error] Type mismatch in binary expression: %d and %d at line %d\n", left->type, right->type, node->line);
+        ti_log("[Runtime Error] Type mismatch in binary expression: %s and %s at line %d\n", val_type_to_str(left->type), val_type_to_str(right->type), node->line);
         ti_fatal();
     }
 
@@ -568,7 +569,7 @@ value_t *eval_unary_expr(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         } else if (operand->type == VAL_FLOAT) {
             result = val_new_float(+operand->float_val);
         } else {
-            ti_log("[Runtime Error] Unary '+' only supports int and float, got type %d at line %d\n", operand->type, node->line);
+            ti_log("[Runtime Error] Unary '+' only supports int and float, got type %s at line %d\n", val_type_to_str(operand->type), node->line);
             ti_fatal();
         }
         break;
@@ -580,7 +581,7 @@ value_t *eval_unary_expr(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         } else if (operand->type == VAL_FLOAT) {
             result = val_new_float(-operand->float_val);
         } else {
-            ti_log("[Runtime Error] Unary '-' only supports int and float, got type %d at line %d\n", operand->type, node->line);
+            ti_log("[Runtime Error] Unary '-' only supports int and float, got type %s at line %d\n", val_type_to_str(operand->type), node->line);
             ti_fatal();
         }
         break;
@@ -590,7 +591,7 @@ value_t *eval_unary_expr(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         if (operand->type == VAL_BOOL) {
             result = val_new_bool(!operand->bool_val);
         } else {
-            ti_log("[Runtime Error] Unary '!' only supports bool, got type %d at line %d\n", operand->type, node->line);
+            ti_log("[Runtime Error] Unary '!' only supports bool, got type %s at line %d\n", val_type_to_str(operand->type), node->line);
             ti_fatal();
         }
         break;
@@ -605,3 +606,4 @@ value_t *eval_unary_expr(ti_runtime_t *rt, context_t *ctx, ast_t *node)
     val_free(operand);
     return result;
 }
+

@@ -102,6 +102,7 @@ static ast_t *parser_parse_param(parser_t *parser)
     case TOKEN_KW_FLOAT:  param_type = VAL_FLOAT;  break;
     case TOKEN_KW_STRING: param_type = VAL_STRING; break;
     case TOKEN_KW_BOOL:   param_type = VAL_BOOL;   break;
+    case TOKEN_KW_DICT:   param_type = VAL_DICT;   break;
     default:
         ti_log("[Parser Error] Unexpected type %s for parameter, at line %d\n",
                token_to_str(parser->current_token->type), parser->lexer->line_num);
@@ -139,6 +140,7 @@ static ast_t *parser_parse_function_definition(parser_t *parser)
     case TOKEN_KW_STRING: return_type = VAL_STRING; break;
     case TOKEN_KW_BOOL:   return_type = VAL_BOOL;   break;
     case TOKEN_KW_VOID:   return_type = VAL_VOID;   break;
+    case TOKEN_KW_DICT:   return_type = VAL_DICT;   break;
     default:
         ti_log("[Parser Error] Unexpected type %s in function definition, at line %d\n",
                token_to_str(parser->current_token->type), parser->lexer->line_num);

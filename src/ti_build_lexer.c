@@ -52,8 +52,7 @@ static void lexer_go_back(lexer_t *lexer)
 static void lexer_advance(lexer_t *lexer)
 {
     /* Advance cursor to next character if not yet at end of source buffer */
-    uint32_t length = strlen(lexer->contents); 
-    if (lexer->c != '\0' && lexer->i < length) {
+    if (lexer->c != '\0') {
         lexer->i++;
         lexer->c = lexer->contents[lexer->i];
     }
@@ -294,6 +293,10 @@ token_t *lexer_get_next_token(lexer_t *lexer)
         switch (lexer->c) {
         case '(': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_LPAREN, NULL));
         case ')': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_RPAREN, NULL));
+        case '[': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_LBRACKET, NULL));
+        case ']': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_RBRACKET, NULL));
+        case '{': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_LBRACE, NULL));
+        case '}': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_RBRACE, NULL));
         case ';': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_SEMI, NULL));
         case ':': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_COLON, NULL));
         case '+': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_PLUS, NULL));
@@ -320,6 +323,10 @@ token_t *lexer_get_next_token(lexer_t *lexer)
                             break; /* End of multi-line comment */
                         }
                     } else {
+                        if (lexer->c == '\n') {
+                            lexer->line_num++;
+                            lexer->line = lexer->contents + lexer->i + 1;
+                        }
                         lexer_advance(lexer);
                     }
                 }
@@ -383,8 +390,6 @@ token_t *lexer_get_next_token(lexer_t *lexer)
             lexer_go_back(lexer);
             return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_GT, NULL));
         }
-        case '{': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_LBRACE, NULL));
-        case '}': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_RBRACE, NULL));
         default:
             ti_log("[Lexer Error] Unexpected character %c, at line %d\n", lexer->c, lexer->line_num);
             ti_log_line(lexer->line);

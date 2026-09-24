@@ -1,0 +1,3 @@
+[submodule "lib/chashmap"]
+	path = lib/chashmap
+	url = https://github.com/tien-ce/chashmap

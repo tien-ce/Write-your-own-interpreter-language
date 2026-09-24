@@ -1,6 +1,7 @@
 #include "include/ti_runtime_context.h"
 #include "include/ti_runtime_visitor.h"
 #include "include/tracked_memory.h"
+#include "include/debug.h"
 #include "TienInterpreter.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,7 +29,7 @@ static bool eval_boolean_condition(ti_runtime_t *rt, context_t *ctx, ast_t *cond
 
     /* Enforce boolean type requirement; halt execution on type mismatch */
     if (!value || value->type != VAL_BOOL) {
-        ti_log("[Runtime Error] Unexpected type %d, only expect bool value at line %d\n", value ? (int)value->type : -1, cond_node->line);
+        ti_log("[Runtime Error] Unexpected type %s, only expect bool value at line %d\n", value ? val_type_to_str(value->type) : "unknown", cond_node->line);
         ti_fatal();
     }
 

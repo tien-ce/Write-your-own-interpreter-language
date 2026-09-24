@@ -137,6 +137,7 @@ value_t *eval_assignment(ti_runtime_t *rt, context_t *ctx, ast_t *node);
  * @return Evaluated value_t pointer.
  */
 value_t *eval_identifier(context_t *ctx, ast_t *node);
+value_t *eval_array_access(ti_runtime_t *rt, context_t *ctx, ast_t *node);
 
 /* -------------------- Literal Evaluators -------------------- */
 
@@ -172,6 +173,7 @@ value_t *eval_float_literal(context_t *ctx, ast_t *node);
  */
 value_t *eval_boolean_literal(context_t *ctx, ast_t *node);
 
+value_t *eval_dict_literal(context_t *ctx, ast_t *node);
 /* -------------------- Function Call & Definition Evaluators -------------------- */
 
 /**

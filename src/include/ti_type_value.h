@@ -79,6 +79,7 @@ value_t *val_new_string(const char *s);
  */
 value_t *val_new_bool(bool b);
 
+value_t *val_new_dict(void);
 /**
  * @brief Create a void value_t (used for void function returns).
  * @return Newly allocated VAL_VOID value_t.

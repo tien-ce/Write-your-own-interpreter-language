@@ -1,5 +1,8 @@
 #include "include/ti_type_value.h"
+#include "include/ti_type.h"
+#include "include/ti_type_value_dict.h"
 #include "include/tracked_memory.h"
+#include "include/debug.h"
 #include "TienInterpreter.h"
 #include <string.h>
 
@@ -91,6 +94,11 @@ void val_free_internal(value_t *value)
         ti_raw_free(value->string_val);
         value->string_val = NULL;
     }
+    /* Release dictionary reference and free resources if refcount reaches 0 */
+    else if (value->type == VAL_DICT && value->dict_val != NULL) {
+        dict_release(value->dict_val);
+        value->dict_val = NULL;
+    }
 }
 
 /* Free an entire value_t structure along with its dynamic payload */
@@ -106,6 +114,13 @@ void val_free(value_t *value)
     ti_raw_free(value);
 }
 
+value_t *val_new_dict(void)
+{
+    /* Create new value struct */
+    value_t *val = val_init(VAL_DICT);
+    val->dict_val = dict_create(); 
+    return val;
+}
 /**
  * @brief Create an independent deep copy of a value_t structure.
  */
@@ -140,7 +155,10 @@ value_t *val_copy(const value_t *val)
         /* Copy boolean scalar payload */
         copy->bool_val = val->bool_val;
         break;
-
+    case VAL_DICT:
+        /* Create new value point to the same dict of current dict */
+        copy->dict_val = val->dict_val;
+        dict_retain(copy->dict_val); // Increase the reference to dict value
     case VAL_VOID:
     case VAL_NULL:
         /* No internal payload allocation needed for empty types */
@@ -148,7 +166,7 @@ value_t *val_copy(const value_t *val)
 
     default:
         /* Log error and terminate on unhandled type */
-        ti_log("[ERROR]: Unknown value type %d in val_copy\n", (int)val->type);
+        ti_log("[ERROR]: Unknown value type %s in val_copy\n", val_type_to_str(val->type));
         ti_fatal();
         break;
     }
