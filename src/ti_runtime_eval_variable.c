@@ -117,17 +117,19 @@ value_t *eval_assignment(ti_runtime_t *rt, context_t *ctx, ast_t *node)
             {
                 case VAL_DICT:
                     /* Calculate the key from ast node */
-                    value_t *key_val = visitor_visit(rt,ctx, target_node->value.array_access.index_expr);
-                    if (key_val == NULL || key_val->type != VAL_STRING)
                     {
-                        ti_log("[Runtime Error] Dictionary keys must be strings for variable '%s' at line %d\n", container_name, node->line);
-                        ti_fatal();
+                      value_t *key_val = visitor_visit(rt,ctx, target_node->value.array_access.index_expr);
+                      if (key_val == NULL || key_val->type != VAL_STRING)
+                      {
+                          ti_log("[Runtime Error] Dictionary keys must be strings for variable '%s' at line %d\n", container_name, node->line);
+                          ti_fatal();
+                      }
+                      /* Set new value into dict */
+                      val_dict_set(container_var->value->dict_val, key_val->string_val, val);
+                      /* Free temporary key val but still need to keep target value */
+                      val_free(key_val);
+                      break;
                     }
-                    /* Set new value into dict */
-                    val_dict_set(container_var->value->dict_val, key_val->string_val, val);
-                    /* Free temporary key val but still need to keep target value */
-                    val_free(key_val);
-                    break;
                 default:
                     ti_log("[Runtime Error] Type '%s' does not support subscript assignment at line %d\n", val_type_to_str(container_var->value->type), node->line);
                     ti_fatal();
