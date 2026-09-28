@@ -104,3 +104,46 @@ bool val_dict_has_key(dict_t *dict, const char *key)
     }
     return chashmap_get(dict->map, key) != NULL;
 }
+
+/**
+ * @brief Context payload used to propagate both the user callback and user context
+ * through the single opaque parameter expected by the hashmap iteration API.
+ */
+struct dict_iter_context {
+    dict_foreach_cb user_callback;
+    void *user_context;
+};
+
+/**
+ * @brief Internal adapter callback bridging generic hashmap payloads to interpreter values.
+ * Performs type conversion from opaque void* payload to value_t* before invoking user callback.
+ */
+static bool dict_callback(const char *key, void *value, void *hashmap_context)
+{
+    /* Unpack traversal context */
+    struct dict_iter_context *ctx = (struct dict_iter_context *)hashmap_context;
+
+    /* Downcast opaque payload pointer to runtime value pointer */
+    value_t *val = (value_t *)value;
+
+    /* Dispatch to caller-defined callback with cast value and user context */
+    return ctx->user_callback(key, val, ctx->user_context);
+}
+
+/* Traverse all key-value entries in the dictionary and invoke the user callback */
+void val_dict_foreach(dict_t *dict, dict_foreach_cb user_callback, void *user_context)
+{
+    /* Validate input arguments */
+    if (dict == NULL || dict->map == NULL || user_callback == NULL) {
+        return;
+    }
+
+    /* Aggregate user callback and caller state into a stack-allocated context frame */
+    struct dict_iter_context ctx = {
+        .user_callback = user_callback,
+        .user_context = user_context
+    };
+
+    /* Execute traversal via underlying hashmap iteration interface */
+    chashmap_foreach(dict->map, dict_callback, &ctx);
+}

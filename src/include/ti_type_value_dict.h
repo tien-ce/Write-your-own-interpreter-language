@@ -58,6 +58,23 @@ bool val_dict_remove(dict_t *dict, const char *key);
  */
 bool val_dict_has_key(dict_t *dict, const char *key);
 
+/**
+ * @brief User Callback function signature for dictionary iteration.
+ * @param key String identifier of the current entry.
+ * @param value Pointer to the strongly-typed value object.
+ * @param user_context Opaque pointer passed through to callback.
+ * @return true to continue traversal, false to terminate early.
+ */
+typedef bool (*dict_foreach_cb)(const char *key, value_t *value, void *user_context);
+
+/**
+ * @brief Traverse all key-value entries in the dictionary and invoke the user callback.
+ * @param dict Pointer to dictionary reference object.
+ * @param user_callback Callback function invoked per entry.
+ * @param user_context Opaque caller context passed directly to user_callback.
+ */
+void val_dict_foreach(dict_t *dict, dict_foreach_cb user_callback, void *user_context);
+
 #ifdef __cplusplus
 }
 #endif

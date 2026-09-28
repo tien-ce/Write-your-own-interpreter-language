@@ -241,6 +241,57 @@ static value_t *binary_equal(value_t *left, value_t *right, int line)
 }
 
 /**
+ * @brief Evaluate equality comparison (==) between two values.
+ * @param left Left operand value.
+ * @param right Right operand value.
+ * @param line Source line number for error reporting.
+ * @return Newly allocated boolean value_t.
+ */
+static value_t *binary_not_equal(value_t *left, value_t *right, int line)
+{
+    /* Validate operands are non-null; halt execution on runtime error */
+    if (left == NULL || right == NULL) {
+        ti_log("[Runtime Error] Invalid operands in binary equal at line %d\n", line);
+        ti_fatal();
+        return NULL;
+    }
+
+    /* Initialize boolean result value */
+    value_t *value = val_init(VAL_BOOL);
+    switch (left->type) {
+    case VAL_INT:
+        /* Compare integer values */
+        value->bool_val = (left->int_val != right->int_val);
+        break;
+    case VAL_FLOAT:
+        /* Compare floating-point values */
+        value->bool_val = (left->float_val != right->float_val);
+        break;
+    case VAL_STRING: {
+        /* Compare string contents lexicographically using strcmp */
+        const char *s_left = left->string_val ? left->string_val : "";
+        const char *s_right = right->string_val ? right->string_val : "";
+        value->bool_val = (strcmp(s_left, s_right) != 0);
+        break;
+    }
+    case VAL_BOOL:
+        /* Compare boolean states */
+        value->bool_val = (left->bool_val != right->bool_val);
+        break;
+    case VAL_NULL:
+        /* Both operands are NULL; evaluate to false */
+        value->bool_val = false;
+        break;
+    default:
+        /* Handle unsupported operand types and signal fatal error */
+        ti_log("[Runtime Error] Unexpected operands %s, %s in binary not equal at line %d\n", val_type_to_str(left->type), val_type_to_str(right->type), line);
+        ti_fatal();
+        break;
+    }
+    return value;
+}
+
+/**
  * @brief Evaluate greater-than comparison (>) between two values.
  * @param left Left operand value.
  * @param right Right operand value.
@@ -512,6 +563,9 @@ value_t *eval_binary_expr(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         break;
     case OP_DEQ:
         result = binary_equal(left, right, node->line);
+        break;
+    case OP_NEQ:
+        result = binary_not_equal(left,right, node->line);
         break;
     case OP_GT:
         result = binary_greater(left, right, node->line);
