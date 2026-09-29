@@ -13,6 +13,7 @@ static value_t *binary_sub(value_t *left, value_t *right, int line);
 static value_t *binary_mul(value_t *left, value_t *right, int line);
 static value_t *binary_div(value_t *left, value_t *right, int line);
 static value_t *binary_equal(value_t *left, value_t *right, int line);
+static value_t *binary_not_equal(value_t *left, value_t *right, int line);
 static value_t *binary_greater(value_t *left, value_t *right, int line);
 static value_t *binary_less(value_t *left, value_t *right, int line);
 static value_t *binary_greater_equal(value_t *left, value_t *right, int line);
