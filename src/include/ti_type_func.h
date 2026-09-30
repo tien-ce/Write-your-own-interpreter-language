@@ -23,9 +23,14 @@ extern "C" {
 
 /**
  * @brief Function pointer type for native C functions callable from Ti.
- * Return the value_t*
+ * The handle identifies the calling runtime; natives may store it (e.g. to post events later),
+ * because a stale handle is safely rejected once the runtime is destroyed.
+ * @param handle Handle of the runtime executing the call.
+ * @param args Array of borrowed argument values (freed by the caller after return).
+ * @param argc Number of arguments passed.
+ * @return Newly allocated result value_t.
  */
-typedef value_t *(*native_fn_t)(value_t **args, int argc);
+typedef value_t *(*native_fn_t)(ti_handle_t handle, value_t **args, int argc);
 
 typedef struct PARAM_STRUCT {
     val_type_t type;          /* Expected parameter type (VAL_INT, VAL_STRING, etc.) */

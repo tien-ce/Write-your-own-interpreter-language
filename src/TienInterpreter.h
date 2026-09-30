@@ -9,8 +9,8 @@ extern "C" {
 #include "include/ti_type.h"
 #include "include/ti_type_value.h"
 #include "include/ti_type_value_dict.h"
+#include "include/ti_type_value_list.h"
 #include "include/ti_type_func.h"
-#include "include/ti_runtime.h"
 #include "include/ti_build_program.h"
 
 /* -------------------- Platform & Callback Types -------------------- */
@@ -71,11 +71,28 @@ void ti_init_builtin(void);
 ti_program_t *ti_compile(const char *source_code);
 
 /**
- * @brief Execute a compiled program on the specified runtime instance.
- * @param rt Pointer to runtime instance.
- * @param prog Pointer to compiled program.
+ * @brief Create a new runtime instance.
+ * @return Handle of the new runtime, or TI_INVALID_HANDLE if out of memory or no free slot.
  */
-void ti_execute(ti_runtime_t *rt, ti_program_t *prog);
+ti_handle_t ti_create(void);
+
+/**
+ * @brief Destroy a runtime, discard its pending events and invalidate its handle.
+ * Every later call with this handle (from any driver or task) fails with TI_ERR_STALE_HANDLE.
+ * Must not be called while ti_execute() is running on the same handle: call ti_stop() and
+ * wait for ti_execute() to return first.
+ * @param handle Runtime handle.
+ * @return TI_OK, or TI_ERR_STALE_HANDLE if the handle is stale or invalid.
+ */
+ti_status_t ti_destroy(ti_handle_t handle);
+
+/**
+ * @brief Execute a compiled program on the specified runtime.
+ * @param handle Runtime handle.
+ * @param prog Pointer to compiled program.
+ * @return TI_OK on completion, TI_ERR_INTERRUPTED if stopped, TI_ERR_STALE_HANDLE or TI_ERR_INVALID_ARG.
+ */
+ti_status_t ti_execute(ti_handle_t handle, ti_program_t *prog);
 
 /**
  * @brief High-level helper to compile and execute a Ti script in one step.
@@ -85,10 +102,35 @@ void ti_run_string(const char *source_code);
 
 /**
  * @brief Request execution cancellation to immediately halt running script.
- * Can be called from another task/thread to stop loops cleanly.
- * @param rt Pointer to runtime instance.
+ * Safe to call from any task/thread (and from ISR on ESP32).
+ * @param handle Runtime handle.
+ * @return TI_OK, or TI_ERR_STALE_HANDLE if the handle is stale or invalid.
  */
-void ti_stop(ti_runtime_t *rt);
+ti_status_t ti_stop(ti_handle_t handle);
+
+/* -------------------- Event Bridge API -------------------- */
+
+/**
+ * @brief Queue an event that invokes a TI callback function at the next safe point.
+ * Ownership of every value in args is always transferred, whether or not the call succeeds.
+ * Safe to call from any task/thread, but not from ISR (allocates memory).
+ * @param handle Target runtime handle (typically stored by a native registration function).
+ * @param func_name Name of the TI callback function (copied).
+ * @param args Array of argument values (array is copied, values are owned by the call).
+ * @param arg_count Number of arguments.
+ * @return TI_OK, TI_ERR_STALE_HANDLE (runtime gone: drop the listener), TI_ERR_QUEUE_FULL,
+ *         TI_ERR_NO_MEMORY or TI_ERR_INVALID_ARG.
+ */
+ti_status_t ti_post_event(ti_handle_t handle, const char *func_name, value_t **args, int arg_count);
+
+/**
+ * @brief Execute the pending events of a runtime immediately.
+ * Intended for long-running native functions (e.g. a sliced delay) so callbacks are not blocked.
+ * Must only be called from a native function executing on this runtime.
+ * @param handle Runtime handle passed to the native function.
+ * @return TI_OK, TI_ERR_INTERRUPTED if the runtime has been stopped, or TI_ERR_STALE_HANDLE.
+ */
+ti_status_t ti_dispatch_events(ti_handle_t handle);
 
 #ifdef __cplusplus
 }

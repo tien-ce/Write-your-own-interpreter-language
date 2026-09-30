@@ -132,11 +132,32 @@ ti_program_t *ti_compile(const char *source_code)
     return prog;
 }
 
+/* Create a new runtime instance */
+ti_handle_t ti_create(void)
+{
+    ti_runtime_t *rt = ti_runtime_create();
+    return rt ? rt->handle : TI_INVALID_HANDLE;
+}
+
+/* Destroy a runtime, discard its pending events and invalidate its handle */
+ti_status_t ti_destroy(ti_handle_t handle)
+{
+    /* A stale handle (e.g. double destroy) is rejected instead of double-freeing */
+    ti_runtime_t *rt = ti_runtime_resolve(handle);
+    if (rt == NULL) {
+        return TI_ERR_STALE_HANDLE;
+    }
+
+    ti_runtime_destroy(rt);
+    return TI_OK;
+}
+
 /**
  * @brief Phase 2 (Run-Time): Execute a compiled AST program on a runtime instance.
  *
  * Execution Logic:
- * - Validates preconditions: Ensures both runtime instance and compiled program AST exist.
+ * - Validates preconditions: Ensures the compiled program AST exists and the handle
+ *    resolves to a live runtime instance.
  * - Dispatches recursive tree evaluation from the root node (`prog->root_ast`) using
  *    the runtime's root variable scope (`rt->global_context`).
  * - Evaluates statement blocks, assignments, loops, and function invocations. All dynamic
@@ -150,14 +171,27 @@ ti_program_t *ti_compile(const char *source_code)
  *    - `FLOW_RETURN`: If top-level script returned a value, normalizes flow_state back to
  *      `FLOW_NORMAL` so subsequent executions on this runtime remain clean.
  */
-void ti_execute(ti_runtime_t *rt, ti_program_t *prog)
+ti_status_t ti_execute(ti_handle_t handle, ti_program_t *prog)
 {
-    if (!rt || !prog || !prog->root_ast) {
-        return;
+    if (!prog || !prog->root_ast) {
+        return TI_ERR_INVALID_ARG;
+    }
+
+    /* The host owns the runtime lifecycle, so it cannot be destroyed while executing */
+    ti_runtime_t *rt = ti_runtime_resolve(handle);
+    if (rt == NULL) {
+        return TI_ERR_STALE_HANDLE;
     }
 
     /* Walk and evaluate the AST graph from root */
     visitor_visit(rt, rt->global_context, prog->root_ast);
+
+    /* Single place that turns a raised runtime error into a fatal (host decides how to stop) */
+    if (rt->status == TI_RT_ERROR) {
+        ti_runtime_report_error(rt);
+        ti_fatal();
+        return rt->error.kind;
+    }
 
     /* Validate control flow invariants at script completion */
     if (rt->global_context->flow_state == FLOW_BREAK) {
@@ -170,6 +204,8 @@ void ti_execute(ti_runtime_t *rt, ti_program_t *prog)
         /* Consume return signal at top-level script boundary */
         rt->global_context->flow_state = FLOW_NORMAL;
     }
+
+    return ti_runtime_is_interrupted(rt) ? TI_ERR_INTERRUPTED : TI_OK;
 }
 
 /**
@@ -177,11 +213,11 @@ void ti_execute(ti_runtime_t *rt, ti_program_t *prog)
  *
  * Execution Logic:
  * - Compiles source text via `ti_compile()` into an immutable `ti_program_t`.
- * - Creates a dedicated, isolated execution runtime via `ti_runtime_create()`.
+ * - Creates a dedicated, isolated execution runtime via `ti_create()`.
  * - Executes the compiled program on the runtime instance via `ti_execute()`.
  * - Performs deterministic cleanup:
- *    - Destroys the runtime instance (`ti_runtime_destroy`), reclaiming all runtime
- *      variables, local context scopes, and dynamic value allocations.
+ *    - Destroys the runtime instance (`ti_destroy`), invalidating its handle and reclaiming
+ *      all runtime variables, local context scopes, pending events and dynamic value allocations.
  *    - Frees the compiled program (`ti_program_free`), reclaiming all AST nodes and tokens.
  * - Guarantees zero residual heap allocations on script completion.
  */
@@ -198,17 +234,17 @@ void ti_run_string(const char *source_code)
     }
 
     /* Phase 2: Create execution runtime */
-    ti_runtime_t *rt = ti_runtime_create();
-    if (!rt) {
+    ti_handle_t handle = ti_create();
+    if (handle == TI_INVALID_HANDLE) {
         ti_program_free(prog);
         return;
     }
 
     /* Execute script */
-    ti_execute(rt, prog);
+    ti_execute(handle, prog);
 
     /* Phase 3: Deterministic teardown of both execution environments */
-    ti_runtime_destroy(rt);
+    ti_destroy(handle);
     ti_program_free(prog);
 }
 
@@ -217,7 +253,33 @@ void ti_run_string(const char *source_code)
  * Sets the volatile `is_interrupted` flag on the runtime instance, causing the
  * visitor master dispatcher to abort execution on the next statement.
  */
-void ti_stop(ti_runtime_t *rt)
+ti_status_t ti_stop(ti_handle_t handle)
 {
-    ti_runtime_stop(rt);
+    return ti_runtime_stop(handle);
+}
+
+/* -------------------- Event Bridge Functions -------------------- */
+
+/* Queue an event that invokes a TI callback function at the next safe point */
+ti_status_t ti_post_event(ti_handle_t handle, const char *func_name, value_t **args, int arg_count)
+{
+    return ti_runtime_post_event(handle, func_name, args, arg_count);
+}
+
+/* Execute the pending events of a runtime immediately */
+ti_status_t ti_dispatch_events(ti_handle_t handle)
+{
+    /* Caller is a native running on this runtime, so it stays alive for this call */
+    ti_runtime_t *rt = ti_runtime_resolve(handle);
+    if (rt == NULL) {
+        return TI_ERR_STALE_HANDLE;
+    }
+
+    ti_runtime_dispatch_pending_events(rt);
+
+    /* A callback that raised an error stops the calling native (e.g. delay) so it can unwind */
+    if (rt->status == TI_RT_ERROR) {
+        return rt->error.kind;
+    }
+    return ti_runtime_is_interrupted(rt) ? TI_ERR_INTERRUPTED : TI_OK;
 }
