@@ -44,6 +44,7 @@ const char *token_to_str(int token_type)
     case TOKEN_KW_STRING:   return "'string'";
     case TOKEN_KW_BOOL:     return "'bool'";
     case TOKEN_KW_DICT:     return "'dict'";
+    case TOKEN_KW_LIST:     return "'list'";
     case TOKEN_KW_IF:       return "'if'";
     case TOKEN_KW_ELSE:     return "'else'";
     case TOKEN_KW_WHILE:    return "'while'";

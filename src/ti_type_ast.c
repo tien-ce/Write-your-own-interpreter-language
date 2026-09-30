@@ -93,6 +93,14 @@ void ast_free(ast_t *ast)
         ast_free(ast->value.unary_expr.operand);
         break;
 
+    case AST_LIST_LITERAL:
+        /* Free every element expression and the element pointer array */
+        for (int i = 0; i < ast->value.list_literal.element_count; i++) {
+            ast_free(ast->value.list_literal.elements[i]);
+        }
+        tracked_free(NULL, ast->value.list_literal.elements);
+        break;
+
     case AST_ASSIGNMENT:
         /* Free assignment target and assigned value expression */
         ast_free(ast->value.assignment.target);

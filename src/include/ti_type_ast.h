@@ -15,6 +15,7 @@ typedef struct AST_STRUCT {
     AST_STRING_LITERAL,       // "hello"
     AST_BOOLEAN,              // bool 
     AST_DICT_LITERAL,         // { "key": 1 }
+    AST_LIST_LITERAL,         // [1, 2, 3]
     AST_IDENTIFIER,           // x, my_var (variable/function reference)
 
     /* EXPRESSIONS */
@@ -94,11 +95,19 @@ typedef struct AST_STRUCT {
       int pair_count;               // Number of key-value pairs
     } dict_literal;
 
+    /* List Literal */
+    struct {
+      struct AST_STRUCT **elements; // Array of element expression AST nodes
+      int element_count;            // Number of elements
+      val_type_t element_type;      // Declared element type from the definition (VAL_NULL = infer at runtime)
+    } list_literal;
+
     /* Variable definition statement */
     struct {
       val_type_t variable_type;
+      val_type_t element_type;      // Element type when variable_type is VAL_LIST (VAL_NULL otherwise)
       char *variable_name;
-      struct AST_STRUCT *value;
+      struct AST_STRUCT *value;     // Value (right hand side) of definition statement
     } variable_definition;
 
     /* Function call */

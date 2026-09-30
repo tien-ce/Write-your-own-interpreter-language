@@ -1,5 +1,6 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -Isrc
+CFLAGS += -I./lib/chashmap/include #chashmap
 MEMCHECK_FLAGS = -fsanitize=address -g
 DEBUG_FLAGS = -g -O0 
 LDFLAGS = -lcjson -pthread
@@ -7,7 +8,7 @@ LOG_FILE = memory_check.txt
 TEST_FILE = while_loop.ti 
 
 HEADERS = $(wildcard src/include/*.h)
-SOURCES = $(wildcard src/*.c cli/*.c)
+SOURCES = $(wildcard src/*.c cli/*.c lib/chashmap/src/*.c)
 OBJECTS = $(SOURCES:.c=.o)
 
 EXEC = ti.out

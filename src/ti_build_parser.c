@@ -20,6 +20,8 @@ static ast_t *parser_parse_definition(parser_t *parser);
 static ast_t *parser_parse_param(parser_t *parser);
 static ast_t *parser_parse_function_definition(parser_t *parser);
 static ast_t *parser_parse_variable_definition(parser_t *parser);
+static val_type_t parser_parse_list_element_type(parser_t *parser);
+static ast_t *parser_parse_list_literal(parser_t *parser);
 static ast_t *parser_parse_assignment(parser_t *parser, ast_t *target);
 static ast_t *parser_parse_function_call(parser_t *parser, char *func_name);
 static ast_t *parser_parse_while_statement(parser_t *parser);
@@ -197,6 +199,11 @@ static ast_t *parser_parse_function_definition(parser_t *parser)
  */
 static ast_t *parser_parse_definition(parser_t *parser)
 {
+    /* 'list <elem_type>' is a two-token type; only variable definitions accept it for now */
+    if (parser->current_token->type == TOKEN_KW_LIST) {
+        return parser_parse_variable_definition(parser);
+    }
+
     /* Peek ahead to distinguish between function declaration ('(') and variable declaration ('=') */
     token_t *next_token = parser_peek(parser);
     int next_type = (int)next_token->type;
@@ -264,6 +271,7 @@ static ast_t *parser_parse_statement(parser_t *parser)
     case TOKEN_KW_BOOL:
     case TOKEN_KW_VOID:
     case TOKEN_KW_DICT:
+    case TOKEN_KW_LIST:
         return parser_parse_definition(parser);
     case TOKEN_ID: {
         /* Parse expression starting with identifier; distinguish assignment from call */
@@ -618,6 +626,9 @@ static ast_t *parser_parse_primary(parser_t *parser)
         dict_node->value.dict_literal.pair_count = pair_count;
         return dict_node;
     }
+    case TOKEN_LBRACKET:
+        /* List literal: [expr, expr, ...] */
+        return parser_parse_list_literal(parser);
     case TOKEN_LPAREN: {
         /* Parenthesized grouped subexpression (expr) */
         parser_eat(parser, TOKEN_LPAREN);
@@ -637,14 +648,96 @@ static ast_t *parser_parse_primary(parser_t *parser)
 }
 
 /**
+ * @brief Parse the element type keyword that follows 'list' in a type specifier.
+ * @param parser Pointer to parser.
+ * @return Element value type (VAL_INT, VAL_FLOAT, VAL_STRING or VAL_BOOL).
+ */
+/* list <elem_type> */
+static val_type_t parser_parse_list_element_type(parser_t *parser)
+{
+    val_type_t element_type = VAL_NULL;
+    switch (parser->current_token->type) {
+    case TOKEN_KW_INT:    element_type = VAL_INT;    break;
+    case TOKEN_KW_FLOAT:  element_type = VAL_FLOAT;  break;
+    case TOKEN_KW_STRING: element_type = VAL_STRING; break;
+    case TOKEN_KW_BOOL:   element_type = VAL_BOOL;   break;
+    default:
+        /* Containers are rejected as elements: refcounting cannot reclaim reference cycles */
+        ti_log("[Parser Error] List element type must be int, float, string or bool, but got %s at line %d\n",
+               token_to_str(parser->current_token->type), parser->lexer->line_num);
+        ti_log_line(parser->lexer->line);
+        ti_fatal();
+        return VAL_NULL;
+    }
+    parser_eat(parser, parser->current_token->type); // Eat <elem_type>
+    return element_type;
+}
+
+/**
+ * @brief Parse a list literal: [expr, expr, ...] (empty list and trailing comma allowed).
+ * @param parser Pointer to parser.
+ * @return AST list literal node.
+ */
+/* [<expr>, <expr>, ...] */
+static ast_t *parser_parse_list_literal(parser_t *parser)
+{
+    /* Record the opening line so runtime errors point at the start of the literal */
+    int line = parser->lexer->line_num;
+    parser_eat(parser, TOKEN_LBRACKET); // Eat '['
+
+    ast_t **elements = NULL;
+    int element_count = 0;
+
+    /* Parse comma-separated element expressions until the closing bracket */
+    while (parser->current_token->type != TOKEN_RBRACKET) {
+        /* Nested list literals are rejected: elements must be scalar or string */
+        if (parser->current_token->type == TOKEN_LBRACKET) {
+            ti_log("[Parser Error] Nested list literals are not supported at line %d\n", parser->lexer->line_num);
+            ti_log_line(parser->lexer->line);
+            ti_fatal();
+        }
+
+        /* Reject literals that could never fit in a list at runtime */
+        if (element_count >= TI_MAX_LIST_ITEMS) {
+            ti_log("[Parser Error] List literal exceeds %d elements at line %d\n", TI_MAX_LIST_ITEMS, parser->lexer->line_num);
+            ti_log_line(parser->lexer->line);
+            ti_fatal();
+        }
+
+        /* Elements are arbitrary expressions, evaluated and type-checked at runtime */
+        ast_t *element_node = parser_parse_expr(parser);
+        elements = tracked_realloc(parser->alloc_list, elements, (element_count + 1) * sizeof(ast_t *));
+        elements[element_count] = element_node;
+        element_count++;
+
+        /* Handle comma separator (optional before the closing bracket) */
+        if (parser->current_token->type == TOKEN_COMMA) {
+            parser_eat(parser, TOKEN_COMMA);
+        } else if (parser->current_token->type != TOKEN_RBRACKET) {
+            ti_log("[Parser Error] Expected ',' or ']' in list literal at line %d\n", parser->lexer->line_num);
+            ti_log_line(parser->lexer->line);
+            ti_fatal();
+        }
+    }
+    parser_eat(parser, TOKEN_RBRACKET); // Eat ']'
+
+    /* Construct AST list literal node */
+    ast_t *list_node = ast_init(parser->alloc_list, AST_LIST_LITERAL, line);
+    list_node->value.list_literal.elements = elements;
+    list_node->value.list_literal.element_count = element_count;
+    return list_node;
+}
+
+/**
  * @brief Parse a variable definition statement: type var_name = expr;.
  * @param parser Pointer to parser.
  * @return AST variable definition node.
  */
-/* <type> <variable_name> = <expr>; */
+/* <type> <variable_name> = <expr>;  |  list <elem_type> <variable_name> = <expr>; */
 static ast_t *parser_parse_variable_definition(parser_t *parser)
 {
     val_type_t variable_type;
+    val_type_t element_type = VAL_NULL;
     switch (parser->current_token->type) {
     case TOKEN_KW_INT:    variable_type = VAL_INT;    break;
     case TOKEN_KW_FLOAT:  variable_type = VAL_FLOAT;  break;
@@ -652,6 +745,7 @@ static ast_t *parser_parse_variable_definition(parser_t *parser)
     case TOKEN_KW_BOOL:   variable_type = VAL_BOOL;   break;
     case TOKEN_KW_VOID:   variable_type = VAL_VOID;   break;
     case TOKEN_KW_DICT:   variable_type = VAL_DICT;   break;
+    case TOKEN_KW_LIST:   variable_type = VAL_LIST;   break;
     default:
         ti_log("[Parser Error] Unexpected type %s in variable definition, at line %d\n",
                token_to_str(parser->current_token->type), parser->lexer->line_num);
@@ -662,6 +756,11 @@ static ast_t *parser_parse_variable_definition(parser_t *parser)
     /* Consume variable type keyword */
     parser_eat(parser, parser->current_token->type); // Eat <variable_type>
 
+    /* 'list' carries its element type as a second keyword */
+    if (variable_type == VAL_LIST) {
+        element_type = parser_parse_list_element_type(parser);
+    }
+
     /* Transfer ownership of variable name identifier to AST */
     char *variable_name = parser->current_token->value;
     parser->current_token->value = NULL; // Give the owner to AST
@@ -671,9 +770,15 @@ static ast_t *parser_parse_variable_definition(parser_t *parser)
     parser_eat(parser, TOKEN_EQUALS); // Eat '='
     ast_t *value = parser_parse_expr(parser);
 
+    /* A list literal takes its element type from the declaration (needed for empty lists) */
+    if (variable_type == VAL_LIST && value->type == AST_LIST_LITERAL) {
+        value->value.list_literal.element_type = element_type;
+    }
+
     /* Construct AST variable definition node */
     ast_t *var_def_node = ast_init(parser->alloc_list, AST_VARIABLE_DEFINITION, parser->lexer->line_num);
     var_def_node->value.variable_definition.variable_type = variable_type;
+    var_def_node->value.variable_definition.element_type = element_type;
     var_def_node->value.variable_definition.variable_name = variable_name;
     var_def_node->value.variable_definition.value = value;
     parser_eat(parser, TOKEN_SEMI); // Eat ';'

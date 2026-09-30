@@ -25,6 +25,8 @@ struct DICT_STRUCT {
     int refcount;                /* Counter tracking active references to manage memory deallocation */
 };
 
+typedef struct LIST_STRUCT list_t;
+
 typedef struct VALUE_STRUCT {
     val_type_t type;
     union {
@@ -33,8 +35,21 @@ typedef struct VALUE_STRUCT {
         char *string_val;
         bool bool_val;
         dict_t *dict_val;
+        list_t *list_val;
     };
 } value_t;
+
+/**
+ * @brief Reference-counted, homogeneous, dynamically growing list.
+ * Elements are stored inline (contiguous value_t array) to avoid one heap block per element.
+ */
+struct LIST_STRUCT {
+    value_t   *items;     /* Contiguous element storage, each item owns its payload (NULL while empty) */
+    int        count;     /* Number of elements in use */
+    int        capacity;  /* Number of allocated element slots */
+    val_type_t elem_type; /* Element type shared by every item (int, float, string or bool) */
+    int        refcount;  /* Counter tracking active references to manage memory deallocation */
+};
 
 /* -------------------- Value Constructors & Destructors -------------------- */
 
@@ -80,6 +95,14 @@ value_t *val_new_string(const char *s);
 value_t *val_new_bool(bool b);
 
 value_t *val_new_dict(void);
+
+/**
+ * @brief Create an empty list value_t with the given element type.
+ * @param elem_type Element type (VAL_INT, VAL_FLOAT, VAL_STRING or VAL_BOOL).
+ * @return Newly allocated VAL_LIST value_t, or NULL on invalid type or out of memory.
+ */
+value_t *val_new_list(val_type_t elem_type);
+
 /**
  * @brief Create a void value_t (used for void function returns).
  * @return Newly allocated VAL_VOID value_t.

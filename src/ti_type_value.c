@@ -1,6 +1,7 @@
 #include "include/ti_type_value.h"
 #include "include/ti_type.h"
 #include "include/ti_type_value_dict.h"
+#include "include/ti_type_value_list.h"
 #include "include/tracked_memory.h"
 #include "include/debug.h"
 #include "TienInterpreter.h"
@@ -99,6 +100,11 @@ void val_free_internal(value_t *value)
         dict_release(value->dict_val);
         value->dict_val = NULL;
     }
+    /* Release list reference and free its items if refcount reaches 0 */
+    else if (value->type == VAL_LIST && value->list_val != NULL) {
+        list_release(value->list_val);
+        value->list_val = NULL;
+    }
 }
 
 /* Free an entire value_t structure along with its dynamic payload */
@@ -118,7 +124,24 @@ value_t *val_new_dict(void)
 {
     /* Create new value struct */
     value_t *val = val_init(VAL_DICT);
-    val->dict_val = dict_create(); 
+    val->dict_val = dict_create();
+    return val;
+}
+
+/* Create an empty list value_t with the given element type */
+value_t *val_new_list(val_type_t elem_type)
+{
+    value_t *val = val_init(VAL_LIST);
+    if (val == NULL) {
+        return NULL;
+    }
+
+    /* Invalid element type or out of memory: discard the half-built value */
+    val->list_val = list_create(elem_type);
+    if (val->list_val == NULL) {
+        ti_raw_free(val);
+        return NULL;
+    }
     return val;
 }
 /**
@@ -159,6 +182,12 @@ value_t *val_copy(const value_t *val)
         /* Create new value point to the same dict of current dict */
         copy->dict_val = val->dict_val;
         dict_retain(copy->dict_val); // Increase the reference to dict value
+        break;
+    case VAL_LIST:
+        /* Share the same list object (reference semantics, like dict) */
+        copy->list_val = val->list_val;
+        list_retain(copy->list_val);
+        break;
     case VAL_VOID:
     case VAL_NULL:
         /* No internal payload allocation needed for empty types */
