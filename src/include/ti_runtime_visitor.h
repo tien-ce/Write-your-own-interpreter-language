@@ -23,7 +23,7 @@ extern "C" {
  * @param rt Pointer to active runtime instance.
  * @param ctx Pointer to active execution context scope.
  * @param node Pointer to AST node to evaluate.
- * @return Pointer to evaluated result value_t (or NULL).
+ * @return Result value_t for expressions, TI_VAL_OK for successful statements, NULL on failure.
  */
 value_t *visitor_visit(ti_runtime_t *rt, context_t *ctx, ast_t *node);
 
@@ -54,7 +54,7 @@ value_t *eval_unary_expr(ti_runtime_t *rt, context_t *ctx, ast_t *node);
  * @param rt Pointer to active runtime instance.
  * @param ctx Pointer to active execution context scope.
  * @param node Pointer to if statement AST node.
- * @return Always NULL.
+ * @return TI_VAL_OK on success, NULL on failure.
  */
 value_t *eval_if_statement(ti_runtime_t *rt, context_t *ctx, ast_t *node);
 
@@ -63,7 +63,7 @@ value_t *eval_if_statement(ti_runtime_t *rt, context_t *ctx, ast_t *node);
  * @param rt Pointer to active runtime instance.
  * @param ctx Pointer to active execution context scope.
  * @param node Pointer to while statement AST node.
- * @return Always NULL.
+ * @return TI_VAL_OK on success, NULL on failure.
  */
 value_t *eval_while_statement(ti_runtime_t *rt, context_t *ctx, ast_t *node);
 
@@ -72,7 +72,7 @@ value_t *eval_while_statement(ti_runtime_t *rt, context_t *ctx, ast_t *node);
  * @param rt Pointer to active runtime instance.
  * @param ctx Pointer to active execution context scope.
  * @param node Pointer to for statement AST node.
- * @return Always NULL.
+ * @return TI_VAL_OK on success, NULL on failure.
  */
 value_t *eval_for_statement(ti_runtime_t *rt, context_t *ctx, ast_t *node);
 
@@ -81,7 +81,7 @@ value_t *eval_for_statement(ti_runtime_t *rt, context_t *ctx, ast_t *node);
  * @param rt Pointer to active runtime instance.
  * @param ctx Pointer to active execution context scope.
  * @param node Pointer to compound AST node.
- * @return Always NULL.
+ * @return TI_VAL_OK on success, NULL on failure.
  */
 value_t *eval_compound_statement(ti_runtime_t *rt, context_t *ctx, ast_t *node);
 
@@ -90,7 +90,7 @@ value_t *eval_compound_statement(ti_runtime_t *rt, context_t *ctx, ast_t *node);
  * @param rt Pointer to active runtime instance.
  * @param ctx Pointer to active execution context scope.
  * @param node Pointer to return statement AST node.
- * @return Always NULL.
+ * @return TI_VAL_OK on success, NULL on failure.
  */
 value_t *eval_return_statement(ti_runtime_t *rt, context_t *ctx, ast_t *node);
 
@@ -98,7 +98,7 @@ value_t *eval_return_statement(ti_runtime_t *rt, context_t *ctx, ast_t *node);
  * @brief Evaluate a break statement node and set FLOW_BREAK in context.
  * @param ctx Pointer to active execution context scope.
  * @param node Pointer to break statement AST node.
- * @return Always NULL.
+ * @return TI_VAL_OK on success, NULL on failure.
  */
 value_t *eval_break_statement(context_t *ctx, ast_t *node);
 
@@ -106,7 +106,7 @@ value_t *eval_break_statement(context_t *ctx, ast_t *node);
  * @brief Evaluate a continue statement node and set FLOW_CONTINUE in context.
  * @param ctx Pointer to active execution context scope.
  * @param node Pointer to continue statement AST node.
- * @return Always NULL.
+ * @return TI_VAL_OK on success, NULL on failure.
  */
 value_t *eval_continue_statement(context_t *ctx, ast_t *node);
 
@@ -117,7 +117,7 @@ value_t *eval_continue_statement(context_t *ctx, ast_t *node);
  * @param rt Pointer to active runtime instance.
  * @param ctx Pointer to active execution context scope.
  * @param node Variable definition AST node.
- * @return Always NULL.
+ * @return TI_VAL_OK on success, NULL on failure.
  */
 value_t *eval_variable_definition(ti_runtime_t *rt, context_t *ctx, ast_t *node);
 
@@ -126,17 +126,18 @@ value_t *eval_variable_definition(ti_runtime_t *rt, context_t *ctx, ast_t *node)
  * @param rt Pointer to active runtime instance.
  * @param ctx Pointer to active execution context scope.
  * @param node Assignment AST node.
- * @return Always NULL.
+ * @return TI_VAL_OK on success, NULL on failure.
  */
 value_t *eval_assignment(ti_runtime_t *rt, context_t *ctx, ast_t *node);
 
 /**
  * @brief Look up and evaluate an identifier node.
+ * @param rt Pointer to active runtime instance.
  * @param ctx Pointer to active execution context scope.
  * @param node Identifier AST node.
- * @return Evaluated value_t pointer.
+ * @return Evaluated value_t pointer (deep copy), or NULL after raising a runtime error.
  */
-value_t *eval_identifier(context_t *ctx, ast_t *node);
+value_t *eval_identifier(ti_runtime_t *rt, context_t *ctx, ast_t *node);
 value_t *eval_array_access(ti_runtime_t *rt, context_t *ctx, ast_t *node);
 
 /* -------------------- Literal Evaluators -------------------- */
@@ -173,7 +174,17 @@ value_t *eval_float_literal(context_t *ctx, ast_t *node);
  */
 value_t *eval_boolean_literal(context_t *ctx, ast_t *node);
 
-value_t *eval_dict_literal(context_t *ctx, ast_t *node);
+value_t *eval_dict_literal(ti_runtime_t *rt, context_t *ctx, ast_t *node);
+
+/**
+ * @brief Evaluate a list literal node into a new list value_t.
+ * Uses the declared element type when present, otherwise infers it from the first element.
+ * @param rt Pointer to active runtime instance.
+ * @param ctx Pointer to active execution context scope.
+ * @param node List literal AST node.
+ * @return Newly allocated VAL_LIST value_t, or NULL on interruption or error.
+ */
+value_t *eval_list_literal(ti_runtime_t *rt, context_t *ctx, ast_t *node);
 /* -------------------- Function Call & Definition Evaluators -------------------- */
 
 /**
@@ -190,7 +201,7 @@ value_t *eval_function_call(ti_runtime_t *rt, context_t *ctx, ast_t *node);
  * @param rt Pointer to active runtime instance.
  * @param ctx Pointer to active execution context scope.
  * @param node Function definition AST node.
- * @return Always NULL.
+ * @return TI_VAL_OK on success, NULL on failure.
  */
 value_t *eval_function_definition(ti_runtime_t *rt, context_t *ctx, ast_t *node);
 

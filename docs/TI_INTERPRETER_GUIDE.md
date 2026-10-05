@@ -1,158 +1,148 @@
-# TI Interpreter Guide
+# TI Interpreter Quick Reference Guide
 
-Welcome to the comprehensive guide for the TI Interpreter. This manual covers the core mechanics, strict static typing system, C-style syntax constructs, and developer APIs to extend the interpreter with custom C functions.
+A concise guide to the syntax, supported data types, control flow, functions, and native C extension APIs of the TI Interpreter.
 
-## 1. Supported Data Types & Strict Typing
+---
 
-The TI Interpreter enforces **strict static typing** identical to C. A variable's type is explicitly defined upon declaration and cannot change dynamically.
+## 1. Supported Data Types
 
-*   **Integer (`int`)**: Whole numbers without a fractional component. Example: `int a = 5;`
-*   **Float (`float`)**: Numbers with a fractional component. Example: `float b = 3.14;`
-*   **String (`string`)**: A sequence of characters enclosed in double quotes. Example: `string name = "Alice";`
-*   **Dictionary (`dict`)**: Key-value mappings for structured data. Example: `dict map = ...;`
-*   **Boolean (`bool`)**: Logical values (`true` or `false`). Example: `bool is_valid = true;`
-*   **Void (`void`)**: Represents the absence of a value, typically used for function return types.
+The TI Interpreter enforces **static typing**. Variables must be explicitly typed upon declaration:
 
-## 2. Functions
-
-Functions in the TI Interpreter use absolute C syntax. You must explicitly declare the return type and the types of all parameters.
-
-### Declaring a Function
-
+### 1.1 Primitive Types
 ```c
-void greet(string name) {
-    print("Hello, " + name);
-}
+int a = 10;
+float b = 3.14;
+string name = "ESP32";
+bool is_active = true;
+```
 
-int add(int a, int b) {
-    return a + b;
+### 1.2 Collections (List & Dict)
+* **Homogeneous Lists (`list <type>`)**:
+  ```c
+  list int numbers = [1, 2, 3, 4];
+  numbers.push(5);
+  int first = numbers[0];
+  int count = numbers.len();
+  ```
+* **Dictionaries (`dict`)**:
+  ```c
+  dict config = {"host": "localhost", "port": 8080};
+  string host = config["host"];
+  config["timeout"] = 5000;
+  ```
+
+---
+
+## 2. Control Flow
+
+### 2.1 Conditional Statements (`if` / `else`)
+```c
+if (a > 5) {
+    print("Greater than 5");
+} else {
+    print("5 or less");
 }
 ```
 
-### Calling a Function
-
-```c
-greet("Alice");
-int result = add(5, 10);
-```
-
-## 3. Loop Constructs
-
-The interpreter supports standard C control flow mechanisms to iterate over data or execute code repeatedly.
-
-### While Loop
-
-Executes a block of code as long as a specified condition evaluates to true.
-
+### 2.2 While Loops (`while`)
+Executes repeatedly as long as the condition evaluates to `true`. Supports `break` and `continue`:
 ```c
 int i = 0;
 while (i < 5) {
-    print(i);
     i = i + 1;
-}
-```
-
-### For Loop
-
-Standard C-style for loop iteration.
-
-```c
-for (int i = 0; i < 5; i = i + 1) {
+    if (i == 2) {
+        continue;
+    }
+    if (i == 4) {
+        break;
+    }
     print(i);
 }
 ```
 
-## 4. Developer Guide: Registering Built-in C Functions
+> **Note:** `for` loops are not yet implemented. Use `while` loops for all iterations.
 
-One of the most powerful features of the TI Interpreter is the ability to extend its runtime by registering custom built-in functions written in C.
+---
 
-### Memory Lifecycle & Guidelines (Mandatory)
-*   Always use the interpreter's tracked memory allocators (`tracked_calloc`, `tracked_realloc`, `tracked_strdup`, `tracked_free`) for dynamic heap allocations to ensure memory safety.
-*   Do NOT use numbered steps in comments. Use descriptive words or thematic phrases.
+## 3. User-Defined Functions
 
-### Registering a Native Function
+Functions require explicit return types and typed parameter lists.
 
-The TI Interpreter provides a robust C API to declare parameters, enforce types, and handle variadic arguments for built-in functions. The core registration function is:
-
+### 3.1 Void Functions
 ```c
-bool register_builtin_function(const char *name, val_type_t return_type, param_t *params, int param_count, native_fn_t function);
+void log_status(string tag, int code) {
+    print(tag);
+    print(code);
+}
+
+log_status("STATUS_OK", 200);
 ```
 
-#### Example 1: Standard Function Registration
-To register a native function that requires strict parameter typing:
+### 3.2 Value-Returning Functions
+```c
+int calculate_sum(int a, int b) {
+    return a + b;
+}
 
+int total = calculate_sum(15, 25);
+```
+
+---
+
+## 4. Standard Built-in Functions
+
+The interpreter comes with several standard built-in functions:
+* `print(...)`: Prints arguments to standard output (variadic).
+* `delay(ms)`: Pauses execution for `ms` milliseconds (yields in 10ms slices to service pending events).
+* `register_event(func_name)`: Registers a script function as an asynchronous event callback.
+
+---
+
+## 5. Developer Guide: Registering Native C Functions
+
+Native C functions can be registered into the global runtime table to expose hardware drivers or system services to scripts.
+
+### 5.1 Native Callback Signature
+Every native C function must match the `native_fn_t` signature:
+```c
+typedef value_t *(*native_fn_t)(ti_handle_t handle, value_t **args, int argc);
+```
+
+### 5.2 Registration Function
+```c
+bool register_builtin_function(const char *name, 
+                               val_type_t return_type, 
+                               param_t *params, 
+                               int param_count, 
+                               native_fn_t function);
+```
+
+### 5.3 Example: Registering a Custom C Function
 ```c
 #include "src/TienInterpreter.h"
-#include "src/include/ti_type_func.h"
+#include "src/include/ti_type.h"
+#include "src/include/ti_type_value.h"
 
-/* 1. Define the native C callback (matches native_fn_t) */
-value_t *builtin_add(value_t **args, int argc) {
+/* 1. Define the native callback */
+static value_t *native_multiply(ti_handle_t handle, value_t **args, int argc)
+{
+    (void)handle;
+    (void)argc;
     int a = args[0]->int_val;
     int b = args[1]->int_val;
-    return val_new_int(a + b);
+    return val_new_int(a * b);
 }
 
-/* 2. Register globally */
-void init_builtins(void) {
-    /* Define parameter metadata (dynamically allocated via tracker) */
-    param_t *params = tracked_calloc(NULL, 2, sizeof(param_t));
-    params[0].name = tracked_strdup(NULL, "a");
-    params[0].type = VAL_INT;
-    params[1].name = tracked_strdup(NULL, "b");
-    params[1].type = VAL_INT;
+/* 2. Register with typed parameter metadata */
+void register_custom_builtins(void)
+{
+    static param_t multiply_params[] = {
+        { VAL_INT, "a" },
+        { VAL_INT, "b" }
+    };
 
-    /* Register into the global function table */
-    register_builtin_function("add", VAL_INT, params, 2, builtin_add);
+    register_builtin_function("multiply", VAL_VOID, multiply_params, 2, native_multiply);
 }
 ```
 
-#### Example 2: Variadic Functions
-If your built-in function accepts an arbitrary number of arguments (e.g., a custom `print` function), pass `-1` for `param_count` and `NULL` for the `params` array. But the interpreter can't check the type and number of param so if you variadic, the responsible is on you.
-
-```c
-/* Native handler for variadic arguments */
-value_t *builtin_custom_print(value_t **args, int argc) {
-    for (int i = 0; i < argc; i++) {
-        /* Check NULL pointer and print error before redefrent avoid the GURU meditation */
-        /* Process variadic args */
-        if (args[i]->type == VAL_STRING) {
-            printf("%s ", args[i]->string_val);
-        }
-    }
-    printf("\n");
-    return val_new_void();
-}
-
-void init_variadic_builtins(void) {
-    /* Set param_count to -1 for variadic validation bypass */
-    register_builtin_function("custom_print", VAL_VOID, NULL, -1, builtin_custom_print);
-}
-```
-
-#### Example 3: Native Function Returning a Dictionary
-To return a native `dict` object instead of a JSON string, use the `val_new_dict()` API and populate it using `val_dict_set()`. This employs zero-copy ownership transfer, meaning you do not need to call `val_free()` on the values you insert.
-
-```c
-/**
- * @brief Native C function returning a Dictionary
- * Usage in Ti script: dict info = get_system_info();
- */
-value_t *builtin_get_system_info(value_t **args, int argc) {
-    (void)args; (void)argc;
-
-    /* Allocate a new dictionary wrapper */
-    value_t *sys_dict = val_new_dict();
-
-    /* Populate the dictionary with key-value pairs (Ownership Transfer) */
-    val_dict_set(sys_dict->dict_val, "status", val_new_string("running"));
-    val_dict_set(sys_dict->dict_val, "uptime", val_new_int(3600));
-    val_dict_set(sys_dict->dict_val, "is_ready", val_new_bool(true));
-
-    return sys_dict;
-}
-
-void init_dict_builtins(void) {
-    /* Register with VAL_DICT return type */
-    register_builtin_function("get_system_info", VAL_DICT, NULL, 0, builtin_get_system_info);
-}
-```
+> **Further Reading:** Detailed architectural guides for memory tracking (`docs/tracked_memory.md`), parser mechanics (`docs/parser.md`), runtime contexts (`docs/context_value.md`), and error unwinding (`docs/ti_error.md`) are located in the `docs/` directory.

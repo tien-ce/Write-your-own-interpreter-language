@@ -28,27 +28,30 @@ void dict_release(dict_t *dict);
 
 /**
  * @brief Insert or update a key-value pair in a dictionary with strict type checking.
+ * Ownership of val is always transferred: on failure the value is freed.
  * @param dict Dictionary reference object.
  * @param key String identifier for the entry.
- * @param val Value to insert (ownership is transferred).
+ * @param val Value to insert.
+ * @return TI_OK, TI_ERR_TYPE_MISMATCH (key already holds another type) or TI_ERR_INVALID_ARG.
  */
-void val_dict_set(dict_t *dict, const char *key, value_t *val);
+ti_status_t val_dict_set(dict_t *dict, const char *key, value_t *val);
 
 /**
  * @brief Retrieve a deep copy of the value associated with the key.
  * @param dict Dictionary reference object.
  * @param key String identifier for the entry.
- * @return A newly allocated value_t* (copy), or NULL if key does not exist.
+ * @param out Receives the newly allocated copy (caller owns it) on success.
+ * @return TI_OK, TI_ERR_KEY_NOT_FOUND, TI_ERR_NO_MEMORY or TI_ERR_INVALID_ARG.
  */
-value_t *val_dict_get(dict_t *dict, const char *key);
+ti_status_t val_dict_get(dict_t *dict, const char *key, value_t **out);
 
 /**
  * @brief Remove a key-value pair from the dictionary.
  * @param dict Dictionary reference object.
  * @param key String identifier for the entry.
- * @return true if successful, false if key does not exist.
+ * @return TI_OK, TI_ERR_KEY_NOT_FOUND or TI_ERR_INVALID_ARG.
  */
-bool val_dict_remove(dict_t *dict, const char *key);
+ti_status_t val_dict_remove(dict_t *dict, const char *key);
 
 /**
  * @brief Check if a key exists in the dictionary.

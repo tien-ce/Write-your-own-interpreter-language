@@ -7,6 +7,9 @@
 #include "TienInterpreter.h"
 #include <string.h>
 
+/* Shared success sentinel (see TI_VAL_OK in ti_type_value.h): static storage, never freed */
+value_t g_val_ok = { .type = VAL_NULL };
+
 /* -------------------- Value Constructors & Destructors -------------------- */
 
 /* Allocate a new value_t of the specified type */
@@ -87,7 +90,7 @@ value_t *val_new_void(void)
 void val_free_internal(value_t *value)
 {
     /* Guard against null value pointer */
-    if (value == NULL) {
+    if (value == NULL || value == TI_VAL_OK) {
         return;
     }
     /* Release dynamically allocated string buffer if present */
@@ -111,7 +114,7 @@ void val_free_internal(value_t *value)
 void val_free(value_t *value)
 {
     /* Guard against null value pointer */
-    if (value == NULL) {
+    if (value == NULL || value == TI_VAL_OK) {
         return;
     }
     /* Release internal dynamic payload */
@@ -194,10 +197,9 @@ value_t *val_copy(const value_t *val)
         break;
 
     default:
-        /* Log error and terminate on unhandled type */
-        ti_log("[ERROR]: Unknown value type %s in val_copy\n", val_type_to_str(val->type));
-        ti_fatal();
-        break;
+        /* Unknown type tag is an interpreter invariant violation: pure helper, no rt, so signal with NULL */
+        val_free(copy);
+        return NULL;
     }
     return copy;
 }

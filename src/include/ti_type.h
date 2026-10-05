@@ -58,6 +58,9 @@ typedef enum {
     TI_ERR_INDEX_OUT_OF_RANGE,  // List index outside [0, count)
     TI_ERR_KEY_NOT_FOUND,       // Dictionary key does not exist
     TI_ERR_LIMIT_EXCEEDED,      // Configured capacity limit reached (e.g. TI_MAX_LIST_ITEMS)
+    TI_ERR_UNDEFINED,           // Variable or function name is not defined
+    TI_ERR_DIV_ZERO,            // Division or modulo by zero
+    TI_ERR_INTERNAL,            // Interpreter invariant violated (unknown operator/AST node)
     TI_ERR_RUNTIME,             // Generic script runtime error
 } ti_status_t;
 

@@ -39,6 +39,17 @@ typedef struct VALUE_STRUCT {
     };
 } value_t;
 
+/* -------------------- Success Sentinel -------------------- */
+
+/**
+ * @brief Shared, statically allocated "evaluated successfully, no payload" value.
+ * Statement evaluators return TI_VAL_OK on success so that NULL always means failure
+ * (error raised or cancelled) for every node. It is never heap-allocated: val_free() ignores
+ * it, and it must never be modified or copied.
+ */
+extern value_t g_val_ok;
+#define TI_VAL_OK (&g_val_ok)
+
 /**
  * @brief Reference-counted, homogeneous, dynamically growing list.
  * Elements are stored inline (contiguous value_t array) to avoid one heap block per element.
@@ -124,7 +135,7 @@ void val_free(value_t *value);
 /**
  * @brief Create an independent deep copy of a value_t structure.
  * @param val Source value pointer to clone.
- * @return Newly allocated value_t clone, or NULL if source is NULL.
+ * @return Newly allocated value_t clone, or NULL if source is NULL, has an unknown type, or allocation fails.
  */
 value_t *val_copy(const value_t *val);
 

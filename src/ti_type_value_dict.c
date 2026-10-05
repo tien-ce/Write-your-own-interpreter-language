@@ -1,12 +1,8 @@
 #include "chashmap.h" /* Reference to the external generic hashmap */
 #include "include/ti_type_value_dict.h"
 #include "include/tracked_memory.h"
-#include "include/debug.h"
 #include <stdlib.h>
 
-/* Declaration for runtime error handling (usually in debug.h or TienInterpreter.h) */
-extern void ti_log(const char *fmt, ...);
-extern void ti_fatal(void);
 
 /* Internal callback triggered by chashmap to safely free a dictionary payload. */
 static void dict_payload_free_cb(void *payload)
@@ -52,48 +48,57 @@ void dict_release(dict_t *dict)
     }
 }
 
-/* Function used for native C interaction to set a key-value pair with strict typing. */
-/* Note: Evaluator transfers ownership (Zero-copy), val MUST NOT be freed by caller after. */
-void val_dict_set(dict_t *dict, const char *key, value_t *val)
+/* Insert or update a key-value pair with strict typing; ownership of val is always taken */
+ti_status_t val_dict_set(dict_t *dict, const char *key, value_t *val)
 {
-    if (dict == NULL || key == NULL || val == NULL) {
-        return;
+    if (val == NULL) {
+        return TI_ERR_INVALID_ARG;
+    }
+    if (dict == NULL || key == NULL) {
+        val_free(val);
+        return TI_ERR_INVALID_ARG;
     }
 
-    value_t *cur_val = (value_t*)chashmap_get(dict->map, key);
-    if (cur_val != NULL && cur_val->type != val->type)
-    {
-        ti_log("[Runtime Error] Type mismatch in dict assignment. Expected type %s but got type %s.\n", val_type_to_str(cur_val->type), val_type_to_str(val->type));
-        ti_fatal();
+    /* Overwriting an existing key must keep its type */
+    value_t *cur_val = (value_t *)chashmap_get(dict->map, key);
+    if (cur_val != NULL && cur_val->type != val->type) {
+        val_free(val);
+        return TI_ERR_TYPE_MISMATCH;
     }
 
     /* Transfer ownership directly without val_copy, based on interpreter conventions */
     chashmap_set(dict->map, key, val);
+    return TI_OK;
 }
 
-/* Retrieve a deep copy of the value associated with the key. */
-value_t *val_dict_get(dict_t *dict, const char *key)
+/* Retrieve a deep copy of the value associated with the key */
+ti_status_t val_dict_get(dict_t *dict, const char *key, value_t **out)
 {
-    if (dict == NULL || key == NULL) {
-        return NULL;
+    if (dict == NULL || key == NULL || out == NULL) {
+        return TI_ERR_INVALID_ARG;
     }
-    
-    value_t *cur_val = (value_t*)chashmap_get(dict->map, key);
+
+    value_t *cur_val = (value_t *)chashmap_get(dict->map, key);
     if (cur_val == NULL) {
-        return NULL;
+        return TI_ERR_KEY_NOT_FOUND;
     }
-    
+
     /* Return a deep copy to strictly maintain Caller-Owns memory semantics */
-    return val_copy(cur_val);
+    value_t *copy = val_copy(cur_val);
+    if (copy == NULL) {
+        return TI_ERR_NO_MEMORY;
+    }
+    *out = copy;
+    return TI_OK;
 }
 
-/* Remove a key-value pair from the dictionary. */
-bool val_dict_remove(dict_t *dict, const char *key)
+/* Remove a key-value pair from the dictionary */
+ti_status_t val_dict_remove(dict_t *dict, const char *key)
 {
     if (dict == NULL || key == NULL) {
-        return false;
+        return TI_ERR_INVALID_ARG;
     }
-    return chashmap_remove(dict->map, key);
+    return chashmap_remove(dict->map, key) ? TI_OK : TI_ERR_KEY_NOT_FOUND;
 }
 
 /* Check if a key exists in the dictionary. */

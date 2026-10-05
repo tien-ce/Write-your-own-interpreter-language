@@ -188,6 +188,22 @@ void ti_task_free(ti_task_t *task);
  */
 void ti_runtime_dispatch_pending_events(ti_runtime_t *rt);
 
+/**
+ * @brief Safe point: run queued native events, then report whether evaluation must unwind.
+ * Called only at statement boundaries, loop iterations and function entry/exit (not per node),
+ * where cancellation and callback errors are noticed.
+ * @param rt Pointer to runtime instance.
+ * @return true if the caller must stop evaluating and return NULL.
+ */
+static inline bool ti_runtime_safe_point(ti_runtime_t *rt)
+{
+    /* Relaxed unlocked read is only a hint; the dispatcher pops tasks under the lock */
+    if (rt != NULL && !rt->in_dispatch && __atomic_load_n(&rt->task_head, __ATOMIC_RELAXED) != NULL) {
+        ti_runtime_dispatch_pending_events(rt);
+    }
+    return ti_should_unwind(rt);
+}
+
 #ifdef __cplusplus
 }
 #endif

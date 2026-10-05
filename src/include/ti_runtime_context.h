@@ -90,7 +90,7 @@ variable_t *context_find_variable(context_t *ctx, const char *variable_name);
  * @brief Create a deep copy of a variable's value_t.
  * @param list Pointer to head of allocation list (or NULL).
  * @param variable Source variable pointer.
- * @return Newly allocated copied value_t.
+ * @return Newly allocated copied value_t, or NULL if the variable or its value is NULL (or out of memory).
  */
 value_t *context_copy_value(alloc_hdr_t **list, variable_t *variable);
 
@@ -100,8 +100,10 @@ value_t *context_copy_value(alloc_hdr_t **list, variable_t *variable);
  * @param ctx Pointer to target context scope.
  * @param name Variable identifier name.
  * @param value Evaluated value pointer.
+ * Ownership of name and value passes to the context only on TI_OK; on failure the caller keeps them.
+ * @return TI_OK, TI_ERR_RUNTIME (name already defined in this scope), TI_ERR_NO_MEMORY or TI_ERR_INVALID_ARG.
  */
-void context_add_variable(alloc_hdr_t **list, context_t *ctx, const char *name, value_t *value);
+ti_status_t context_add_variable(alloc_hdr_t **list, context_t *ctx, const char *name, value_t *value);
 
 #ifdef __cplusplus
 }

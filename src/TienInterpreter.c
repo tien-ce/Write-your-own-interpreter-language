@@ -186,23 +186,23 @@ ti_status_t ti_execute(ti_handle_t handle, ti_program_t *prog)
     /* Walk and evaluate the AST graph from root */
     visitor_visit(rt, rt->global_context, prog->root_ast);
 
-    /* Single place that turns a raised runtime error into a fatal (host decides how to stop) */
+    /* Validate control flow invariants at script completion (only if nothing failed earlier) */
+    if (rt->status == TI_RT_OK) {
+        if (rt->global_context->flow_state == FLOW_BREAK) {
+            ti_raise(rt, TI_ERR_RUNTIME, 0, "'break' statement not within a loop");
+        } else if (rt->global_context->flow_state == FLOW_CONTINUE) {
+            ti_raise(rt, TI_ERR_RUNTIME, 0, "'continue' statement not within a loop");
+        } else if (rt->global_context->flow_state == FLOW_RETURN) {
+            /* Consume return signal at top-level script boundary */
+            rt->global_context->flow_state = FLOW_NORMAL;
+        }
+    }
+
+    /* The single place that turns a raised runtime error into a fatal (host decides how to stop) */
     if (rt->status == TI_RT_ERROR) {
         ti_runtime_report_error(rt);
         ti_fatal();
         return rt->error.kind;
-    }
-
-    /* Validate control flow invariants at script completion */
-    if (rt->global_context->flow_state == FLOW_BREAK) {
-        ti_log("[Runtime Error] 'break' statement not within a loop\n");
-        ti_fatal();
-    } else if (rt->global_context->flow_state == FLOW_CONTINUE) {
-        ti_log("[Runtime Error] 'continue' statement not within a loop\n");
-        ti_fatal();
-    } else if (rt->global_context->flow_state == FLOW_RETURN) {
-        /* Consume return signal at top-level script boundary */
-        rt->global_context->flow_state = FLOW_NORMAL;
     }
 
     return ti_runtime_is_interrupted(rt) ? TI_ERR_INTERRUPTED : TI_OK;

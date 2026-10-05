@@ -64,40 +64,45 @@ variable_t *context_find_variable(context_t *ctx, const char *variable_name)
 value_t *context_copy_value(alloc_hdr_t **list, variable_t *variable)
 {
     (void)list;
+    /* Pure helper: no logging or fatal, the evaluator decides how to report a NULL result */
     if (variable == NULL || variable->value == NULL) {
-        ti_log("[ERROR]: Attempted to access NULL variable\n");
-        ti_fatal();
         return NULL;
     }
-
     return val_copy(variable->value);
 }
 
 /* Add a newly defined variable to the given context scope */
-void context_add_variable(alloc_hdr_t **list, context_t *ctx, const char *name, value_t *value)
+ti_status_t context_add_variable(alloc_hdr_t **list, context_t *ctx, const char *name, value_t *value)
 {
-    if (!ctx) {
-        return;
+    if (!ctx || !name || !value) {
+        return TI_ERR_INVALID_ARG;
     }
-    int size = ctx->variable_count;
-    for (int i = 0; i < size; i++) {
+
+    /* A name may be defined only once per scope */
+    for (int i = 0; i < ctx->variable_count; i++) {
         if (strcmp(ctx->variables[i]->name, name) == 0) {
-            ti_log("[ERROR]: Redefinition of variable '%s'\n", name);
-            ti_fatal();
+            return TI_ERR_RUNTIME;
         }
     }
 
     variable_t *variable = variable_init(list, name);
-    variable->value = value;
-    if (ctx->variables == NULL) {
-        ctx->variables = tracked_calloc(list, 1, sizeof(struct VARIABLE_STRUCT *));
-        ctx->variables[0] = variable;
-        ctx->variable_count = 1;
-    } else {
-        ctx->variables = tracked_realloc(list, ctx->variables, (ctx->variable_count + 1) * sizeof(struct VARIABLE_STRUCT *));
-        ctx->variables[ctx->variable_count] = variable;
-        ctx->variable_count += 1;
+    if (variable == NULL) {
+        return TI_ERR_NO_MEMORY;
     }
+
+    /* Grow the variable pointer array; keep the old block intact on failure */
+    variable_t **grown = tracked_realloc(list, ctx->variables, (ctx->variable_count + 1) * sizeof(struct VARIABLE_STRUCT *));
+    if (grown == NULL) {
+        tracked_free(list, variable);
+        return TI_ERR_NO_MEMORY;
+    }
+
+    /* Success: the context now owns the variable, its name and its value */
+    variable->value = value;
+    ctx->variables = grown;
+    ctx->variables[ctx->variable_count] = variable;
+    ctx->variable_count += 1;
+    return TI_OK;
 }
 
 /* Free a variable structure, its name string, and its value payload */

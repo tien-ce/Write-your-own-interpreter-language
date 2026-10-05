@@ -48,6 +48,13 @@ const char *val_type_to_str(val_type_t type);
 const char *var_type_to_str(int type);
 
 /**
+ * @brief Convert a status/error code to a short human-readable message.
+ * @param status Status code (TI_OK, TI_ERR_*).
+ * @return Static string describing the code.
+ */
+const char *ti_err_to_str(ti_status_t status);
+
+/**
  * @brief Render an ASCII tree representation of an AST hierarchy to stdout.
  * @param root Root AST node to draw.
  */

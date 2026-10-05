@@ -18,6 +18,7 @@ const char *token_type_to_str(int type)
     case TOKEN_KW_FLOAT:  return "TOKEN_KW_FLOAT";
     case TOKEN_KW_STRING: return "TOKEN_KW_STRING";
     case TOKEN_KW_BOOL:   return "TOKEN_KW_BOOL";
+    case TOKEN_KW_LIST:   return "TOKEN_KW_LIST";
     case TOKEN_KW_IF:     return "TOKEN_KW_IF";
     case TOKEN_KW_ELSE:   return "TOKEN_KW_ELSE";
     case TOKEN_KW_WHILE:  return "TOKEN_KW_WHILE";
@@ -61,6 +62,7 @@ const char *ast_type_to_str(int type)
     case AST_FLOAT_LITERAL:       return "AST_FLOAT_LITERAL";
     case AST_STRING_LITERAL:      return "AST_STRING_LITERAL";
     case AST_BOOLEAN:             return "AST_BOOLEAN";
+    case AST_LIST_LITERAL:        return "AST_LIST_LITERAL";
     case AST_IDENTIFIER:          return "AST_IDENTIFIER";
     case AST_BINARY_EXPR:         return "AST_BINARY_EXPR";
     case AST_UNARY_EXPR:          return "AST_UNARY_EXPR";
@@ -125,6 +127,7 @@ const char *val_type_to_str(val_type_t type)
     case VAL_STRING: return "string";
     case VAL_BOOL:   return "bool";
     case VAL_VOID:   return "void";
+    case VAL_LIST:   return "list";
     default:         return "?";
     }
 }
@@ -133,4 +136,26 @@ const char *val_type_to_str(val_type_t type)
 const char *var_type_to_str(int type)
 {
     return val_type_to_str((val_type_t)type);
+}
+
+/* Convert a status/error code to a short human-readable message */
+const char *ti_err_to_str(ti_status_t status)
+{
+    switch (status) {
+    case TI_OK:                    return "ok";
+    case TI_ERR_INVALID_ARG:       return "invalid argument";
+    case TI_ERR_NO_MEMORY:         return "out of memory";
+    case TI_ERR_STALE_HANDLE:      return "stale runtime handle";
+    case TI_ERR_QUEUE_FULL:        return "event queue full";
+    case TI_ERR_INTERRUPTED:       return "interrupted";
+    case TI_ERR_TYPE_MISMATCH:     return "type mismatch";
+    case TI_ERR_INDEX_OUT_OF_RANGE: return "index out of range";
+    case TI_ERR_KEY_NOT_FOUND:     return "key not found";
+    case TI_ERR_LIMIT_EXCEEDED:    return "limit exceeded";
+    case TI_ERR_UNDEFINED:         return "undefined name";
+    case TI_ERR_DIV_ZERO:          return "division by zero";
+    case TI_ERR_INTERNAL:          return "internal error";
+    case TI_ERR_RUNTIME:           return "runtime error";
+    default:                       return "unknown error";
+    }
 }

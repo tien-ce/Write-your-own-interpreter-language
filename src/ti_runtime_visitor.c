@@ -11,12 +11,15 @@
  * @param rt Pointer to active runtime instance.
  * @param ctx Pointer to active execution context scope.
  * @param node Pointer to AST node to evaluate.
- * @return Pointer to evaluated result value_t (or NULL).
+ * @return Result value_t for expressions, TI_VAL_OK for successful statements, NULL on failure.
  */
 value_t *visitor_visit(ti_runtime_t *rt, context_t *ctx, ast_t *node)
 {
-    /* Immediate short-circuit if node is NULL or execution has been cancelled from outside */
-    if (!node || (rt != NULL && rt->is_interrupted)) {
+    /*
+     * No cancellation/error check per node: failure travels as a NULL result (statements return
+     * TI_VAL_OK on success), and cancellation is noticed at the safe points.
+     */
+    if (!node) {
         return NULL;
     }
 
@@ -36,11 +39,13 @@ value_t *visitor_visit(ti_runtime_t *rt, context_t *ctx, ast_t *node)
     case AST_FLOAT_LITERAL:
         return eval_float_literal(ctx, node);
     case AST_DICT_LITERAL:
-        return eval_dict_literal(ctx,node);
+        return eval_dict_literal(rt, ctx, node);
+    case AST_LIST_LITERAL:
+        return eval_list_literal(rt, ctx, node);
     case AST_BOOLEAN:
         return eval_boolean_literal(ctx, node);
     case AST_IDENTIFIER:
-        return eval_identifier(ctx, node);
+        return eval_identifier(rt, ctx, node);
     case AST_ARRAY_ACCESS:
         return eval_array_access(rt, ctx, node);
     case AST_BINARY_EXPR:
@@ -62,7 +67,7 @@ value_t *visitor_visit(ti_runtime_t *rt, context_t *ctx, ast_t *node)
     case AST_CONTINUE_STATEMENT:
         return eval_continue_statement(ctx, node);
     default:
-        ti_log("[Visitor Error] Unexpected AST node type %d in visitor_visit\n", (int)node->type);
+        ti_raise(rt, TI_ERR_INTERNAL, node->line, "Unexpected AST node type %d in visitor_visit", (int)node->type);
         break;
     }
     return NULL;

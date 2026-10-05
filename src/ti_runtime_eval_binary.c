@@ -8,34 +8,34 @@
 
 /* -------------------- Static Function Prototypes -------------------- */
 
-static value_t *binary_add(value_t *left, value_t *right, int line);
-static value_t *binary_sub(value_t *left, value_t *right, int line);
-static value_t *binary_mul(value_t *left, value_t *right, int line);
-static value_t *binary_div(value_t *left, value_t *right, int line);
-static value_t *binary_equal(value_t *left, value_t *right, int line);
-static value_t *binary_not_equal(value_t *left, value_t *right, int line);
-static value_t *binary_greater(value_t *left, value_t *right, int line);
-static value_t *binary_less(value_t *left, value_t *right, int line);
-static value_t *binary_greater_equal(value_t *left, value_t *right, int line);
-static value_t *binary_less_equal(value_t *left, value_t *right, int line);
-static value_t *binary_logical_and(value_t *left, value_t *right, int line);
-static value_t *binary_logical_or(value_t *left, value_t *right, int line);
+static value_t *binary_add(ti_runtime_t *rt, value_t *left, value_t *right, int line);
+static value_t *binary_sub(ti_runtime_t *rt, value_t *left, value_t *right, int line);
+static value_t *binary_mul(ti_runtime_t *rt, value_t *left, value_t *right, int line);
+static value_t *binary_div(ti_runtime_t *rt, value_t *left, value_t *right, int line);
+static value_t *binary_equal(ti_runtime_t *rt, value_t *left, value_t *right, int line);
+static value_t *binary_not_equal(ti_runtime_t *rt, value_t *left, value_t *right, int line);
+static value_t *binary_greater(ti_runtime_t *rt, value_t *left, value_t *right, int line);
+static value_t *binary_less(ti_runtime_t *rt, value_t *left, value_t *right, int line);
+static value_t *binary_greater_equal(ti_runtime_t *rt, value_t *left, value_t *right, int line);
+static value_t *binary_less_equal(ti_runtime_t *rt, value_t *left, value_t *right, int line);
+static value_t *binary_logical_and(ti_runtime_t *rt, value_t *left, value_t *right, int line);
+static value_t *binary_logical_or(ti_runtime_t *rt, value_t *left, value_t *right, int line);
 
 /* -------------------- Static Operator Functions -------------------- */
 
 /**
  * @brief Evaluate binary addition for integers, floats, or strings (concatenation).
+ * @param rt Pointer to active runtime instance.
  * @param left Left operand value.
  * @param right Right operand value.
  * @param line Source line number for error reporting.
  * @return Newly allocated addition result value_t.
  */
-static value_t *binary_add(value_t *left, value_t *right, int line)
+static value_t *binary_add(ti_runtime_t *rt, value_t *left, value_t *right, int line)
 {
     /* Validate operands are non-null; halt execution on runtime error */
     if (left == NULL || right == NULL) {
-        ti_log("[Runtime Error] Invalid operands in binary add at line %d\n", line);
-        ti_fatal();
+        ti_raise(rt, TI_ERR_INTERNAL, line, "Invalid operands in binary add");
         return NULL;
     }
 
@@ -63,26 +63,26 @@ static value_t *binary_add(value_t *left, value_t *right, int line)
     }
     default:
         /* Handle unsupported operand types and signal fatal error */
-        ti_log("[Runtime Error] Unexpected operands %s, %s in binary add at line %d\n", val_type_to_str(left->type), val_type_to_str(right->type), line);
-        ti_fatal();
-        break;
+        ti_raise(rt, TI_ERR_TYPE_MISMATCH, line, "Unexpected operands %s, %s in binary add", val_type_to_str(left->type), val_type_to_str(right->type));
+        val_free(value);
+        return NULL;
     }
     return value;
 }
 
 /**
  * @brief Evaluate binary subtraction for integers or floats.
+ * @param rt Pointer to active runtime instance.
  * @param left Left operand value.
  * @param right Right operand value.
  * @param line Source line number for error reporting.
  * @return Newly allocated subtraction result value_t.
  */
-static value_t *binary_sub(value_t *left, value_t *right, int line)
+static value_t *binary_sub(ti_runtime_t *rt, value_t *left, value_t *right, int line)
 {
     /* Validate operands are non-null; halt execution on runtime error */
     if (left == NULL || right == NULL) {
-        ti_log("[Runtime Error] Invalid operands in binary sub at line %d\n", line);
-        ti_fatal();
+        ti_raise(rt, TI_ERR_INTERNAL, line, "Invalid operands in binary sub");
         return NULL;
     }
 
@@ -99,26 +99,26 @@ static value_t *binary_sub(value_t *left, value_t *right, int line)
         break;
     default:
         /* Handle unsupported operand types and signal fatal error */
-        ti_log("[Runtime Error] Unexpected operands %s, %s in binary sub at line %d\n", val_type_to_str(left->type), val_type_to_str(right->type), line);
-        ti_fatal();
-        break;
+        ti_raise(rt, TI_ERR_TYPE_MISMATCH, line, "Unexpected operands %s, %s in binary sub", val_type_to_str(left->type), val_type_to_str(right->type));
+        val_free(value);
+        return NULL;
     }
     return value;
 }
 
 /**
  * @brief Evaluate binary multiplication for integers or floats.
+ * @param rt Pointer to active runtime instance.
  * @param left Left operand value.
  * @param right Right operand value.
  * @param line Source line number for error reporting.
  * @return Newly allocated multiplication result value_t.
  */
-static value_t *binary_mul(value_t *left, value_t *right, int line)
+static value_t *binary_mul(ti_runtime_t *rt, value_t *left, value_t *right, int line)
 {
     /* Validate operands are non-null; halt execution on runtime error */
     if (left == NULL || right == NULL) {
-        ti_log("[Runtime Error] Invalid operands in binary mul at line %d\n", line);
-        ti_fatal();
+        ti_raise(rt, TI_ERR_INTERNAL, line, "Invalid operands in binary mul");
         return NULL;
     }
 
@@ -135,26 +135,26 @@ static value_t *binary_mul(value_t *left, value_t *right, int line)
         break;
     default:
         /* Handle unsupported operand types and signal fatal error */
-        ti_log("[Runtime Error] Unexpected operands %s, %s in binary mul at line %d\n", val_type_to_str(left->type), val_type_to_str(right->type), line);
-        ti_fatal();
-        break;
+        ti_raise(rt, TI_ERR_TYPE_MISMATCH, line, "Unexpected operands %s, %s in binary mul", val_type_to_str(left->type), val_type_to_str(right->type));
+        val_free(value);
+        return NULL;
     }
     return value;
 }
 
 /**
  * @brief Evaluate binary division for integers or floats (with division-by-zero check).
+ * @param rt Pointer to active runtime instance.
  * @param left Left operand value.
  * @param right Right operand value.
  * @param line Source line number for error reporting.
  * @return Newly allocated division result value_t.
  */
-static value_t *binary_div(value_t *left, value_t *right, int line)
+static value_t *binary_div(ti_runtime_t *rt, value_t *left, value_t *right, int line)
 {
     /* Validate operands are non-null; halt execution on runtime error */
     if (left == NULL || right == NULL) {
-        ti_log("[Runtime Error] Invalid operands in binary div at line %d\n", line);
-        ti_fatal();
+        ti_raise(rt, TI_ERR_INTERNAL, line, "Invalid operands in binary div");
         return NULL;
     }
 
@@ -164,9 +164,9 @@ static value_t *binary_div(value_t *left, value_t *right, int line)
     case VAL_INT:
         /* Guard against integer division by zero */
         if (right->int_val == 0) {
-            ti_log("[Runtime Error] Division by zero error at line %d\n", line);
-            ti_fatal();
-            break;
+            ti_raise(rt, TI_ERR_DIV_ZERO, line, "Division by zero error");
+            val_free(value);
+            return NULL;
         }
         /* Evaluate integer division */
         value->int_val = left->int_val / right->int_val;
@@ -174,35 +174,35 @@ static value_t *binary_div(value_t *left, value_t *right, int line)
     case VAL_FLOAT:
         /* Guard against floating-point division by zero */
         if (right->float_val == 0.0f) {
-            ti_log("[Runtime Error] Division by zero error at line %d\n", line);
-            ti_fatal();
-            break;
+            ti_raise(rt, TI_ERR_DIV_ZERO, line, "Division by zero error");
+            val_free(value);
+            return NULL;
         }
         /* Evaluate floating-point division */
         value->float_val = left->float_val / right->float_val;
         break;
     default:
         /* Handle unsupported operand types and signal fatal error */
-        ti_log("[Runtime Error] Unexpected operands %s, %s in binary div at line %d\n", val_type_to_str(left->type), val_type_to_str(right->type), line);
-        ti_fatal();
-        break;
+        ti_raise(rt, TI_ERR_TYPE_MISMATCH, line, "Unexpected operands %s, %s in binary div", val_type_to_str(left->type), val_type_to_str(right->type));
+        val_free(value);
+        return NULL;
     }
     return value;
 }
 
 /**
  * @brief Evaluate equality comparison (==) between two values.
+ * @param rt Pointer to active runtime instance.
  * @param left Left operand value.
  * @param right Right operand value.
  * @param line Source line number for error reporting.
  * @return Newly allocated boolean value_t.
  */
-static value_t *binary_equal(value_t *left, value_t *right, int line)
+static value_t *binary_equal(ti_runtime_t *rt, value_t *left, value_t *right, int line)
 {
     /* Validate operands are non-null; halt execution on runtime error */
     if (left == NULL || right == NULL) {
-        ti_log("[Runtime Error] Invalid operands in binary equal at line %d\n", line);
-        ti_fatal();
+        ti_raise(rt, TI_ERR_INTERNAL, line, "Invalid operands in binary equal");
         return NULL;
     }
 
@@ -234,26 +234,26 @@ static value_t *binary_equal(value_t *left, value_t *right, int line)
         break;
     default:
         /* Handle unsupported operand types and signal fatal error */
-        ti_log("[Runtime Error] Unexpected operands %s, %s in binary equal at line %d\n", val_type_to_str(left->type), val_type_to_str(right->type), line);
-        ti_fatal();
-        break;
+        ti_raise(rt, TI_ERR_TYPE_MISMATCH, line, "Unexpected operands %s, %s in binary equal", val_type_to_str(left->type), val_type_to_str(right->type));
+        val_free(value);
+        return NULL;
     }
     return value;
 }
 
 /**
  * @brief Evaluate equality comparison (==) between two values.
+ * @param rt Pointer to active runtime instance.
  * @param left Left operand value.
  * @param right Right operand value.
  * @param line Source line number for error reporting.
  * @return Newly allocated boolean value_t.
  */
-static value_t *binary_not_equal(value_t *left, value_t *right, int line)
+static value_t *binary_not_equal(ti_runtime_t *rt, value_t *left, value_t *right, int line)
 {
     /* Validate operands are non-null; halt execution on runtime error */
     if (left == NULL || right == NULL) {
-        ti_log("[Runtime Error] Invalid operands in binary equal at line %d\n", line);
-        ti_fatal();
+        ti_raise(rt, TI_ERR_INTERNAL, line, "Invalid operands in binary equal");
         return NULL;
     }
 
@@ -285,26 +285,26 @@ static value_t *binary_not_equal(value_t *left, value_t *right, int line)
         break;
     default:
         /* Handle unsupported operand types and signal fatal error */
-        ti_log("[Runtime Error] Unexpected operands %s, %s in binary not equal at line %d\n", val_type_to_str(left->type), val_type_to_str(right->type), line);
-        ti_fatal();
-        break;
+        ti_raise(rt, TI_ERR_TYPE_MISMATCH, line, "Unexpected operands %s, %s in binary not equal", val_type_to_str(left->type), val_type_to_str(right->type));
+        val_free(value);
+        return NULL;
     }
     return value;
 }
 
 /**
  * @brief Evaluate greater-than comparison (>) between two values.
+ * @param rt Pointer to active runtime instance.
  * @param left Left operand value.
  * @param right Right operand value.
  * @param line Source line number for error reporting.
  * @return Newly allocated boolean value_t.
  */
-static value_t *binary_greater(value_t *left, value_t *right, int line)
+static value_t *binary_greater(ti_runtime_t *rt, value_t *left, value_t *right, int line)
 {
     /* Validate operands are non-null; halt execution on runtime error */
     if (left == NULL || right == NULL) {
-        ti_log("[Runtime Error] Invalid operands in binary greater at line %d\n", line);
-        ti_fatal();
+        ti_raise(rt, TI_ERR_INTERNAL, line, "Invalid operands in binary greater");
         return NULL;
     }
 
@@ -328,26 +328,26 @@ static value_t *binary_greater(value_t *left, value_t *right, int line)
     }
     default:
         /* Handle unsupported operand types and signal fatal error */
-        ti_log("[Runtime Error] Unexpected operands %s, %s in binary greater at line %d\n", val_type_to_str(left->type), val_type_to_str(right->type), line);
-        ti_fatal();
-        break;
+        ti_raise(rt, TI_ERR_TYPE_MISMATCH, line, "Unexpected operands %s, %s in binary greater", val_type_to_str(left->type), val_type_to_str(right->type));
+        val_free(value);
+        return NULL;
     }
     return value;
 }
 
 /**
  * @brief Evaluate less-than comparison (<) between two values.
+ * @param rt Pointer to active runtime instance.
  * @param left Left operand value.
  * @param right Right operand value.
  * @param line Source line number for error reporting.
  * @return Newly allocated boolean value_t.
  */
-static value_t *binary_less(value_t *left, value_t *right, int line)
+static value_t *binary_less(ti_runtime_t *rt, value_t *left, value_t *right, int line)
 {
     /* Validate operands are non-null; halt execution on runtime error */
     if (left == NULL || right == NULL) {
-        ti_log("[Runtime Error] Invalid operands in binary less at line %d\n", line);
-        ti_fatal();
+        ti_raise(rt, TI_ERR_INTERNAL, line, "Invalid operands in binary less");
         return NULL;
     }
 
@@ -371,26 +371,26 @@ static value_t *binary_less(value_t *left, value_t *right, int line)
     }
     default:
         /* Handle unsupported operand types and signal fatal error */
-        ti_log("[Runtime Error] Unexpected operands %s, %s in binary less at line %d\n", val_type_to_str(left->type), val_type_to_str(right->type), line);
-        ti_fatal();
-        break;
+        ti_raise(rt, TI_ERR_TYPE_MISMATCH, line, "Unexpected operands %s, %s in binary less", val_type_to_str(left->type), val_type_to_str(right->type));
+        val_free(value);
+        return NULL;
     }
     return value;
 }
 
 /**
  * @brief Evaluate greater-than-or-equal comparison (>=) between two values.
+ * @param rt Pointer to active runtime instance.
  * @param left Left operand value.
  * @param right Right operand value.
  * @param line Source line number for error reporting.
  * @return Newly allocated boolean value_t.
  */
-static value_t *binary_greater_equal(value_t *left, value_t *right, int line)
+static value_t *binary_greater_equal(ti_runtime_t *rt, value_t *left, value_t *right, int line)
 {
     /* Validate operands are non-null; halt execution on runtime error */
     if (left == NULL || right == NULL) {
-        ti_log("[Runtime Error] Invalid operands in binary greater equal at line %d\n", line);
-        ti_fatal();
+        ti_raise(rt, TI_ERR_INTERNAL, line, "Invalid operands in binary greater equal");
         return NULL;
     }
 
@@ -414,26 +414,26 @@ static value_t *binary_greater_equal(value_t *left, value_t *right, int line)
     }
     default:
         /* Handle unsupported operand types and signal fatal error */
-        ti_log("[Runtime Error] Unexpected operands %s, %s in binary greater equal at line %d\n", val_type_to_str(left->type), val_type_to_str(right->type), line);
-        ti_fatal();
-        break;
+        ti_raise(rt, TI_ERR_TYPE_MISMATCH, line, "Unexpected operands %s, %s in binary greater equal", val_type_to_str(left->type), val_type_to_str(right->type));
+        val_free(value);
+        return NULL;
     }
     return value;
 }
 
 /**
  * @brief Evaluate less-than-or-equal comparison (<=) between two values.
+ * @param rt Pointer to active runtime instance.
  * @param left Left operand value.
  * @param right Right operand value.
  * @param line Source line number for error reporting.
  * @return Newly allocated boolean value_t.
  */
-static value_t *binary_less_equal(value_t *left, value_t *right, int line)
+static value_t *binary_less_equal(ti_runtime_t *rt, value_t *left, value_t *right, int line)
 {
     /* Validate operands are non-null; halt execution on runtime error */
     if (left == NULL || right == NULL) {
-        ti_log("[Runtime Error] Invalid operands in binary less equal at line %d\n", line);
-        ti_fatal();
+        ti_raise(rt, TI_ERR_INTERNAL, line, "Invalid operands in binary less equal");
         return NULL;
     }
 
@@ -457,32 +457,31 @@ static value_t *binary_less_equal(value_t *left, value_t *right, int line)
     }
     default:
         /* Handle unsupported operand types and signal fatal error */
-        ti_log("[Runtime Error] Unexpected operands %s, %s in binary less equal at line %d\n", val_type_to_str(left->type), val_type_to_str(right->type), line);
-        ti_fatal();
-        break;
+        ti_raise(rt, TI_ERR_TYPE_MISMATCH, line, "Unexpected operands %s, %s in binary less equal", val_type_to_str(left->type), val_type_to_str(right->type));
+        val_free(value);
+        return NULL;
     }
     return value;
 }
 
 /**
  * @brief Evaluate binary logical AND (&&) between two boolean values.
+ * @param rt Pointer to active runtime instance.
  * @param left Left operand value.
  * @param right Right operand value.
  * @param line Source line number for error reporting.
  * @return Newly allocated boolean value_t.
  */
-static value_t *binary_logical_and(value_t *left, value_t *right, int line)
+static value_t *binary_logical_and(ti_runtime_t *rt, value_t *left, value_t *right, int line)
 {
     /* Validate operands are non-null */
     if (left == NULL || right == NULL) {
-        ti_log("[Runtime Error] Invalid operands in binary logical and at line %d\n", line);
-        ti_fatal();
+        ti_raise(rt, TI_ERR_INTERNAL, line, "Invalid operands in binary logical and");
         return NULL;
     }
     /* Enforce boolean operand types for logical operations */
     if (left->type != VAL_BOOL || right->type != VAL_BOOL) {
-        ti_log("[Runtime Error] Logical AND expects bool operands, got %s and %s at line %d\n", val_type_to_str(left->type), val_type_to_str(right->type), line);
-        ti_fatal();
+        ti_raise(rt, TI_ERR_TYPE_MISMATCH, line, "Logical AND expects bool operands, got %s and %s", val_type_to_str(left->type), val_type_to_str(right->type));
         return NULL;
     }
 
@@ -494,23 +493,22 @@ static value_t *binary_logical_and(value_t *left, value_t *right, int line)
 
 /**
  * @brief Evaluate binary logical OR (||) between two boolean values.
+ * @param rt Pointer to active runtime instance.
  * @param left Left operand value.
  * @param right Right operand value.
  * @param line Source line number for error reporting.
  * @return Newly allocated boolean value_t.
  */
-static value_t *binary_logical_or(value_t *left, value_t *right, int line)
+static value_t *binary_logical_or(ti_runtime_t *rt, value_t *left, value_t *right, int line)
 {
     /* Validate operands are non-null */
     if (left == NULL || right == NULL) {
-        ti_log("[Runtime Error] Invalid operands in binary logical or at line %d\n", line);
-        ti_fatal();
+        ti_raise(rt, TI_ERR_INTERNAL, line, "Invalid operands in binary logical or");
         return NULL;
     }
     /* Enforce boolean operand types for logical operations */
     if (left->type != VAL_BOOL || right->type != VAL_BOOL) {
-        ti_log("[Runtime Error] Logical OR expects bool operands, got %s and %s at line %d\n", val_type_to_str(left->type), val_type_to_str(right->type), line);
-        ti_fatal();
+        ti_raise(rt, TI_ERR_TYPE_MISMATCH, line, "Logical OR expects bool operands, got %s and %s", val_type_to_str(left->type), val_type_to_str(right->type));
         return NULL;
     }
 
@@ -525,97 +523,95 @@ static value_t *binary_logical_or(value_t *left, value_t *right, int line)
 /* Evaluate a binary expression node (+, -, *, /, ==, <, etc.) */
 value_t *eval_binary_expr(ti_runtime_t *rt, context_t *ctx, ast_t *node)
 {
-    /* Recursively evaluate left and right operand expressions */
-    value_t *left = visitor_visit(rt, ctx, node->value.binary_expr.left);
-    value_t *right = visitor_visit(rt, ctx, node->value.binary_expr.right);
     value_t *result = NULL;
+    value_t *left = NULL;
+    value_t *right = NULL;
 
-    /* Validate both operand expressions produced valid values */
-    if (rt != NULL && rt->is_interrupted) {
-        if (left) val_free(left);
-        if (right) val_free(right);
-        return NULL;
+    /* Evaluate the left operand; NULL means it already failed, so the right one must not run */
+    left = visitor_visit(rt, ctx, node->value.binary_expr.left);
+    if (left == NULL) {
+        goto out;
     }
 
-    if (left == NULL || right == NULL) {
-        ti_log("[Runtime Error] Binary expression operand evaluated to NULL at line %d\n", node->line);
-        ti_fatal();
+    right = visitor_visit(rt, ctx, node->value.binary_expr.right);
+    if (right == NULL) {
+        goto out;
     }
 
     /* Enforce type symmetry between left and right operands */
     if (left->type != right->type) {
-        ti_log("[Runtime Error] Type mismatch in binary expression: %s and %s at line %d\n", val_type_to_str(left->type), val_type_to_str(right->type), node->line);
-        ti_fatal();
+        ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line, "Type mismatch in binary expression: %s and %s", val_type_to_str(left->type), val_type_to_str(right->type));
+        goto out;
     }
 
     /* Dispatch operator evaluation to the corresponding handler */
     switch (node->value.binary_expr.op) {
     case OP_ADD:
-        result = binary_add(left, right, node->line);
+        result = binary_add(rt, left, right, node->line);
         break;
     case OP_SUB:
-        result = binary_sub(left, right, node->line);
+        result = binary_sub(rt, left, right, node->line);
         break;
     case OP_MUL:
-        result = binary_mul(left, right, node->line);
+        result = binary_mul(rt, left, right, node->line);
         break;
     case OP_DIV:
-        result = binary_div(left, right, node->line);
+        result = binary_div(rt, left, right, node->line);
         break;
     case OP_DEQ:
-        result = binary_equal(left, right, node->line);
+        result = binary_equal(rt, left, right, node->line);
         break;
     case OP_NEQ:
-        result = binary_not_equal(left,right, node->line);
+        result = binary_not_equal(rt, left, right, node->line);
         break;
     case OP_GT:
-        result = binary_greater(left, right, node->line);
+        result = binary_greater(rt, left, right, node->line);
         break;
     case OP_LT:
-        result = binary_less(left, right, node->line);
+        result = binary_less(rt, left, right, node->line);
         break;
     case OP_GTE:
-        result = binary_greater_equal(left, right, node->line);
+        result = binary_greater_equal(rt, left, right, node->line);
         break;
     case OP_LTE:
-        result = binary_less_equal(left, right, node->line);
+        result = binary_less_equal(rt, left, right, node->line);
         break;
     case OP_LOGICAL_AND:
-        result = binary_logical_and(left, right, node->line);
+        result = binary_logical_and(rt, left, right, node->line);
         break;
     case OP_LOGICAL_OR:
-        result = binary_logical_or(left, right, node->line);
+        result = binary_logical_or(rt, left, right, node->line);
         break;
     default:
-        ti_log("[Runtime Error] Unknown operator: %d at line %d\n", node->value.binary_expr.op, node->line);
-        ti_fatal();
+        ti_raise(rt, TI_ERR_INTERNAL, node->line, "Unknown operator: %d", node->value.binary_expr.op);
         break;
     }
 
-    /* Free intermediate operand values to prevent memory leaks */
-    val_free(left);
+out:
+    /* Single cleanup point: operands are temporaries, val_free(NULL) is a no-op */
     val_free(right);
+    val_free(left);
     return result;
 }
 
 /* Evaluate a unary expression node (!, -, +) */
 value_t *eval_unary_expr(ti_runtime_t *rt, context_t *ctx, ast_t *node)
 {
+    value_t *result = NULL;
+    value_t *operand = NULL;
+
     /* Recursively evaluate the operand expression */
-    value_t *operand = visitor_visit(rt, ctx, node->value.unary_expr.operand); 
-    if (rt != NULL && rt->is_interrupted) {
-        if (operand) val_free(operand);
-        return NULL;
+    operand = visitor_visit(rt, ctx, node->value.unary_expr.operand);
+    if (operand == NULL) {
+        goto out;
     }
 
-    if (operand == NULL || operand->type == VAL_NULL) {
-        ti_log("[Runtime Error] Unary expression operand evaluated to NULL at line %d\n", node->line);
-        ti_fatal();
-        return NULL;
+    if (operand->type == VAL_NULL) {
+        ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line, "Unary expression operand evaluated to NULL");
+        goto out;
     }
 
     /* Dispatch unary operator evaluation */
-    value_t *result = NULL;
     switch (node->value.unary_expr.op) {
     case OP_POS:
         /* Unary plus: preserve integer or float value */
@@ -624,8 +620,7 @@ value_t *eval_unary_expr(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         } else if (operand->type == VAL_FLOAT) {
             result = val_new_float(+operand->float_val);
         } else {
-            ti_log("[Runtime Error] Unary '+' only supports int and float, got type %s at line %d\n", val_type_to_str(operand->type), node->line);
-            ti_fatal();
+            ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line, "Unary '+' only supports int and float, got type %s", val_type_to_str(operand->type));
         }
         break;
 
@@ -636,8 +631,7 @@ value_t *eval_unary_expr(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         } else if (operand->type == VAL_FLOAT) {
             result = val_new_float(-operand->float_val);
         } else {
-            ti_log("[Runtime Error] Unary '-' only supports int and float, got type %s at line %d\n", val_type_to_str(operand->type), node->line);
-            ti_fatal();
+            ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line, "Unary '-' only supports int and float, got type %s", val_type_to_str(operand->type));
         }
         break;
 
@@ -646,19 +640,17 @@ value_t *eval_unary_expr(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         if (operand->type == VAL_BOOL) {
             result = val_new_bool(!operand->bool_val);
         } else {
-            ti_log("[Runtime Error] Unary '!' only supports bool, got type %s at line %d\n", val_type_to_str(operand->type), node->line);
-            ti_fatal();
+            ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line, "Unary '!' only supports bool, got type %s", val_type_to_str(operand->type));
         }
         break;
 
     default:
-        ti_log("[Runtime Error] Unknown unary operator: %d at line %d\n", node->value.unary_expr.op, node->line);
-        ti_fatal();
+        ti_raise(rt, TI_ERR_INTERNAL, node->line, "Unknown unary operator: %d", node->value.unary_expr.op);
         break;
     }
 
-    /* Free intermediate operand value */
+out:
+    /* Single cleanup point for the operand temporary */
     val_free(operand);
     return result;
 }
-
