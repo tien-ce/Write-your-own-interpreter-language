@@ -107,6 +107,11 @@ void ast_free(ast_t *ast)
         ast_free(ast->value.assignment.value);
         break;
 
+    case AST_BYTES_LITERAL:
+        /* Free decoded bytes buffer */
+        tracked_free(NULL, ast->value.bytes_literal.data);
+        break;
+
     case AST_STRING_LITERAL:
         /* Free string literal text payload */
         tracked_free(NULL, ast->value.string_value);
@@ -125,6 +130,14 @@ void ast_free(ast_t *ast)
         ast_free(ast->value.array_access.index_expr);
         break;
 
+    case AST_FOR_STATEMENT:
+        /* Free the optional header parts and the body compound block */
+        ast_free(ast->value.for_statement.init);
+        ast_free(ast->value.for_statement.condition);
+        ast_free(ast->value.for_statement.step);
+        ast_free(ast->value.for_statement.body);
+        break;
+
     case AST_WHILE_STATEMENT:
         /* Free loop condition and body compound block */
         ast_free(ast->value.while_statement.condition);
@@ -137,7 +150,6 @@ void ast_free(ast_t *ast)
         ast_free(ast->value.if_statement.body);
         ast_free(ast->value.if_statement.else_body);
         break;
-
     case AST_RETURN_STATEMENT:
         /* Free return expression if present */
         ast_free(ast->value.return_statement.value);
@@ -148,7 +160,6 @@ void ast_free(ast_t *ast)
     case AST_BOOLEAN:
     case AST_NOOP:
     case AST_PROGRAM:
-    case AST_FOR_STATEMENT:
     case AST_BREAK_STATEMENT:
     case AST_CONTINUE_STATEMENT:
         /* Atomic literal or statement nodes with no suballocations */
@@ -161,4 +172,95 @@ void ast_free(ast_t *ast)
 
     /* Free the node container itself */
     tracked_free(NULL, ast);
+}
+
+/* Deep-copy an expression AST node */
+ast_t *ast_clone(alloc_hdr_t **list, const ast_t *ast)
+{
+    if (!ast) {
+        return NULL;
+    }
+
+    ast_t *copy = ast_init(list, ast->type, ast->line);
+    if (!copy) {
+        return NULL;
+    }
+
+    switch (ast->type) {
+    case AST_INT_LITERAL:
+    case AST_FLOAT_LITERAL:
+    case AST_BOOLEAN:
+        /* Plain scalar payloads copy by value */
+        copy->value = ast->value;
+        return copy;
+
+    case AST_STRING_LITERAL:
+        copy->value.string_value = tracked_strdup(list, ast->value.string_value);
+        if (!copy->value.string_value) {
+            break;
+        }
+        return copy;
+
+    case AST_IDENTIFIER:
+        copy->value.identifier = tracked_strdup(list, ast->value.identifier);
+        if (!copy->value.identifier) {
+            break;
+        }
+        return copy;
+
+    case AST_ARRAY_ACCESS:
+        copy->value.array_access.id = tracked_strdup(list, ast->value.array_access.id);
+        copy->value.array_access.index_expr = ast_clone(list, ast->value.array_access.index_expr);
+        if (!copy->value.array_access.id || !copy->value.array_access.index_expr) {
+            break;
+        }
+        return copy;
+
+    case AST_BINARY_EXPR:
+        copy->value.binary_expr.op = ast->value.binary_expr.op;
+        copy->value.binary_expr.left = ast_clone(list, ast->value.binary_expr.left);
+        copy->value.binary_expr.right = ast_clone(list, ast->value.binary_expr.right);
+        if (!copy->value.binary_expr.left || !copy->value.binary_expr.right) {
+            break;
+        }
+        return copy;
+
+    case AST_UNARY_EXPR:
+        copy->value.unary_expr.op = ast->value.unary_expr.op;
+        copy->value.unary_expr.operand = ast_clone(list, ast->value.unary_expr.operand);
+        if (!copy->value.unary_expr.operand) {
+            break;
+        }
+        return copy;
+
+    case AST_FUNCTION_CALL: {
+        int arg_count = ast->value.function_call.arg_count;
+        copy->value.function_call.func_name = tracked_strdup(list, ast->value.function_call.func_name);
+        copy->value.function_call.args = tracked_calloc(list, arg_count > 0 ? arg_count : 1, sizeof(struct AST_STRUCT *));
+        if (!copy->value.function_call.func_name || !copy->value.function_call.args) {
+            break;
+        }
+        /* Count grows as children are cloned so a partial copy can be freed safely */
+        for (int i = 0; i < arg_count; i++) {
+            copy->value.function_call.args[i] = ast_clone(list, ast->value.function_call.args[i]);
+            if (!copy->value.function_call.args[i]) {
+                break;
+            }
+            copy->value.function_call.arg_count++;
+        }
+        if (copy->value.function_call.arg_count != arg_count) {
+            break;
+        }
+        return copy;
+    }
+
+    default:
+        /* Statement, definition and container-literal nodes are never cloned */
+        tracked_free(NULL, copy); /* bare node: no children to release */
+        return NULL;
+    }
+
+    /* Failure: release the partial copy (ast_free tolerates NULL children) */
+    ast_free(copy);
+    return NULL;
 }

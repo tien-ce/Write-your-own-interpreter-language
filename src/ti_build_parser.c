@@ -11,18 +11,24 @@
 /* -------------------- Static Function Prototypes -------------------- */
 
 static int token_type_to_op(parser_t *parser, int token_type);
-static token_t *parser_peek(parser_t *parser);
+static type_spec_t parser_parse_type(parser_t *parser);
+static int parser_hex_digit(char c);
+static char *parser_take_identifier(parser_t *parser);
 static void parser_eat(parser_t *parser, int expected_type);
 static ast_t *parser_parse_statement(parser_t *parser);
 static ast_t *parser_parse_statements(parser_t *parser);
 static ast_t *parser_parse_main_program(parser_t *parser);
 static ast_t *parser_parse_definition(parser_t *parser);
 static ast_t *parser_parse_param(parser_t *parser);
-static ast_t *parser_parse_function_definition(parser_t *parser);
-static ast_t *parser_parse_variable_definition(parser_t *parser);
+static ast_t *parser_parse_function_definition(parser_t *parser, type_spec_t type, char *name);
+static ast_t *parser_parse_variable_definition(parser_t *parser, type_spec_t type, char *name);
+static ast_t *parser_parse_variable_declaration(parser_t *parser, type_spec_t type, char *name);
 static val_type_t parser_parse_list_element_type(parser_t *parser);
 static ast_t *parser_parse_list_literal(parser_t *parser);
 static ast_t *parser_parse_assignment(parser_t *parser, ast_t *target);
+static ast_t *parser_parse_assignment_expr(parser_t *parser, ast_t *target);
+static bool parser_is_update_token(int token_type);
+static ast_t *parser_parse_for_statement(parser_t *parser);
 static ast_t *parser_parse_function_call(parser_t *parser, char *func_name);
 static ast_t *parser_parse_while_statement(parser_t *parser);
 static ast_t *parser_parse_if_statement(parser_t *parser);
@@ -66,28 +72,70 @@ static int token_type_to_op(parser_t *parser, int token_type)
     }
 }
 
-/**
- * @brief Peek at the token following the current token without consuming it.
- * @param parser Pointer to parser.
- * @return Next token pointer.
- */
-static token_t *parser_peek(parser_t *parser)
+ /**
+* @brief Convert one hex digit character to its value.
+* @param c Character already validated by the lexer as a hex digit.
+* @return Value 0..15.
+*/
+static int parser_hex_digit(char c)
 {
-    /* Duplicate lexer state to perform lookahead without advancing active lexer */
-    lexer_t *temp_lexer = lexer_copy(parser->lexer);
+  if (c >= '0' && c <= '9') {
+      return c - '0';
+  }
+  if (c >= 'a' && c <= 'f') {
+      return c - 'a' + 10;
+  }
+  return c - 'A' + 10;
+}
+    
+/**
+ * @brief Parse a type specifier: a type keyword, or 'list <elem_type>' for lists.
+ * @param parser Pointer to parser.
+ * @return The parsed type (element_type is VAL_NULL unless the type is VAL_LIST).
+ */
+/* <type> | list <elem_type> */
+static type_spec_t parser_parse_type(parser_t *parser)
+{
+    type_spec_t spec = { VAL_NULL, VAL_NULL };
 
-    /* Discard current token on copied stream to reach the lookahead token */
-    token_t *discared = lexer_get_next_token(temp_lexer);
-    if (discared->value != NULL) {
-        tracked_free(parser->alloc_list, discared->value);
-        discared->value = NULL;
+    /* Map the keyword to its value type */
+    switch (parser->current_token->type) {
+    case TOKEN_KW_INT:    spec.type = VAL_INT;    break;
+    case TOKEN_KW_FLOAT:  spec.type = VAL_FLOAT;  break;
+    case TOKEN_KW_STRING: spec.type = VAL_STRING; break;
+    case TOKEN_KW_BOOL:   spec.type = VAL_BOOL;   break;
+    case TOKEN_KW_VOID:   spec.type = VAL_VOID;   break;
+    case TOKEN_KW_DICT:   spec.type = VAL_DICT;   break;
+    case TOKEN_KW_LIST:   spec.type = VAL_LIST;   break;
+    case TOKEN_KW_BYTES:  spec.type = VAL_BYTES;  break;
+    default:
+        ti_log("[Parser Error] Unexpected type %s, at line %d\n",
+               token_to_str(parser->current_token->type), parser->lexer->line_num);
+        ti_log_line(parser->lexer->line);
+        ti_fatal();
+        return spec;
     }
-    tracked_free(parser->alloc_list, discared);
+    parser_eat(parser, parser->current_token->type); // Eat <type>
 
-    /* Fetch and return the lookahead token, then free temporary lexer clone */
-    token_t *next_token = lexer_get_next_token(temp_lexer);
-    tracked_free(parser->alloc_list, (void *)temp_lexer);
-    return next_token;
+    /* 'list' carries its element type as a second keyword */
+    if (spec.type == VAL_LIST) {
+        spec.element_type = parser_parse_list_element_type(parser);
+    }
+    return spec;
+}
+
+/**
+ * @brief Consume an identifier token and take ownership of its name string.
+ * @param parser Pointer to parser.
+ * @return The identifier name (owned by the caller, normally handed to an AST node).
+ */
+static char *parser_take_identifier(parser_t *parser)
+{
+    /* Move the string out of the token so parser_eat does not free it */
+    char *name = parser->current_token->value;
+    parser->current_token->value = NULL;
+    parser_eat(parser, TOKEN_ID); // Eat <identifier>
+    return name;
 }
 
 /**
@@ -98,66 +146,34 @@ static token_t *parser_peek(parser_t *parser)
 /* <type> <param_name> */
 static ast_t *parser_parse_param(parser_t *parser)
 {
-    val_type_t param_type;
-    switch (parser->current_token->type) {
-    case TOKEN_KW_INT:    param_type = VAL_INT;    break;
-    case TOKEN_KW_FLOAT:  param_type = VAL_FLOAT;  break;
-    case TOKEN_KW_STRING: param_type = VAL_STRING; break;
-    case TOKEN_KW_BOOL:   param_type = VAL_BOOL;   break;
-    case TOKEN_KW_DICT:   param_type = VAL_DICT;   break;
-    default:
-        ti_log("[Parser Error] Unexpected type %s for parameter, at line %d\n",
-               token_to_str(parser->current_token->type), parser->lexer->line_num);
+    type_spec_t type = parser_parse_type(parser);
+
+    /* A parameter must hold a value, so void is rejected */
+    if (type.type == VAL_VOID) {
+        ti_log("[Parser Error] Parameter cannot have type void, at line %d\n", parser->lexer->line_num);
         ti_log_line(parser->lexer->line);
         ti_fatal();
-        break;
     }
-    /* Consume parameter type keyword */
-    parser_eat(parser, parser->current_token->type); // Eat <param_type>
-
-    /* Transfer ownership of parameter identifier string from token to AST */
-    char *param_name = parser->current_token->value;
-    parser->current_token->value = NULL; // Change the owner to ast instead of token
-    parser_eat(parser, TOKEN_ID); // Eat param_name
+    char *param_name = parser_take_identifier(parser);
 
     /* Construct AST parameter node */
     ast_t *param_node = ast_init(parser->alloc_list, AST_PARAM, parser->lexer->line_num);
-    param_node->value.param.param_type = param_type;
+    param_node->value.param.param_type = type.type;
+    param_node->value.param.element_type = type.element_type;
     param_node->value.param.param_name = param_name;
     return param_node;
 }
 
 /**
- * @brief Parse a function definition statement: type func_name(param1, param2, ...) { body }.
- * @param parser Pointer to parser.
+ * @brief Parse the rest of a function definition after '<return_type> <func_name>'.
+ * @param parser Pointer to parser (current token is '(').
+ * @param type Declared return type.
+ * @param name Function name (ownership passes to the AST node).
  * @return AST function definition node.
  */
-/* <return_type> func_name(<type> param1, <type> param2, ...) { <compound> } */
-static ast_t *parser_parse_function_definition(parser_t *parser)
+/* (<type> param1, <type> param2, ...) { <compound> } */
+static ast_t *parser_parse_function_definition(parser_t *parser, type_spec_t type, char *name)
 {
-    val_type_t return_type;
-    switch (parser->current_token->type) {
-    case TOKEN_KW_INT:    return_type = VAL_INT;    break;
-    case TOKEN_KW_FLOAT:  return_type = VAL_FLOAT;  break;
-    case TOKEN_KW_STRING: return_type = VAL_STRING; break;
-    case TOKEN_KW_BOOL:   return_type = VAL_BOOL;   break;
-    case TOKEN_KW_VOID:   return_type = VAL_VOID;   break;
-    case TOKEN_KW_DICT:   return_type = VAL_DICT;   break;
-    default:
-        ti_log("[Parser Error] Unexpected type %s in function definition, at line %d\n",
-               token_to_str(parser->current_token->type), parser->lexer->line_num);
-        ti_log_line(parser->lexer->line);
-        ti_fatal();
-        break;
-    }
-    /* Consume return type keyword */
-    parser_eat(parser, parser->current_token->type); // Eat <return_type>
-
-    /* Transfer ownership of function name string from token to AST */
-    char *func_name = parser->current_token->value;
-    parser->current_token->value = NULL; // Change the owner to ast instead of token
-    parser_eat(parser, TOKEN_ID); // Eat func_name
-
     parser_eat(parser, TOKEN_LPAREN); // Eat '('
     ast_t **params = NULL;
     int param_count = 0;
@@ -184,8 +200,9 @@ static ast_t *parser_parse_function_definition(parser_t *parser)
 
     /* Construct AST function definition node */
     ast_t *func_def_node = ast_init(parser->alloc_list, AST_FUNCTION_DEFINITION, parser->lexer->line_num);
-    func_def_node->value.function_definition.return_type = return_type;
-    func_def_node->value.function_definition.func_name = func_name;
+    func_def_node->value.function_definition.return_type = type.type;
+    func_def_node->value.function_definition.return_element_type = type.element_type;
+    func_def_node->value.function_definition.func_name = name;
     func_def_node->value.function_definition.param_count = param_count;
     func_def_node->value.function_definition.params = params;
     func_def_node->value.function_definition.body = statements;
@@ -193,33 +210,24 @@ static ast_t *parser_parse_function_definition(parser_t *parser)
 }
 
 /**
- * @brief Dispatch between variable and function definitions based on lookahead token.
+ * @brief Parse a definition: '<type> <identifier>' followed by '(' (function) or '=' (variable).
  * @param parser Pointer to parser.
  * @return AST definition node.
  */
 static ast_t *parser_parse_definition(parser_t *parser)
 {
-    /* 'list <elem_type>' is a two-token type; only variable definitions accept it for now */
-    if (parser->current_token->type == TOKEN_KW_LIST) {
-        return parser_parse_variable_definition(parser);
-    }
+    /* The common prefix is parsed once, so no lookahead is needed to tell the two forms apart */
+    type_spec_t type = parser_parse_type(parser);
+    char *name = parser_take_identifier(parser);
 
-    /* Peek ahead to distinguish between function declaration ('(') and variable declaration ('=') */
-    token_t *next_token = parser_peek(parser);
-    int next_type = (int)next_token->type;
-    if (next_token->value != NULL) {
-        tracked_free(parser->alloc_list, next_token->value);
-        next_token->value = NULL;
-    }
-    tracked_free(parser->alloc_list, next_token);
-    switch (next_type) {
+    switch (parser->current_token->type) {
     case TOKEN_LPAREN:
-        return parser_parse_function_definition(parser);
+        return parser_parse_function_definition(parser, type, name);
     case TOKEN_EQUALS:
-        return parser_parse_variable_definition(parser);
+        return parser_parse_variable_definition(parser, type, name);
     default:
         ti_log("[Parser Error] Unexpected token %s in definition at line %d\n",
-               token_to_str(next_type), parser->lexer->line_num);
+               token_to_str(parser->current_token->type), parser->lexer->line_num);
         ti_log_line(parser->lexer->line);
         ti_fatal();
         return NULL;
@@ -272,17 +280,20 @@ static ast_t *parser_parse_statement(parser_t *parser)
     case TOKEN_KW_VOID:
     case TOKEN_KW_DICT:
     case TOKEN_KW_LIST:
+    case TOKEN_KW_BYTES:
         return parser_parse_definition(parser);
     case TOKEN_ID: {
         /* Parse expression starting with identifier; distinguish assignment from call */
         ast_t *expr = parser_parse_expr(parser);
-        if (parser->current_token->type == TOKEN_EQUALS) {
+        if (parser_is_update_token(parser->current_token->type)) {
             return parser_parse_assignment(parser, expr);
         }
         /* Consume terminating semicolon for expression statement */
         parser_eat(parser, TOKEN_SEMI);
         return expr;
     }
+    case TOKEN_KW_FOR:
+        return parser_parse_for_statement(parser);
     case TOKEN_KW_WHILE:
         return parser_parse_while_statement(parser);
     case TOKEN_KW_IF:
@@ -629,6 +640,36 @@ static ast_t *parser_parse_primary(parser_t *parser)
     case TOKEN_LBRACKET:
         /* List literal: [expr, expr, ...] */
         return parser_parse_list_literal(parser);
+    case TOKEN_BYTES:
+    {
+        /* The lexer guarantees an even number of valid hex digits */
+        const char *hex = parser->current_token->value; // "1A024A..."
+        int length = (int)(strlen(hex) / 2);
+        if (length > TI_MAX_BYTES_LEN) {
+          ti_log("[Parser Error] Bytes literal exceeds %d bytes at line %d\n", TI_MAX_BYTES_LEN, parser->lexer->line_num);
+          ti_log_line(parser->lexer->line);
+          ti_fatal();
+        }
+
+        ast_t *bytes_node = ast_init(parser->alloc_list, AST_BYTES_LITERAL, parser->lexer->line_num);
+        bytes_node->value.bytes_literal.length = length;
+        bytes_node->value.bytes_literal.data = NULL;
+
+        /* Decode 2 digits per bytes: high nibble first */
+        if (length > 0)
+        {
+            /* Allocate length bytes of data */
+            uint8_t *data = tracked_calloc(parser->alloc_list, length, sizeof(uint8_t));
+            for (int i = 0; i < length; i++)
+            {
+                /* Combine high nibble and low nibble into a single byte */
+                data[i] = (uint8_t)((parser_hex_digit(hex[2 * i]) << 4) | parser_hex_digit(hex[2 * i + 1]));
+            }
+            bytes_node->value.bytes_literal.data = data;
+        }
+        parser_eat(parser,TOKEN_BYTES); // Eat the literal (frees the token's hex string)
+        return bytes_node;
+    }
     case TOKEN_LPAREN: {
         /* Parenthesized grouped subexpression (expr) */
         parser_eat(parser, TOKEN_LPAREN);
@@ -729,59 +770,30 @@ static ast_t *parser_parse_list_literal(parser_t *parser)
 }
 
 /**
- * @brief Parse a variable definition statement: type var_name = expr;.
- * @param parser Pointer to parser.
+ * @brief Parse the rest of a variable declaration after '<type> <name>': '= expr', no ';'.
+ * @param parser Pointer to parser (current token is '=').
+ * @param type Declared type (with element type for lists).
+ * @param name Variable name (ownership passes to the AST node).
  * @return AST variable definition node.
  */
-/* <type> <variable_name> = <expr>;  |  list <elem_type> <variable_name> = <expr>; */
-static ast_t *parser_parse_variable_definition(parser_t *parser)
+/* = <expr> */
+static ast_t *parser_parse_variable_declaration(parser_t *parser, type_spec_t type, char *name)
 {
-    val_type_t variable_type;
-    val_type_t element_type = VAL_NULL;
-    switch (parser->current_token->type) {
-    case TOKEN_KW_INT:    variable_type = VAL_INT;    break;
-    case TOKEN_KW_FLOAT:  variable_type = VAL_FLOAT;  break;
-    case TOKEN_KW_STRING: variable_type = VAL_STRING; break;
-    case TOKEN_KW_BOOL:   variable_type = VAL_BOOL;   break;
-    case TOKEN_KW_VOID:   variable_type = VAL_VOID;   break;
-    case TOKEN_KW_DICT:   variable_type = VAL_DICT;   break;
-    case TOKEN_KW_LIST:   variable_type = VAL_LIST;   break;
-    default:
-        ti_log("[Parser Error] Unexpected type %s in variable definition, at line %d\n",
-               token_to_str(parser->current_token->type), parser->lexer->line_num);
-        ti_log_line(parser->lexer->line);
-        ti_fatal();
-        return NULL;
-    }
-    /* Consume variable type keyword */
-    parser_eat(parser, parser->current_token->type); // Eat <variable_type>
-
-    /* 'list' carries its element type as a second keyword */
-    if (variable_type == VAL_LIST) {
-        element_type = parser_parse_list_element_type(parser);
-    }
-
-    /* Transfer ownership of variable name identifier to AST */
-    char *variable_name = parser->current_token->value;
-    parser->current_token->value = NULL; // Give the owner to AST
-    parser_eat(parser, TOKEN_ID); // Eat variable_name
-
     /* Parse assignment operator and initialization expression */
     parser_eat(parser, TOKEN_EQUALS); // Eat '='
     ast_t *value = parser_parse_expr(parser);
 
     /* A list literal takes its element type from the declaration (needed for empty lists) */
-    if (variable_type == VAL_LIST && value->type == AST_LIST_LITERAL) {
-        value->value.list_literal.element_type = element_type;
+    if (type.type == VAL_LIST && value->type == AST_LIST_LITERAL) {
+        value->value.list_literal.element_type = type.element_type;
     }
 
     /* Construct AST variable definition node */
     ast_t *var_def_node = ast_init(parser->alloc_list, AST_VARIABLE_DEFINITION, parser->lexer->line_num);
-    var_def_node->value.variable_definition.variable_type = variable_type;
-    var_def_node->value.variable_definition.element_type = element_type;
-    var_def_node->value.variable_definition.variable_name = variable_name;
+    var_def_node->value.variable_definition.variable_type = type.type;
+    var_def_node->value.variable_definition.element_type = type.element_type;
+    var_def_node->value.variable_definition.variable_name = name;
     var_def_node->value.variable_definition.value = value;
-    parser_eat(parser, TOKEN_SEMI); // Eat ';'
     return var_def_node;
 }
 
@@ -884,23 +896,81 @@ static ast_t *parser_parse_function_call(parser_t *parser, char *func_name)
 }
 
 /**
- * @brief Parse variable assignment statement (target = expr;).
+ * @brief Parse an assignment-like statement without the terminating semicolon.
+ * 'target = e' is a plain assignment. 'target += e' (and -=, *=, /=) and 'target++' (and --) are
+ * rewritten to 'target = target <op> e' (e is the literal 1 for ++ and --), so the evaluators
+ * only ever see AST_ASSIGNMENT. The target is cloned because it is both the destination and the
+ * left operand and each node must have exactly one owner.
  * @param parser Pointer to parser.
- * @param target Target AST node for assignment.
+ * @param target Target AST node already parsed (identifier or array access).
  * @return AST assignment node.
  */
-/* <target> = <expr>; */
-static ast_t *parser_parse_assignment(parser_t *parser, ast_t *target)
+/* <target> (= | += | -= | *= | /=) <expr>   |   <target> (++ | --) */
+static ast_t *parser_parse_assignment_expr(parser_t *parser, ast_t *target)
 {
-    /* Consume assignment operator '=' and parse right-hand side expression */
-    parser_eat(parser, TOKEN_EQUALS); // Eat '='
-    ast_t *value = parser_parse_expr(parser);
+    int token_type = parser->current_token->type;
+    int line = parser->lexer->line_num;
+    ast_t *value = NULL;
 
-    /* Construct AST assignment node and consume terminating semicolon */
+    if (token_type == TOKEN_EQUALS) {
+        /* Plain assignment: the right-hand side is used as is */
+        parser_eat(parser, TOKEN_EQUALS); // Eat '='
+        value = parser_parse_expr(parser);
+    } else {
+        /* Map the operator token to the binary operator it stands for */
+        int op = OP_ADD;
+        switch (token_type) {
+        case TOKEN_PLUS_EQUALS:
+        case TOKEN_PLUS_PLUS:
+            op = OP_ADD;
+            break;
+        case TOKEN_MINUS_EQUALS:
+        case TOKEN_MINUS_MINUS:
+            op = OP_SUB;
+            break;
+        case TOKEN_STAR_EQUALS:
+            op = OP_MUL;
+            break;
+        case TOKEN_SLASH_EQUALS:
+            op = OP_DIV;
+            break;
+        default:
+            ti_log("[Parser Error] Unexpected token %s in assignment at line %d\n",
+                   token_to_str(token_type), parser->lexer->line_num);
+            ti_log_line(parser->lexer->line);
+            ti_fatal();
+            return NULL;
+        }
+        parser_eat(parser, token_type); // Eat the operator token
+
+        /* Right operand: the literal 1 for ++/--, otherwise the parsed expression */
+        ast_t *right = NULL;
+        if (token_type == TOKEN_PLUS_PLUS || token_type == TOKEN_MINUS_MINUS) {
+            right = ast_init(parser->alloc_list, AST_INT_LITERAL, line);
+            right->value.int_value = 1;
+        } else {
+            right = parser_parse_expr(parser);
+        }
+
+        /* The target is reused as the left operand, so it needs its own copy */
+        ast_t *left = ast_clone(parser->alloc_list, target);
+        if (left == NULL) {
+            ti_log("[Parser Error] Unsupported target for compound assignment at line %d\n", line);
+            ti_log_line(parser->lexer->line);
+            ti_fatal();
+            return NULL;
+        }
+
+        value = ast_init(parser->alloc_list, AST_BINARY_EXPR, line);
+        value->value.binary_expr.op = op;
+        value->value.binary_expr.left = left;
+        value->value.binary_expr.right = right;
+    }
+
+    /* Construct AST assignment node (the caller consumes the terminator) */
     ast_t *assignment_node = ast_init(parser->alloc_list, AST_ASSIGNMENT, parser->lexer->line_num);
     assignment_node->value.assignment.target = target;
     assignment_node->value.assignment.value = value;
-    parser_eat(parser, TOKEN_SEMI);   // Eat ';'
     return assignment_node;
 }
 
@@ -953,6 +1023,133 @@ static ast_t *parser_parse_continue_statement(parser_t *parser)
     parser_eat(parser, TOKEN_SEMI);         // Eat ';'
 
     return ast_init(parser->alloc_list, AST_CONTINUE_STATEMENT, parser->lexer->line_num);
+}
+
+/**
+ * @brief Parse the rest of a variable definition after '<type> <name>': = expr;.
+ * @param parser Pointer to parser (current token is '=').
+ * @param type Declared type.
+ * @param name Variable name (ownership passes to the AST node).
+ * @return AST variable definition node.
+ */
+static ast_t *parser_parse_variable_definition(parser_t *parser, type_spec_t type, char *name)
+{
+    ast_t *var_def_node = parser_parse_variable_declaration(parser, type, name);
+    parser_eat(parser, TOKEN_SEMI); // Eat ';'
+    return var_def_node;
+}
+
+/**
+ * @brief Check whether a token starts the right part of an assignment-like statement.
+ * @param token_type Token type enum value.
+ * @return true for '=', '+=', '-=', '*=', '/=', '++' and '--'.
+ */
+static bool parser_is_update_token(int token_type)
+{
+    return token_type == TOKEN_EQUALS || token_type == TOKEN_PLUS_EQUALS ||
+           token_type == TOKEN_MINUS_EQUALS || token_type == TOKEN_STAR_EQUALS ||
+           token_type == TOKEN_SLASH_EQUALS || token_type == TOKEN_PLUS_PLUS ||
+           token_type == TOKEN_MINUS_MINUS;
+}
+
+/**
+ * @brief Parse variable assignment statement (target = expr;).
+ * @param parser Pointer to parser.
+ * @param target Target AST node for assignment.
+ * @return AST assignment node.
+ */
+static ast_t *parser_parse_assignment(parser_t *parser, ast_t *target)
+{
+    ast_t *assignment_node = parser_parse_assignment_expr(parser, target);
+    parser_eat(parser, TOKEN_SEMI);   // Eat ';'
+    return assignment_node;
+}
+
+/**
+ * @brief Parse for loop statement: for (init; condition; step) { body }.
+ * Each header part may be omitted. init is a variable definition or an assignment, condition is
+ * an expression, step is an assignment (assignment is a statement, so there is no i++).
+ * @param parser Pointer to parser.
+ * @return AST for node.
+ */
+/* for ([<definition> | <assignment>]; [<expr>]; [<assignment>]) { <compound> } */
+static ast_t *parser_parse_for_statement(parser_t *parser)
+{
+    int line = parser->lexer->line_num;
+    ast_t *init = NULL;
+    ast_t *condition = NULL;
+    ast_t *step = NULL;
+
+    parser_eat(parser, TOKEN_KW_FOR); // Eat 'for'
+    parser_eat(parser, TOKEN_LPAREN); // Eat '('
+
+    /* Init part: a declaration or an assignment, followed by the first separator */
+    switch (parser->current_token->type) {
+    case TOKEN_SEMI:
+        break; /* omitted */
+    case TOKEN_KW_INT:
+    case TOKEN_KW_FLOAT:
+    case TOKEN_KW_STRING:
+    case TOKEN_KW_BOOL:
+    case TOKEN_KW_DICT:
+    case TOKEN_KW_LIST:
+    case TOKEN_KW_BYTES: {
+        type_spec_t init_type = parser_parse_type(parser);
+        char *init_name = parser_take_identifier(parser);
+        init = parser_parse_variable_declaration(parser, init_type, init_name);
+        break;
+    }
+    case TOKEN_ID: {
+        ast_t *target = parser_parse_expr(parser);
+        if (!parser_is_update_token(parser->current_token->type)) {
+            ti_log("[Parser Error] for-loop init must be a definition or an assignment at line %d\n", parser->lexer->line_num);
+            ti_log_line(parser->lexer->line);
+            ti_fatal();
+        }
+        init = parser_parse_assignment_expr(parser, target);
+        break;
+    }
+    default:
+        ti_log("[Parser Error] Unexpected token %s in for-loop init at line %d\n",
+               token_to_str(parser->current_token->type), parser->lexer->line_num);
+        ti_log_line(parser->lexer->line);
+        ti_fatal();
+    }
+    parser_eat(parser, TOKEN_SEMI); // Eat first ';'
+
+    /* Condition part: an expression (omitted means always true) */
+    if (parser->current_token->type != TOKEN_SEMI) {
+        condition = parser_parse_expr(parser);
+    }
+    parser_eat(parser, TOKEN_SEMI); // Eat second ';'
+
+    /* Step part: an assignment (omitted is allowed) */
+    if (parser->current_token->type != TOKEN_RPAREN) {
+        if (parser->current_token->type != TOKEN_ID) {
+            ti_log("[Parser Error] for-loop step must be an assignment at line %d\n", parser->lexer->line_num);
+            ti_log_line(parser->lexer->line);
+            ti_fatal();
+        }
+        /* Current token is TOKEN_ID, so the AST returned from parser_expr should be identifier or array access*/
+        ast_t *target = parser_parse_expr(parser);
+        if (!parser_is_update_token(parser->current_token->type)) {
+            ti_log("[Parser Error] for-loop step must be an assignment at line %d\n", parser->lexer->line_num);
+            ti_log_line(parser->lexer->line);
+            ti_fatal();
+        }
+        step = parser_parse_assignment_expr(parser, target);
+    }
+    parser_eat(parser, TOKEN_RPAREN); // Eat ')'
+
+    /* Loop body is always a compound block */
+    ast_t *body = parser_parse_statements(parser);
+
+    ast_t *for_node = ast_init(parser->alloc_list, AST_FOR_STATEMENT, line);
+    for_node->value.for_statement.init = init;
+    for_node->value.for_statement.condition = condition;
+    for_node->value.for_statement.step = step;
+    for_node->value.for_statement.body = body;
+    return for_node;
 }
 
 /* -------------------- Public Functions -------------------- */

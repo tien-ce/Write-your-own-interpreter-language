@@ -61,6 +61,16 @@ static value_t *binary_add(ti_runtime_t *rt, value_t *left, value_t *right, int 
         strcat(value->string_val, s_right);
         break;
     }
+    case VAL_BYTES: {
+        /* Concatenation builds its own result, so drop the preallocated shell first */
+        val_free(value);
+        value_t *joined = NULL;
+        ti_status_t status = val_bytes_concat(left->bytes_val, right->bytes_val, &joined);
+        if (status != TI_OK) {
+            ti_raise(rt, status, line, "Cannot concatenate bytes: %s", ti_err_to_str(status));
+        }
+        return joined;
+    }
     default:
         /* Handle unsupported operand types and signal fatal error */
         ti_raise(rt, TI_ERR_TYPE_MISMATCH, line, "Unexpected operands %s, %s in binary add", val_type_to_str(left->type), val_type_to_str(right->type));
@@ -228,6 +238,10 @@ static value_t *binary_equal(ti_runtime_t *rt, value_t *left, value_t *right, in
         /* Compare boolean states */
         value->bool_val = (left->bool_val == right->bool_val);
         break;
+    case VAL_BYTES:
+        /* Equal length and content */
+        value->bool_val = val_bytes_equal(left->bytes_val, right->bytes_val);
+        break;
     case VAL_NULL:
         /* Both operands are NULL; evaluate to true */
         value->bool_val = true;
@@ -278,6 +292,10 @@ static value_t *binary_not_equal(ti_runtime_t *rt, value_t *left, value_t *right
     case VAL_BOOL:
         /* Compare boolean states */
         value->bool_val = (left->bool_val != right->bool_val);
+        break;
+    case VAL_BYTES:
+        /* Different length or content */
+        value->bool_val = !val_bytes_equal(left->bytes_val, right->bytes_val);
         break;
     case VAL_NULL:
         /* Both operands are NULL; evaluate to false */

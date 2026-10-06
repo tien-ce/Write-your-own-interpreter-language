@@ -42,6 +42,8 @@ value_t *visitor_visit(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         return eval_dict_literal(rt, ctx, node);
     case AST_LIST_LITERAL:
         return eval_list_literal(rt, ctx, node);
+    case AST_BYTES_LITERAL:
+        return eval_bytes_literal(rt, ctx, node);
     case AST_BOOLEAN:
         return eval_boolean_literal(ctx, node);
     case AST_IDENTIFIER:

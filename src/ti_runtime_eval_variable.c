@@ -162,7 +162,7 @@ value_t *eval_assignment(ti_runtime_t *rt, context_t *ctx, ast_t *node)
 
         /* Only dict and list support subscript assignment */
         val_type_t container_type = variable->value->type;
-        if (container_type != VAL_DICT && container_type != VAL_LIST) {
+        if (container_type != VAL_DICT && container_type != VAL_LIST && container_type != VAL_BYTES) {
             ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line,
                      "Type '%s' does not support subscript assignment", val_type_to_str(container_type));
             goto out;
@@ -188,7 +188,7 @@ value_t *eval_assignment(ti_runtime_t *rt, context_t *ctx, ast_t *node)
                          key_val->string_val, container_name, ti_err_to_str(status));
                 goto out;
             }
-        } else {
+        } else if (container_type == VAL_LIST) {
             if (key_val->type != VAL_INT) {
                 ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line,
                          "List index must be an integer for variable '%s'", container_name);
@@ -199,6 +199,19 @@ value_t *eval_assignment(ti_runtime_t *rt, context_t *ctx, ast_t *node)
             val = NULL;
             if (status != TI_OK) {
                 ti_raise(rt, status, node->line, "Cannot assign list index %d of '%s': %s",
+                         key_val->int_val, container_name, ti_err_to_str(status));
+                goto out;
+            }
+        } else {
+            /* bytes[i] = int: both index and new byte must be ints; val_bytes_set checks the ranges */
+            if (key_val->type != VAL_INT || val->type != VAL_INT) {
+                ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line,
+                         "Bytes index and value must be integers for variable '%s'", container_name);
+                goto out;
+            }
+            status = val_bytes_set(variable->value->bytes_val, key_val->int_val, val->int_val);
+            if (status != TI_OK) {
+                ti_raise(rt, status, node->line, "Cannot assign bytes index %d of '%s': %s",
                          key_val->int_val, container_name, ti_err_to_str(status));
                 goto out;
             }
@@ -296,6 +309,29 @@ value_t *eval_array_access(ti_runtime_t *rt, context_t *ctx, ast_t *node)
                      val_list_count(container_var->value->list_val), ti_err_to_str(status));
         }
         break;
+
+    case VAL_BYTES: {
+        if (key_val->type != VAL_INT) {
+            ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line,
+                     "Bytes index must be an integer for variable '%s'", container_name);
+            break;
+        }
+
+        /* Read the byte, then wrap it as an int value (scripts see 0..255) */
+        int byte_val = 0;
+        status = val_bytes_get(container_var->value->bytes_val, key_val->int_val, &byte_val);
+        if (status != TI_OK) {
+            ti_raise(rt, status, node->line, "Cannot read bytes index %d of '%s' (size %d): %s",
+                     key_val->int_val, container_name,
+                     container_var->value->bytes_val->length, ti_err_to_str(status));
+            break;
+        }
+        result_val = val_new_int(byte_val);
+        if (result_val == NULL) {
+            ti_raise(rt, TI_ERR_NO_MEMORY, node->line, "Cannot allocate result of '%s'", container_name);
+        }
+        break;
+    }
 
     default:
         ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line,

@@ -13,15 +13,18 @@ const char *token_type_to_str(int type)
     case TOKEN_FLOAT:     return "TOKEN_FLOAT";
     case TOKEN_STRING:    return "TOKEN_STRING";
     case TOKEN_BOOL:      return "TOKEN_BOOL";
+    case TOKEN_BYTES:     return "TOKEN_BYTES";
     case TOKEN_KW_VOID:   return "TOKEN_KW_VOID";
     case TOKEN_KW_INT:    return "TOKEN_KW_INT";
     case TOKEN_KW_FLOAT:  return "TOKEN_KW_FLOAT";
     case TOKEN_KW_STRING: return "TOKEN_KW_STRING";
     case TOKEN_KW_BOOL:   return "TOKEN_KW_BOOL";
     case TOKEN_KW_LIST:   return "TOKEN_KW_LIST";
+    case TOKEN_KW_BYTES:  return "TOKEN_KW_BYTES";
     case TOKEN_KW_IF:     return "TOKEN_KW_IF";
     case TOKEN_KW_ELSE:   return "TOKEN_KW_ELSE";
     case TOKEN_KW_WHILE:  return "TOKEN_KW_WHILE";
+    case TOKEN_KW_FOR:    return "TOKEN_KW_FOR";
     case TOKEN_KW_RETURN: return "TOKEN_KW_RETURN";
     case TOKEN_KW_BREAK:  return "TOKEN_KW_BREAK";
     case TOKEN_KW_CONTINUE: return "TOKEN_KW_CONTINUE";
@@ -37,6 +40,12 @@ const char *token_type_to_str(int type)
     case TOKEN_MINUS:     return "TOKEN_MINUS";
     case TOKEN_STAR:      return "TOKEN_STAR";
     case TOKEN_SLASH:     return "TOKEN_SLASH";
+    case TOKEN_PLUS_EQUALS:  return "TOKEN_PLUS_EQUALS";
+    case TOKEN_MINUS_EQUALS: return "TOKEN_MINUS_EQUALS";
+    case TOKEN_STAR_EQUALS:  return "TOKEN_STAR_EQUALS";
+    case TOKEN_SLASH_EQUALS: return "TOKEN_SLASH_EQUALS";
+    case TOKEN_PLUS_PLUS:    return "TOKEN_PLUS_PLUS";
+    case TOKEN_MINUS_MINUS:  return "TOKEN_MINUS_MINUS";
     case TOKEN_SEMI:      return "TOKEN_SEMI";
     case TOKEN_LPAREN:    return "TOKEN_LPAREN";
     case TOKEN_RPAREN:    return "TOKEN_RPAREN";
@@ -128,6 +137,7 @@ const char *val_type_to_str(val_type_t type)
     case VAL_BOOL:   return "bool";
     case VAL_VOID:   return "void";
     case VAL_LIST:   return "list";
+    case VAL_BYTES:  return "bytes";
     default:         return "?";
     }
 }
@@ -150,6 +160,7 @@ const char *ti_err_to_str(ti_status_t status)
     case TI_ERR_INTERRUPTED:       return "interrupted";
     case TI_ERR_TYPE_MISMATCH:     return "type mismatch";
     case TI_ERR_INDEX_OUT_OF_RANGE: return "index out of range";
+    case TI_ERR_VALUE_OUT_OF_RANGE: return "value out of range";
     case TI_ERR_KEY_NOT_FOUND:     return "key not found";
     case TI_ERR_LIMIT_EXCEEDED:    return "limit exceeded";
     case TI_ERR_UNDEFINED:         return "undefined name";

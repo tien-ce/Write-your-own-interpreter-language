@@ -68,7 +68,7 @@ value_t *eval_if_statement(ti_runtime_t *rt, context_t *ctx, ast_t *node);
 value_t *eval_while_statement(ti_runtime_t *rt, context_t *ctx, ast_t *node);
 
 /**
- * @brief Evaluate a for loop statement node (stub).
+ * @brief Evaluate a for loop statement node: for (init; condition; step) { body }.
  * @param rt Pointer to active runtime instance.
  * @param ctx Pointer to active execution context scope.
  * @param node Pointer to for statement AST node.
@@ -185,6 +185,14 @@ value_t *eval_dict_literal(ti_runtime_t *rt, context_t *ctx, ast_t *node);
  * @return Newly allocated VAL_LIST value_t, or NULL on interruption or error.
  */
 value_t *eval_list_literal(ti_runtime_t *rt, context_t *ctx, ast_t *node);
+/**
+ * @brief Evaluate a bytes literal node (x"01 02 3F") into a new bytes value_t.
+ * @param rt Pointer to active runtime instance.
+ * @param ctx Pointer to active execution context scope.
+ * @param node Bytes literal AST node.
+ * @return Newly allocated VAL_BYTES value_t, or NULL after raising a runtime error.
+ */
+value_t *eval_bytes_literal(ti_runtime_t *rt, context_t *ctx, ast_t *node);
 /* -------------------- Function Call & Definition Evaluators -------------------- */
 
 /**

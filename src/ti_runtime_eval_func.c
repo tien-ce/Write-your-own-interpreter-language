@@ -189,6 +189,13 @@ value_t *run_ti_function(ti_runtime_t *rt, context_t *ctx, function_t *func, val
     }
 
     /* Verify return value type matches declared function return type */
+    if (ret_val != NULL && ret_val->type == VAL_LIST && func->return_type == VAL_LIST &&
+        func->return_element_type != VAL_NULL && ret_val->list_val->elem_type != func->return_element_type) {
+        /* Same container type, different element type (list int vs list string) */
+        ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line, "Function '%s' declared to return list %s, but returned list %s",
+                 func->name, val_type_to_str(func->return_element_type), val_type_to_str(ret_val->list_val->elem_type));
+        goto out;
+    }
     if (ret_val != NULL && ret_val->type != func->return_type) {
         ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line, "Function '%s' declared to return %s, but returned %s",
                  func->name, val_type_to_str(func->return_type), val_type_to_str(ret_val->type));
@@ -240,6 +247,7 @@ value_t *eval_function_definition(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         for (int i = 0; i < param_count; i++) {
             ast_t *param_node = node->value.function_definition.params[i];
             params[i].type = param_node->value.param.param_type;
+            params[i].element_type = param_node->value.param.element_type;
             params[i].name = tracked_strdup(&rt->alloc_list, param_node->value.param.param_name);
         }
     }
@@ -248,6 +256,7 @@ value_t *eval_function_definition(ti_runtime_t *rt, context_t *ctx, ast_t *node)
     rt->user_functions[rt->user_function_count].name = name;
     rt->user_functions[rt->user_function_count].type = FUNC_TI;
     rt->user_functions[rt->user_function_count].return_type = node->value.function_definition.return_type;
+    rt->user_functions[rt->user_function_count].return_element_type = node->value.function_definition.return_element_type;
     rt->user_functions[rt->user_function_count].params = params;
     rt->user_functions[rt->user_function_count].param_count = param_count;
     rt->user_functions[rt->user_function_count].def = node;
@@ -282,6 +291,14 @@ value_t *run_function(ti_runtime_t *rt, context_t *ctx, function_t *func, value_
                      func->params[i].name ? func->params[i].name : "unnamed",
                      val_type_to_str(func->params[i].type),
                      val_type_to_str(argv[i]->type));
+            return NULL;
+        }
+        /* Same container type, different element type (list int vs list string) */
+        if (argv[i]->type == VAL_LIST && func->params[i].element_type != VAL_NULL &&
+            argv[i]->list_val->elem_type != func->params[i].element_type) {
+            ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line, "Function '%s' parameter %d ('%s') expected list %s, but got list %s",
+                     func->name, i + 1, func->params[i].name ? func->params[i].name : "unnamed",
+                     val_type_to_str(func->params[i].element_type), val_type_to_str(argv[i]->list_val->elem_type));
             return NULL;
         }
     }

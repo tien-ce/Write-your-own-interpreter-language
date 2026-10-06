@@ -17,6 +17,7 @@ typedef struct AST_STRUCT {
     AST_DICT_LITERAL,         // { "key": 1 }
     AST_LIST_LITERAL,         // [1, 2, 3]
     AST_IDENTIFIER,           // x, my_var (variable/function reference)
+    AST_BYTES_LITERAL,        // x"0x10, 0x20"
 
     /* EXPRESSIONS */
     AST_BINARY_EXPR,          // x + y, a == b
@@ -102,6 +103,11 @@ typedef struct AST_STRUCT {
       val_type_t element_type;      // Declared element type from the definition (VAL_NULL = infer at runtime)
     } list_literal;
 
+    /* Bytes literal */
+    struct {
+        uint8_t *data;              // Decoded bytes (NULL when length = 0)
+        int length;                 // Number of bytes
+    } bytes_literal;
     /* Variable definition statement */
     struct {
       val_type_t variable_type;
@@ -119,6 +125,7 @@ typedef struct AST_STRUCT {
 
     struct {
       val_type_t return_type;       // Declared function return data type
+      val_type_t return_element_type; // Element type when return_type is VAL_LIST (VAL_NULL otherwise)
       char *func_name;              // Function identifier name
       int param_count;              // Number of declared parameters
       struct AST_STRUCT **params;   // Array of parameter AST nodes
@@ -128,6 +135,7 @@ typedef struct AST_STRUCT {
     /* Parameter */
     struct {
       val_type_t param_type;        // Expected parameter type (VAL_INT, VAL_STRING, etc.)
+      val_type_t element_type;      // Element type when param_type is VAL_LIST (VAL_NULL otherwise)
       char *param_name;             // Parameter identifier name
     } param;
 
@@ -142,6 +150,14 @@ typedef struct AST_STRUCT {
       struct AST_STRUCT *condition; // Point to expression node
       struct AST_STRUCT *body;      // Point to compound node
     } while_statement;
+
+    /* For statement: for (init; condition; step) body; any of the three header parts may be NULL */
+    struct {
+      struct AST_STRUCT *init;      // Variable definition or assignment (NULL if omitted)
+      struct AST_STRUCT *condition; // Expression (NULL means always true)
+      struct AST_STRUCT *step;      // Assignment executed after each iteration (NULL if omitted)
+      struct AST_STRUCT *body;      // Compound node
+    } for_statement;
 
     struct {
       struct AST_STRUCT *condition; // Point to expression node
@@ -177,5 +193,15 @@ ast_t *ast_init(alloc_hdr_t **list, int type, int line);
  * @param ast Root AST node to free.
  */
 void ast_free(ast_t *ast);
+
+/**
+ * @brief Deep-copy an expression AST node (used to reuse an assignment target as an operand).
+ * Supports identifiers, int/float/string/bool literals, binary/unary expressions, array accesses
+ * and function calls; any other node kind is not cloneable.
+ * @param list Pointer to head of allocation list (can be NULL if unlinked).
+ * @param ast Node to copy.
+ * @return Newly allocated copy owning all its children, or NULL if unsupported or out of memory.
+ */
+ast_t *ast_clone(alloc_hdr_t **list, const ast_t *ast);
 
 #endif /* !TI_TYPE_AST_H */

@@ -35,12 +35,14 @@ typedef value_t *(*native_fn_t)(ti_handle_t handle, value_t **args, int argc);
 typedef struct PARAM_STRUCT {
     val_type_t type;          /* Expected parameter type (VAL_INT, VAL_STRING, etc.) */
     char *name;               /* Parameter identifier name (e.g. "a", "count") */
+    val_type_t element_type;  /* Expected element type when type is VAL_LIST (VAL_NULL accepts any) */
 } param_t;
 
 typedef struct FUNCTION_STRUCT {
     const char *name;          /* Function identifier in Ti scripts */
     func_type_t type;          /* FUNC_BUILTIN or FUNC_TI */
     val_type_t  return_type;   /* Declared return type (VAL_INT, VAL_VOID, etc.) */
+    val_type_t  return_element_type; /* Element type when return_type is VAL_LIST (VAL_NULL otherwise) */
     param_t    *params;        /* Array of parameter metadata */
     int         param_count;   /* Number of declared parameters (-1 for variadic builtins) */
     union {

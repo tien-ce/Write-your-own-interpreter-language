@@ -38,6 +38,7 @@ const char *token_to_str(int token_type)
     case TOKEN_FLOAT:       return "FLOAT";
     case TOKEN_STRING:      return "STRING";
     case TOKEN_BOOL:        return "BOOL";
+    case TOKEN_BYTES:       return "BYTES";
     case TOKEN_KW_VOID:     return "VOID";
     case TOKEN_KW_INT:      return "'int'";
     case TOKEN_KW_FLOAT:    return "'float'";
@@ -45,9 +46,11 @@ const char *token_to_str(int token_type)
     case TOKEN_KW_BOOL:     return "'bool'";
     case TOKEN_KW_DICT:     return "'dict'";
     case TOKEN_KW_LIST:     return "'list'";
+    case TOKEN_KW_BYTES:    return "bytes";
     case TOKEN_KW_IF:       return "'if'";
     case TOKEN_KW_ELSE:     return "'else'";
     case TOKEN_KW_WHILE:    return "'while'";
+    case TOKEN_KW_FOR:      return "'for'";
     case TOKEN_KW_RETURN:   return "'return'";
     case TOKEN_KW_BREAK:    return "'break'";
     case TOKEN_KW_CONTINUE: return "'continue'";
@@ -63,6 +66,12 @@ const char *token_to_str(int token_type)
     case TOKEN_MINUS:       return "'-'";
     case TOKEN_STAR:        return "'*'";
     case TOKEN_SLASH:       return "'/'";
+    case TOKEN_PLUS_EQUALS: return "'+='";
+    case TOKEN_MINUS_EQUALS: return "'-='";
+    case TOKEN_STAR_EQUALS: return "'*='";
+    case TOKEN_SLASH_EQUALS: return "'/='";
+    case TOKEN_PLUS_PLUS:   return "'++'";
+    case TOKEN_MINUS_MINUS: return "'--'";
     case TOKEN_SEMI:        return "';'";
     case TOKEN_COLON:       return "':'";
     case TOKEN_LPAREN:      return "'('";

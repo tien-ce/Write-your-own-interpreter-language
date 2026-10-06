@@ -4,6 +4,7 @@
 #include "ti_type.h"
 #include "tracked_memory.h"
 #include <stdbool.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -26,6 +27,7 @@ struct DICT_STRUCT {
 };
 
 typedef struct LIST_STRUCT list_t;
+typedef struct BYTES_STRUCT bytes_t;
 
 typedef struct VALUE_STRUCT {
     val_type_t type;
@@ -36,6 +38,7 @@ typedef struct VALUE_STRUCT {
         bool bool_val;
         dict_t *dict_val;
         list_t *list_val;
+        bytes_t *bytes_val;
     };
 } value_t;
 
@@ -60,6 +63,18 @@ struct LIST_STRUCT {
     int        capacity;  /* Number of allocated element slots */
     val_type_t elem_type; /* Element type shared by every item (int, float, string or bool) */
     int        refcount;  /* Counter tracking active references to manage memory deallocation */
+};
+
+/**
+ * @brief Reference-counted raw byte buffer.
+ * Elements are plain bytes (not value_t), so a buffer costs one byte per element. Scripts see
+ * each element as an int in 0..255. The data is binary: it is not NUL-terminated and is not text.
+ */
+struct BYTES_STRUCT {
+    uint8_t *data;     /* Raw storage allocated with ti_raw_* (NULL while length == 0 and unallocated) */
+    int      length;   /* Number of bytes in use */
+    int      capacity; /* Number of allocated bytes */
+    int      refcount; /* Counter tracking active references to manage memory deallocation */
 };
 
 /* -------------------- Value Constructors & Destructors -------------------- */

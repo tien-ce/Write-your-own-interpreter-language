@@ -144,18 +144,91 @@ value_t *eval_if_statement(ti_runtime_t *rt, context_t *ctx, ast_t *node)
 }
 
 /**
- * @brief Execute a for statement node (stub).
+ * @brief Execute a for statement node: for (init; condition; step) { body }.
+ * The loop owns one scope (child of ctx) that holds the init variable, so it is not visible after
+ * the loop. 'continue' still runs the step, 'break' ends the loop and 'return' is handed to ctx.
+ * Each iteration is a safe point (cancellation, queued events).
  * @param rt Pointer to active runtime instance.
  * @param ctx Pointer to context.
  * @param node For statement AST node.
- * @return Always TI_VAL_OK.
+ * @return TI_VAL_OK on success, NULL on failure or cancellation.
  */
 value_t *eval_for_statement(ti_runtime_t *rt, context_t *ctx, ast_t *node)
 {
-    (void)rt;
-    (void)ctx;
-    (void)node;
-    return TI_VAL_OK;
+    value_t *result = NULL;
+    value_t *part_result = NULL;
+    ast_t *init_node = node->value.for_statement.init;
+    ast_t *condition_node = node->value.for_statement.condition;
+    ast_t *step_node = node->value.for_statement.step;
+
+    /* One scope for the whole loop: init variables live here and die with the loop */
+    context_t *loop_ctx = context_init(&rt->alloc_list);
+    if (loop_ctx == NULL) {
+        ti_raise(rt, TI_ERR_NO_MEMORY, node->line, "Cannot allocate for-loop scope");
+        return NULL;
+    }
+    loop_ctx->parent = ctx;
+
+    /* Init runs once; NULL means it failed or was cancelled */
+    if (init_node != NULL) {
+        part_result = visitor_visit(rt, loop_ctx, init_node);
+        if (part_result == NULL) {
+            goto out;
+        }
+        val_free(part_result);
+    }
+
+    for (;;) {
+        /* Safe point: abort long-running loops and service native events */
+        if (ti_runtime_safe_point(rt)) {
+            goto out;
+        }
+
+        /* Condition: omitted means always true */
+        bool condition = true;
+        if (condition_node != NULL && !eval_boolean_condition(rt, loop_ctx, condition_node, &condition)) {
+            goto out;
+        }
+        if (!condition) {
+            break;
+        }
+
+        /* Body runs in a child scope of the loop scope */
+        if (!visitor_execute_body(rt, loop_ctx, node->value.for_statement.body)) {
+            goto out;
+        }
+
+        /* Control flow signals raised by the body */
+        if (loop_ctx->flow_state == FLOW_BREAK) {
+            loop_ctx->flow_state = FLOW_NORMAL;
+            break;
+        } else if (loop_ctx->flow_state == FLOW_RETURN) {
+            /* Hand the return payload to the enclosing scope; the step must not run */
+            ctx->flow_state = FLOW_RETURN;
+            ctx->return_value = loop_ctx->return_value;
+            loop_ctx->return_value = NULL;
+            loop_ctx->flow_state = FLOW_NORMAL;
+            break;
+        }
+        /* 'continue' is consumed here and falls through to the step */
+        loop_ctx->flow_state = FLOW_NORMAL;
+
+        /* Step runs after every completed or continued iteration */
+        if (step_node != NULL) {
+            part_result = visitor_visit(rt, loop_ctx, step_node);
+            if (part_result == NULL) {
+                goto out;
+            }
+            val_free(part_result);
+        }
+    }
+
+    result = TI_VAL_OK;
+
+out:
+    /* Single cleanup point: the loop scope and any payload still held by it */
+    context_free(&rt->alloc_list, loop_ctx);
+    return result;
 }
 
 /**

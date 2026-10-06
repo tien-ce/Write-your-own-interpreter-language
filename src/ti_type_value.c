@@ -2,6 +2,7 @@
 #include "include/ti_type.h"
 #include "include/ti_type_value_dict.h"
 #include "include/ti_type_value_list.h"
+#include "include/ti_type_value_bytes.h"
 #include "include/tracked_memory.h"
 #include "include/debug.h"
 #include "TienInterpreter.h"
@@ -103,6 +104,11 @@ void val_free_internal(value_t *value)
         dict_release(value->dict_val);
         value->dict_val = NULL;
     }
+    /* Release bytes reference and free the buffer if refcount reaches 0 */
+    else if (value->type == VAL_BYTES && value->bytes_val != NULL) {
+        bytes_release(value->bytes_val);
+        value->bytes_val = NULL;
+    }
     /* Release list reference and free its items if refcount reaches 0 */
     else if (value->type == VAL_LIST && value->list_val != NULL) {
         list_release(value->list_val);
@@ -190,6 +196,11 @@ value_t *val_copy(const value_t *val)
         /* Share the same list object (reference semantics, like dict) */
         copy->list_val = val->list_val;
         list_retain(copy->list_val);
+        break;
+    case VAL_BYTES:
+        /* Share the same buffer (reference semantics, like list and dict) */
+        copy->bytes_val = val->bytes_val;
+        bytes_retain(copy->bytes_val);
         break;
     case VAL_VOID:
     case VAL_NULL:

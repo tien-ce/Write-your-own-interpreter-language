@@ -10,6 +10,7 @@ extern "C" {
 #include "include/ti_type_value.h"
 #include "include/ti_type_value_dict.h"
 #include "include/ti_type_value_list.h"
+#include "include/ti_type_value_bytes.h"
 #include "include/ti_type_func.h"
 #include "include/ti_build_program.h"
 

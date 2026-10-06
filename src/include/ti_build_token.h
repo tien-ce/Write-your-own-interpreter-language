@@ -12,6 +12,7 @@ typedef enum token_type {
     TOKEN_FLOAT,        // 3.14
     TOKEN_STRING,       // "hello"
     TOKEN_BOOL,         // true, false 
+    TOKEN_BYTES,        // x"00 01"
 
     /* KEYWORDS */
     TOKEN_KW_VOID,
@@ -21,9 +22,11 @@ typedef enum token_type {
     TOKEN_KW_BOOL,      // bool 
     TOKEN_KW_DICT,      // dict
     TOKEN_KW_LIST,      // list
+    TOKEN_KW_BYTES,     // bytes
     TOKEN_KW_IF,        // if
     TOKEN_KW_ELSE,      // else
     TOKEN_KW_WHILE,     // while
+    TOKEN_KW_FOR,       // for
     TOKEN_KW_RETURN,    // return
     TOKEN_KW_BREAK,     // break
     TOKEN_KW_CONTINUE,  // continue
@@ -41,6 +44,12 @@ typedef enum token_type {
     TOKEN_MINUS,        // -
     TOKEN_STAR,         // *
     TOKEN_SLASH,        // /
+    TOKEN_PLUS_EQUALS,  // +=
+    TOKEN_MINUS_EQUALS, // -=
+    TOKEN_STAR_EQUALS,  // *=
+    TOKEN_SLASH_EQUALS, // /=
+    TOKEN_PLUS_PLUS,    // ++
+    TOKEN_MINUS_MINUS,  // --
     TOKEN_SEMI,         // ;
     TOKEN_COLON,        // :
     TOKEN_LPAREN,       // (

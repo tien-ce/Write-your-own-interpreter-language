@@ -172,3 +172,16 @@ out:
     val_free(list_val);
     return result;
 }
+
+/* Evaluate a bytes literal node into a new bytes value_t */
+value_t *eval_bytes_literal(ti_runtime_t *rt, context_t *ctx, ast_t *node)
+{
+    (void)ctx;
+
+    /* The AST keeps the decoded bytes; the value gets its own copy so scripts can modify it */
+    value_t *result = val_new_bytes(node->value.bytes_literal.data, node->value.bytes_literal.length);
+    if (result == NULL) {
+        ti_raise(rt, TI_ERR_NO_MEMORY, node->line, "Cannot allocate bytes literal");
+    }
+    return result;
+}
