@@ -23,6 +23,7 @@ typedef enum token_type {
     TOKEN_KW_DICT,      // dict
     TOKEN_KW_LIST,      // list
     TOKEN_KW_BYTES,     // bytes
+    TOKEN_KW_FUNC,      // func
     TOKEN_KW_IF,        // if
     TOKEN_KW_ELSE,      // else
     TOKEN_KW_WHILE,     // while

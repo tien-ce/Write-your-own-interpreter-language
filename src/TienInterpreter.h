@@ -133,6 +133,16 @@ ti_status_t ti_post_event(ti_handle_t handle, const char *func_name, value_t **a
  */
 ti_status_t ti_dispatch_events(ti_handle_t handle);
 
+/**
+ * @brief Raise a runtime error from native code and unwind the running script.
+ * The native must return NULL right after calling this. The error is reported at the line of the
+ * call, and only the first error of a run is kept.
+ * @param handle Runtime handle passed to the native function.
+ * @param kind Error category.
+ * @param fmt printf-style message format.
+ */
+void ti_raise_error(ti_handle_t handle, ti_status_t kind, const char *fmt, ...);
+
 #ifdef __cplusplus
 }
 #endif

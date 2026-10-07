@@ -242,17 +242,35 @@ out:
  */
 value_t *eval_identifier(ti_runtime_t *rt, context_t *ctx, ast_t *node)
 {
-    variable_t *variable = eval_lookup_variable(rt, ctx, node->value.identifier, node->line);
-    if (variable == NULL) {
-        return NULL;
+    const char *name = node->value.identifier;
+
+    /* A variable always wins over a function of the same name */
+    variable_t *variable = context_find_variable(ctx, name);
+    if (variable != NULL) {
+        if (variable->value == NULL) {
+            ti_raise(rt, TI_ERR_INTERNAL, node->line, "Variable '%s' has no value", name);
+            return NULL;
+        }
+
+        /* Return an independent deep copy of the variable's value */
+        value_t *value = context_copy_value(ctx ? ctx->alloc_list : NULL, variable);
+        if (value == NULL) {
+            ti_raise(rt, TI_ERR_NO_MEMORY, node->line, "Cannot copy value of '%s'", name);
+        }
+        return value;
     }
 
-    /* Return an independent deep copy of the variable's value */
-    value_t *value = context_copy_value(ctx ? ctx->alloc_list : NULL, variable);
-    if (value == NULL) {
-        ti_raise(rt, TI_ERR_NO_MEMORY, node->line, "Cannot copy value of '%s'", node->value.identifier);
+    /* No variable: a bare function name becomes a function value (resolved again when called) */
+    if (user_function_exists(rt, name)) {
+        value_t *func_val = val_new_func(name);
+        if (func_val == NULL) {
+            ti_raise(rt, TI_ERR_NO_MEMORY, node->line, "Cannot create function value '%s'", name);
+        }
+        return func_val;
     }
-    return value;
+
+    ti_raise(rt, TI_ERR_UNDEFINED, node->line, "Undefined variable '%s'", name);
+    return NULL;
 }
 
 /**

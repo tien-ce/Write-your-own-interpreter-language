@@ -283,3 +283,23 @@ ti_status_t ti_dispatch_events(ti_handle_t handle)
     }
     return ti_runtime_is_interrupted(rt) ? TI_ERR_INTERRUPTED : TI_OK;
 }
+
+/* Raise a runtime error from native code */
+void ti_raise_error(ti_handle_t handle, ti_status_t kind, const char *fmt, ...)
+{
+    /* The caller is a native running on this runtime, so it stays alive for this call */
+    ti_runtime_t *rt = ti_runtime_resolve(handle);
+    if (rt == NULL) {
+        return;
+    }
+
+    /* Format first: ti_raise takes a ready-made message through "%s" */
+    char message[TI_ERROR_MESSAGE_SIZE];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(message, sizeof(message), fmt, args);
+    va_end(args);
+
+    /* Line 0 means "unknown": run_function fills in the line of the call */
+    ti_raise(rt, kind, 0, "%s", message);
+}

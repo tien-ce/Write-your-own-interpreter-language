@@ -213,6 +213,15 @@ value_t *eval_function_call(ti_runtime_t *rt, context_t *ctx, ast_t *node);
  */
 value_t *eval_function_definition(ti_runtime_t *rt, context_t *ctx, ast_t *node);
 
+/**
+ * @brief Check whether the script has defined a function with the given name.
+ * Used to turn a bare function name into a function value (built-in natives do not count).
+ * @param rt Pointer to active runtime instance.
+ * @param name Function identifier name.
+ * @return true if a script-defined function with that name exists.
+ */
+bool user_function_exists(ti_runtime_t *rt, const char *name);
+
 #ifdef __cplusplus
 }
 #endif

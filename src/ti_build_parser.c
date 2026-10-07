@@ -108,6 +108,7 @@ static type_spec_t parser_parse_type(parser_t *parser)
     case TOKEN_KW_DICT:   spec.type = VAL_DICT;   break;
     case TOKEN_KW_LIST:   spec.type = VAL_LIST;   break;
     case TOKEN_KW_BYTES:  spec.type = VAL_BYTES;  break;
+    case TOKEN_KW_FUNC:   spec.type = VAL_FUNC;   break;
     default:
         ti_log("[Parser Error] Unexpected type %s, at line %d\n",
                token_to_str(parser->current_token->type), parser->lexer->line_num);
@@ -281,6 +282,7 @@ static ast_t *parser_parse_statement(parser_t *parser)
     case TOKEN_KW_DICT:
     case TOKEN_KW_LIST:
     case TOKEN_KW_BYTES:
+    case TOKEN_KW_FUNC:
         return parser_parse_definition(parser);
     case TOKEN_ID: {
         /* Parse expression starting with identifier; distinguish assignment from call */
@@ -1093,6 +1095,7 @@ static ast_t *parser_parse_for_statement(parser_t *parser)
     case TOKEN_KW_BOOL:
     case TOKEN_KW_DICT:
     case TOKEN_KW_LIST:
+    case TOKEN_KW_FUNC:
     case TOKEN_KW_BYTES: {
         type_spec_t init_type = parser_parse_type(parser);
         char *init_name = parser_take_identifier(parser);

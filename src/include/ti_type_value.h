@@ -39,6 +39,7 @@ typedef struct VALUE_STRUCT {
         dict_t *dict_val;
         list_t *list_val;
         bytes_t *bytes_val;
+        char *func_name;           /* VAL_FUNC: name of a script function, resolved at call time */
     };
 } value_t;
 
@@ -128,6 +129,21 @@ value_t *val_new_dict(void);
  * @return Newly allocated VAL_LIST value_t, or NULL on invalid type or out of memory.
  */
 value_t *val_new_list(val_type_t elem_type);
+
+/**
+ * @brief Create a function value referring to a script function by name.
+ * The name (not a pointer) is stored, so the reference stays valid when the function table grows.
+ * @param name Function name (copied).
+ * @return Newly allocated VAL_FUNC value_t, or NULL on invalid name or out of memory.
+ */
+value_t *val_new_func(const char *name);
+
+/**
+ * @brief Get the function name held by a VAL_FUNC value.
+ * @param value A VAL_FUNC value.
+ * @return The name (valid while the value is alive), or NULL if value is not VAL_FUNC.
+ */
+const char *val_func_name(const value_t *value);
 
 /**
  * @brief Create a void value_t (used for void function returns).

@@ -305,7 +305,13 @@ value_t *run_function(ti_runtime_t *rt, context_t *ctx, function_t *func, value_
 
     /* Dispatch to implementation (natives only ever see the handle, never the runtime pointer) */
     if (func->type == FUNC_BUILTIN) {
-        return func->native_fn(rt->handle, argv, argc);
+        value_t *native_result = func->native_fn(rt->handle, argv, argc);
+
+        /* A native that raised through ti_raise_error has no line of its own: use the call site */
+        if (native_result == NULL && rt->status == TI_RT_ERROR && rt->error.line == 0) {
+            rt->error.line = node->line;
+        }
+        return native_result;
     } else if (func->type == FUNC_TI) {
         return run_ti_function(rt, ctx, func, argv, argc, node);
     }
@@ -345,6 +351,15 @@ value_t *eval_function_call(ti_runtime_t *rt, context_t *ctx, ast_t *node)
     func = user_find_function(rt, func_name);
     if (func == NULL) {
         func = builtin_find_function(func_name);
+    }
+
+    /* Neither a script function nor a built-in: a variable holding a function value may be called */
+    if (func == NULL) {
+        variable_t *variable = context_find_variable(ctx, func_name);
+        if (variable != NULL && variable->value != NULL && variable->value->type == VAL_FUNC) {
+            /* The value stores a name, so resolve it now (the function may have been defined since) */
+            func = user_find_function(rt, variable->value->func_name);
+        }
     }
 
     /* Handle call to undefined function */
@@ -410,4 +425,10 @@ void ti_runtime_dispatch_pending_events(ti_runtime_t *rt)
     }
 
     rt->in_dispatch = false;
+}
+
+/* Check whether the script has defined a function with this name */
+bool user_function_exists(ti_runtime_t *rt, const char *name)
+{
+    return user_find_function(rt, name) != NULL;
 }

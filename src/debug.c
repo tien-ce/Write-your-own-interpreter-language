@@ -21,6 +21,7 @@ const char *token_type_to_str(int type)
     case TOKEN_KW_BOOL:   return "TOKEN_KW_BOOL";
     case TOKEN_KW_LIST:   return "TOKEN_KW_LIST";
     case TOKEN_KW_BYTES:  return "TOKEN_KW_BYTES";
+    case TOKEN_KW_FUNC:   return "TOKEN_KW_FUNC";
     case TOKEN_KW_IF:     return "TOKEN_KW_IF";
     case TOKEN_KW_ELSE:   return "TOKEN_KW_ELSE";
     case TOKEN_KW_WHILE:  return "TOKEN_KW_WHILE";
@@ -138,6 +139,7 @@ const char *val_type_to_str(val_type_t type)
     case VAL_VOID:   return "void";
     case VAL_LIST:   return "list";
     case VAL_BYTES:  return "bytes";
+    case VAL_FUNC:   return "func";
     default:         return "?";
     }
 }

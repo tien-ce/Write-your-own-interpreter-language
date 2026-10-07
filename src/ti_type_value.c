@@ -109,6 +109,11 @@ void val_free_internal(value_t *value)
         bytes_release(value->bytes_val);
         value->bytes_val = NULL;
     }
+    /* Release the function name string */
+    else if (value->type == VAL_FUNC && value->func_name != NULL) {
+        ti_raw_free(value->func_name);
+        value->func_name = NULL;
+    }
     /* Release list reference and free its items if refcount reaches 0 */
     else if (value->type == VAL_LIST && value->list_val != NULL) {
         list_release(value->list_val);
@@ -202,6 +207,14 @@ value_t *val_copy(const value_t *val)
         copy->bytes_val = val->bytes_val;
         bytes_retain(copy->bytes_val);
         break;
+    case VAL_FUNC:
+        /* Each value owns its own copy of the name, so it can outlive the original */
+        copy->func_name = ti_raw_strdup(val->func_name);
+        if (copy->func_name == NULL) {
+            ti_raw_free(copy);
+            return NULL;
+        }
+        break;
     case VAL_VOID:
     case VAL_NULL:
         /* No internal payload allocation needed for empty types */
@@ -213,4 +226,35 @@ value_t *val_copy(const value_t *val)
         return NULL;
     }
     return copy;
+}
+
+/* Create a function value referring to a script function by name */
+value_t *val_new_func(const char *name)
+{
+    /* An empty or missing name can never be resolved */
+    if (name == NULL || name[0] == '\0') {
+        return NULL;
+    }
+
+    value_t *val = val_init(VAL_FUNC);
+    if (val == NULL) {
+        return NULL;
+    }
+
+    /* Keep the name, not a pointer: the function table may be reallocated later */
+    val->func_name = ti_raw_strdup(name);
+    if (val->func_name == NULL) {
+        ti_raw_free(val);
+        return NULL;
+    }
+    return val;
+}
+
+/* Get the function name held by a VAL_FUNC value */
+const char *val_func_name(const value_t *value)
+{
+    if (value == NULL || value->type != VAL_FUNC) {
+        return NULL;
+    }
+    return value->func_name;
 }

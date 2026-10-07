@@ -204,6 +204,7 @@ static token_t *lexer_collect_id(lexer_t *lexer)
     if (strcmp(value, "list") == 0)   { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_LIST, NULL); }
     if (strcmp(value, "void") == 0)   { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_VOID, NULL); }
     if (strcmp(value, "bytes") == 0)   { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_BYTES, NULL); }
+    if (strcmp(value, "func") == 0)    { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_FUNC, NULL); }
 
     /* Match control flow keywords */
     if (strcmp(value, "if") == 0)       { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_IF, NULL); }

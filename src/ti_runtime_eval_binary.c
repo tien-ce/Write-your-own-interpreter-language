@@ -238,6 +238,10 @@ static value_t *binary_equal(ti_runtime_t *rt, value_t *left, value_t *right, in
         /* Compare boolean states */
         value->bool_val = (left->bool_val == right->bool_val);
         break;
+    case VAL_FUNC:
+        /* Function values are equal when they name the same function */
+        value->bool_val = (strcmp(left->func_name, right->func_name) == 0);
+        break;
     case VAL_BYTES:
         /* Equal length and content */
         value->bool_val = val_bytes_equal(left->bytes_val, right->bytes_val);
@@ -292,6 +296,9 @@ static value_t *binary_not_equal(ti_runtime_t *rt, value_t *left, value_t *right
     case VAL_BOOL:
         /* Compare boolean states */
         value->bool_val = (left->bool_val != right->bool_val);
+        break;
+    case VAL_FUNC:
+        value->bool_val = (strcmp(left->func_name, right->func_name) != 0);
         break;
     case VAL_BYTES:
         /* Different length or content */
