@@ -67,6 +67,7 @@ typedef enum {
     TI_ERR_TYPE_MISMATCH,       // Value type does not match the expected type
     TI_ERR_INDEX_OUT_OF_RANGE,  // List/bytes index outside [0, count)
     TI_ERR_VALUE_OUT_OF_RANGE,  // Value does not fit the target (e.g. a byte outside 0..255)
+    TI_ERR_INVALID_VALUE,       // Right type but unusable content (e.g. to_int("abc"))
     TI_ERR_KEY_NOT_FOUND,       // Dictionary key does not exist
     TI_ERR_LIMIT_EXCEEDED,      // Configured capacity limit reached (e.g. TI_MAX_LIST_ITEMS)
     TI_ERR_UNDEFINED,           // Variable or function name is not defined

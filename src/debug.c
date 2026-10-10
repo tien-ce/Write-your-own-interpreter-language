@@ -163,6 +163,7 @@ const char *ti_err_to_str(ti_status_t status)
     case TI_ERR_TYPE_MISMATCH:     return "type mismatch";
     case TI_ERR_INDEX_OUT_OF_RANGE: return "index out of range";
     case TI_ERR_VALUE_OUT_OF_RANGE: return "value out of range";
+    case TI_ERR_INVALID_VALUE:     return "invalid value";
     case TI_ERR_KEY_NOT_FOUND:     return "key not found";
     case TI_ERR_LIMIT_EXCEEDED:    return "limit exceeded";
     case TI_ERR_UNDEFINED:         return "undefined name";
