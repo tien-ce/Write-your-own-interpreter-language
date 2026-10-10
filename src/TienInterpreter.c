@@ -6,6 +6,7 @@
 #include "include/ti_runtime_visitor.h"
 #include "include/ti_build_program.h"
 #include "include/ti_runtime.h"
+#include "include/ti_runtime_builtin.h"
 #include "include/tracked_memory.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -135,6 +136,9 @@ ti_program_t *ti_compile(const char *source_code)
 /* Create a new runtime instance */
 ti_handle_t ti_create(void)
 {
+    /* Language-level built-ins are registered here so every host gets them (only the first call does work) */
+    ti_register_core_builtins();
+
     ti_runtime_t *rt = ti_runtime_create();
     return rt ? rt->handle : TI_INVALID_HANDLE;
 }
