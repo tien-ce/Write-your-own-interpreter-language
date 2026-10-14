@@ -1,0 +1,16 @@
+int my_func(int a, int b) {
+    int c = a + b;
+    return c;
+}
+
+int main_var = 10;
+float f_var = 3.14;
+string s_var = "hello";
+bool b_var = true;
+
+int another_func() {
+    int x = 5;
+    float y = 2.0;
+    string z = "leak_test";
+    return x;
+}
