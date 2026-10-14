@@ -137,6 +137,7 @@ const char *val_type_to_str(val_type_t type)
     case VAL_STRING: return "string";
     case VAL_BOOL:   return "bool";
     case VAL_VOID:   return "void";
+    case VAL_DICT:   return "dict";
     case VAL_LIST:   return "list";
     case VAL_BYTES:  return "bytes";
     case VAL_FUNC:   return "func";
@@ -170,6 +171,7 @@ const char *ti_err_to_str(ti_status_t status)
     case TI_ERR_DIV_ZERO:          return "division by zero";
     case TI_ERR_INTERNAL:          return "internal error";
     case TI_ERR_RUNTIME:           return "runtime error";
+    case TI_ERR_TIMEOUT:           return "timeout";
     default:                       return "unknown error";
     }
 }

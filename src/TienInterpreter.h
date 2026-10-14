@@ -7,6 +7,7 @@ extern "C" {
 
 #include <stdarg.h>
 #include "include/ti_type.h"
+#include "include/ti_port.h"
 #include "include/ti_type_value.h"
 #include "include/ti_type_value_dict.h"
 #include "include/ti_type_value_list.h"
@@ -132,6 +133,36 @@ ti_status_t ti_post_event(ti_handle_t handle, const char *func_name, value_t **a
  * @return TI_OK, TI_ERR_INTERRUPTED if the runtime has been stopped, or TI_ERR_STALE_HANDLE.
  */
 ti_status_t ti_dispatch_events(ti_handle_t handle);
+
+/**
+ * @brief Sleep for ms milliseconds inside a native (e.g. delay) while staying responsive.
+ * The execution lock is released during the sleep, so queued events and ti_call callbacks run
+ * immediately; the sleep then continues for the remaining time. Only ti_stop ends it early.
+ * Must only be called from a native function executing on this runtime.
+ * @param handle Runtime handle passed to the native function.
+ * @param ms Duration in milliseconds.
+ * @return TI_OK when the time has elapsed, TI_ERR_INTERRUPTED if stopped, or TI_ERR_STALE_HANDLE.
+ */
+ti_status_t ti_wait(ti_handle_t handle, uint32_t ms);
+
+/**
+ * @brief Call a script function synchronously from outside the script (e.g. a driver task).
+ * The script is paused at its next safe point (statement or loop-iteration boundary, or inside a
+ * delay) and the callback runs to completion on the caller's stack before the script resumes.
+ * An error raised by the callback is consumed here: it is returned as the status and the script
+ * keeps running. Arguments are borrowed (the caller keeps ownership); *result is owned by the
+ * caller. Never call from an ISR, and never while holding a lock a native may wait for.
+ * @param handle Runtime handle.
+ * @param func_name Name of a script-defined function.
+ * @param args Argument values (may be NULL if argc is 0).
+ * @param argc Number of arguments.
+ * @param result Receives the return value, or NULL; may be NULL to discard it.
+ * @param timeout_ms Maximum wait for the execution lock (TI_PORT_WAIT_FOREVER for no limit).
+ * @return TI_OK, TI_ERR_TIMEOUT, TI_ERR_STALE_HANDLE, TI_ERR_INVALID_ARG, TI_ERR_UNDEFINED,
+ *         TI_ERR_INTERRUPTED (runtime stopped) or the error kind the callback raised.
+ */
+ti_status_t ti_call(ti_handle_t handle, const char *func_name, value_t **args, int argc,
+                    value_t **result, uint32_t timeout_ms);
 
 /**
  * @brief Raise a runtime error from native code and unwind the running script.

@@ -7,6 +7,7 @@
 #include <stdatomic.h>
 #include <stdbool.h>
 #include "../src/TienInterpreter.h"
+#include "builtin/builtin.h"
 
 /* -------------------- Constants & State -------------------- */
 
@@ -14,11 +15,6 @@
 #define POLL_INTERVAL_MS 50
 
 static atomic_bool s_script_done = false;
-
-/* -------------------- External Function Prototypes -------------------- */
-
-/* Defined in built_in_functions.c: post a simulated input event to the registered callback */
-ti_status_t cli_simulate_event(const char *text);
 
 /* -------------------- Static Function Prototypes -------------------- */
 
@@ -91,9 +87,17 @@ static void wait_for_events(void)
         /* A newline completes the event text (over-long lines are truncated, not split) */
         if (ch == '\n') {
             line[length] = '\0';
-            ti_status_t status = cli_simulate_event(line);
-            printf("[main] event \"%s\" -> status %d%s\n", line, (int)status,
-                   atomic_load(&s_script_done) ? " (script finished)" : "");
+            if (line[0] == '!') {
+                /* "!text": synchronous call, wait for the handler's answer (ti_call) */
+                char answer[128];
+                ti_status_t status = cli_simulate_call(line + 1, answer, sizeof(answer));
+                printf("[main] call \"%s\" -> status %d, answer \"%s\"\n", line + 1, (int)status, answer);
+            } else {
+                /* "text": asynchronous event, queued and delivered at the script's next safe point */
+                ti_status_t status = cli_simulate_event(line);
+                printf("[main] event \"%s\" -> status %d%s\n", line, (int)status,
+                       atomic_load(&s_script_done) ? " (script finished)" : "");
+            }
             length = 0;
         } else if (ch != '\r' && length < sizeof(line) - 1) {
             line[length++] = ch;

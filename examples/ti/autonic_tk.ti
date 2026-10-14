@@ -1,0 +1,20 @@
+int slave_id = 1;
+while(true)
+{
+    print("HERE");
+    string res = autonics_read(slave_id);
+    bool is_ok = get_json_as_bool(res, "success");
+
+    if (is_ok) {
+        pv = get_json_as_float(res, "pv");
+        sv = get_json_as_float(res, "sv");
+        unit = get_json_as_string(res, "unit");
+
+        print("Nhiet do PV: " + pv + " " + unit);
+        print("Nhiet do SV: " + sv + " " + unit);
+    } else {
+        string err = get_json_as_string(res, "error");
+        print("Loi Modbus Slave 1: " + err);
+    }
+    delay(1000);
+}

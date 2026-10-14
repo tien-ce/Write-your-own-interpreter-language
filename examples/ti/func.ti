@@ -1,0 +1,9 @@
+void do_something(string cb)
+{
+    print(cb);
+}
+register_event(do_something);
+while(true)
+{
+    delay(1000);
+}

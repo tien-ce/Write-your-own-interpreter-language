@@ -1,0 +1,61 @@
+/* 
+ * Dictionary Feature Test Suite
+ * Khảo sát toàn bộ vòng đời và tính năng của Dictionary
+ */
+
+// 1. Khởi tạo Dictionary Literal với nhiều Data Type khác nhau
+dict user = {
+    "name": "Antigravity",
+    "version": 2,
+    "is_active": true
+};
+
+print("--- 1. Initial Dictionary Access (R-Value) ---");
+print(user["name"]);
+print(user["version"]);
+print(user["is_active"]);
+
+// 2. Gán giá trị mới (L-Value Assignment - Cùng Type)
+user["version"] = 3;
+print("--- 2. After L-Value Update ---");
+print(user["version"]);
+
+// 3. Khai báo hàm thao tác với Dictionary (Pass-by-Reference)
+dict update_system(dict target_dict) {
+    // Vì Dict là kiểu tham chiếu (Reference Type), 
+    // thay đổi ở đây sẽ ảnh hưởng trực tiếp đến biến 'user' bên ngoài.
+    target_dict["is_active"] = false;
+    
+    // Khởi tạo và trả về một Dictionary mới (Ownership Transfer)
+    dict response = {
+        "status": "shutdown_success",
+        "code": 200
+    };
+    
+    return response;
+}
+
+// Gọi hàm và hứng kết quả trả về
+dict func_result = update_system(user);
+
+print("--- 3. After Function Call (Check Pass-by-Reference) ---");
+print(user["is_active"]); // Kỳ vọng in ra: 0 (false)
+
+print("--- 4. Check Returned Dictionary ---");
+print(func_result["status"]); // Kỳ vọng in ra: shutdown_success
+print(func_result["code"]);   // Kỳ vọng in ra: 199
+
+/* =================================================================
+ * TEST CASES GÂY LỖI (CRASH)
+ * Bỏ comment (//) từng dòng dưới đây để kiểm tra hệ thống ti_fatal()
+ * ================================================================= */
+
+// LỖI 1: Type Mismatch Assignment (Đang là INT, cố tình gán bằng STRING)
+//user["version"] = "Ba phay khong";
+
+// LỖI 2: Truy cập Key không tồn tại
+//print(user["not_exist"]);
+
+// LỖI 3: Gán giá trị cho một biến không phải là Dict
+int a = 5;
+int b = a["key"];

@@ -181,11 +181,14 @@ ti_status_t ti_execute(ti_handle_t handle, ti_program_t *prog)
         return TI_ERR_INVALID_ARG;
     }
 
-    /* The host owns the runtime lifecycle, so it cannot be destroyed while executing */
-    ti_runtime_t *rt = ti_runtime_resolve(handle);
+    /* Pin the runtime so a concurrent destroy waits for this run to finish */
+    ti_runtime_t *rt = ti_runtime_acquire(handle);
     if (rt == NULL) {
         return TI_ERR_STALE_HANDLE;
     }
+
+    /* Hold the execution lock for the whole run: ti_call callers get in only at safe points */
+    ti_runtime_exec_lock(rt, TI_PORT_WAIT_FOREVER);
 
     /* Walk and evaluate the AST graph from root */
     visitor_visit(rt, rt->global_context, prog->root_ast);
@@ -202,14 +205,23 @@ ti_status_t ti_execute(ti_handle_t handle, ti_program_t *prog)
         }
     }
 
-    /* The single place that turns a raised runtime error into a fatal (host decides how to stop) */
-    if (rt->status == TI_RT_ERROR) {
+    /* Decide the outcome while the runtime is still locked and pinned */
+    ti_status_t status = ti_runtime_is_interrupted(rt) ? TI_ERR_INTERRUPTED : TI_OK;
+    bool fatal = (rt->status == TI_RT_ERROR);
+    if (fatal) {
         ti_runtime_report_error(rt);
-        ti_fatal();
-        return rt->error.kind;
+        status = rt->error.kind;
     }
 
-    return ti_runtime_is_interrupted(rt) ? TI_ERR_INTERRUPTED : TI_OK;
+    /* Release before ti_fatal: the fatal handler may block or never return, which must not wedge ti_call */
+    ti_runtime_exec_unlock(rt);
+    ti_runtime_release(rt);
+
+    /* The single place that turns a raised runtime error into a fatal (host decides how to stop) */
+    if (fatal) {
+        ti_fatal();
+    }
+    return status;
 }
 
 /**
@@ -281,11 +293,81 @@ ti_status_t ti_dispatch_events(ti_handle_t handle)
 
     ti_runtime_dispatch_pending_events(rt);
 
-    /* A callback that raised an error stops the calling native (e.g. delay) so it can unwind */
-    if (rt->status == TI_RT_ERROR) {
-        return rt->error.kind;
-    }
+    /* Callback errors are consumed by the dispatcher; only cancellation stops the calling native */
     return ti_runtime_is_interrupted(rt) ? TI_ERR_INTERRUPTED : TI_OK;
+}
+
+/* Sleep inside a native without blocking events or ti_call callers */
+ti_status_t ti_wait(ti_handle_t handle, uint32_t ms)
+{
+    /* Caller is a native running on this runtime, so it stays alive for this call */
+    ti_runtime_t *rt = ti_runtime_resolve(handle);
+    if (rt == NULL) {
+        return TI_ERR_STALE_HANDLE;
+    }
+    return ti_runtime_wait(rt, ms);
+}
+
+/* Call a script function synchronously from outside the script's execution context */
+ti_status_t ti_call(ti_handle_t handle, const char *func_name, value_t **args, int argc,
+                    value_t **result, uint32_t timeout_ms)
+{
+    if (result != NULL) {
+        *result = NULL;
+    }
+    if (func_name == NULL || func_name[0] == '\0' || argc < 0 || (argc > 0 && args == NULL)) {
+        return TI_ERR_INVALID_ARG;
+    }
+    for (int i = 0; i < argc; i++) {
+        if (args[i] == NULL) {
+            return TI_ERR_INVALID_ARG;
+        }
+    }
+
+    /* Pin the runtime: a concurrent destroy waits until this call is done */
+    ti_runtime_t *rt = ti_runtime_acquire(handle);
+    if (rt == NULL) {
+        return TI_ERR_STALE_HANDLE;
+    }
+
+    /* A call made by the lock holder itself (e.g. a native) already owns the runtime: run inline */
+    bool reentrant = ti_runtime_exec_held(rt);
+    ti_status_t status = TI_OK;
+
+    if (!reentrant) {
+        /* Register as a waiter so the script yields the lock at its next safe point */
+        __atomic_add_fetch(&rt->lock_waiters, 1, __ATOMIC_RELAXED);
+        bool locked = ti_runtime_exec_lock(rt, timeout_ms);
+        __atomic_sub_fetch(&rt->lock_waiters, 1, __ATOMIC_RELAXED);
+
+        if (!locked) {
+            /* Wake a script that may be waiting for this caller before it re-takes the lock */
+            ti_signal_give(rt->handoff);
+            ti_runtime_release(rt);
+            return TI_ERR_TIMEOUT;
+        }
+    }
+
+    /* From here on this context is the only one running TI code on the runtime */
+    if (ti_runtime_is_interrupted(rt)) {
+        status = TI_ERR_INTERRUPTED;
+    } else if (rt->status != TI_RT_OK) {
+        status = TI_ERR_RUNTIME;
+    } else {
+        ti_error_t err;
+        status = ti_runtime_invoke(rt, func_name, args, argc, result, &err);
+        if (status != TI_OK && status != TI_ERR_INTERRUPTED && err.message[0] != '\0') {
+            ti_log("[Call Error] %s at line %d\n", err.message, err.line);
+        }
+    }
+
+    if (!reentrant) {
+        ti_runtime_exec_unlock(rt);
+        /* Let a script yielding to this call continue (also releases stale hand-offs harmlessly) */
+        ti_signal_give(rt->handoff);
+    }
+    ti_runtime_release(rt);
+    return status;
 }
 
 /* Raise a runtime error from native code */

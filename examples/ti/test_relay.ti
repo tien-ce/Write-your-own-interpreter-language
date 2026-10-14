@@ -1,0 +1,43 @@
+int relay = 1;
+float upper_max = -1.0;
+float upper_min = -1.0;
+print("Testing autonics_tk and relay", relay ," ...\n");
+string threshold_url = "http://192.168.1.13:82/api/chambertemp/std?ip=192.168.0.215";
+string respone = http_get(threshold_url);
+int respone_code = get_json(respone, "code");
+string respone_payload = get_json(respone,"payload");
+
+if (respone_code == 200)
+{
+    upper_max = get_json(respone_payload, "UPPER_TEMP_MAX");
+    upper_min = get_json(respone_payload, "UPPER_TEMP_MIN");
+}
+else 
+{
+    upper_max = nvs_read("UPPER_MAX", 60);
+    upper_min = nvs_read("UPPER_MIN", 30);
+}
+
+print("Upper_max: ", upper_max, "\n");
+print("Upper_min: ", upper_min,"\n");
+while(true)
+{
+    float pv = autonics_tk_get_pv();
+    float sv = autonics_tk_get_sv();
+    int relay_state = relay_get_state(relay);
+    print("Autonics TK, pv:", pv, ", sv:", sv, ", relay_state: ", relay_state, "\n");
+    print(pv <= 30.0, "\n");
+    bool is_need_on = (pv > 0.0) && (pv <= upper_min || pv >= upper_max) && (relay_state == 0);
+    bool is_need_off = (pv > 0.0) && (pv > upper_min && pv < upper_max) && (relay_state == 1);
+    if(is_need_on)
+    {
+        print("Turn on Relay ", relay);
+        relay_set_state(relay,1);
+    }
+    else if(is_need_off)
+    {
+        print("Turn off Relay ", relay);
+        relay_set_state(relay,0);
+    }
+    delay(1000);
+}

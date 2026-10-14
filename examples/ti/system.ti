@@ -1,0 +1,23 @@
+/* 
+ * Kiểm tra Built-in Function trả về Dictionary
+ */
+
+// 1. Gọi hàm Native C (hệ thống sẽ tự động tạo Dictionary trên RAM)
+dict sys = get_system_info();
+
+// 2. In các trường dữ liệu ra màn hình
+print("=== SYSTEM INFORMATION ===");
+print("Status: ");
+print(sys["status"]);
+
+print("Uptime (seconds): ");
+print(sys["uptime"]);
+
+print("Is Ready: ");
+print(sys["is_ready"]);
+
+// 3. Sửa đổi dữ liệu trả về (L-Value assignment)
+print("=== AFTER UPDATE ===");
+sys["uptime"] = 9999;
+print("New Uptime: ");
+print(sys["uptime"]);

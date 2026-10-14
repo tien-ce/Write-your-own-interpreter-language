@@ -1,0 +1,10 @@
+int a = 9;
+print("abc");
+if(a < 8)
+{
+    print("Less\n");
+}
+else
+{
+    print("Greater\n");
+}

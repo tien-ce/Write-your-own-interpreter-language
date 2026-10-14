@@ -1,0 +1,21 @@
+/*
+ * Asynchronous event: the driver posts and moves on, nothing comes back.
+ * Run:  ./ti.out examples/ti/async_event.ti
+ * Then type a line and press Enter; each line is delivered to on_message().
+ */
+
+int received = 0;
+
+/* Runs at the script's next safe point, in the order the events were posted */
+void on_message(string text) {
+    received++;
+    print("event #" + to_string(received) + ": " + text);
+}
+
+register_event(on_message);
+
+/* The script stays free to do its own work; delay() also services events */
+while (true) {
+    delay(5000);
+    print("tick, events so far: " + to_string(received));
+}

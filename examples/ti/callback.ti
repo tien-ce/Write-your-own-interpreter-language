@@ -1,0 +1,13 @@
+void some_thing(string val)
+{
+    print("recive from c native");
+    print(val);
+}
+
+register_event(some_thing);
+
+while(to_bool(1))
+{
+    print("Every 3 seconds");
+    delay(3000);
+}

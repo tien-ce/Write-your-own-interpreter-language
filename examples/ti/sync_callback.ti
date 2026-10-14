@@ -1,0 +1,24 @@
+/*
+ * Synchronous callback: the driver calls a script function and waits for the answer.
+ * Run:  ./ti.out examples/ti/sync_callback.ti
+ * Then type  !hello  (a leading '!') and press Enter; the line is sent with ti_call and the
+ * returned string is printed by the driver ("answer").
+ */
+
+int served = 0;
+
+/* Runs to completion while the script is paused; the returned value goes back to the caller */
+string on_request(string payload) {
+    served++;
+    return "ok #" + to_string(served) + " for '" + payload + "'";
+}
+
+register_callback(on_request);
+
+/* Busy script: calls are served at the next statement/iteration boundary, or during delay() */
+int ticks = 0;
+while (true) {
+    ticks++;
+    delay(500);
+    print("script alive, ticks=" + to_string(ticks) + " served=" + to_string(served));
+}

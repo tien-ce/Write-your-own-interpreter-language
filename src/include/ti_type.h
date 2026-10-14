@@ -74,6 +74,7 @@ typedef enum {
     TI_ERR_DIV_ZERO,            // Division or modulo by zero
     TI_ERR_INTERNAL,            // Interpreter invariant violated (unknown operator/AST node)
     TI_ERR_RUNTIME,             // Generic script runtime error
+    TI_ERR_TIMEOUT,             // Timed out waiting for the runtime execution lock
 } ti_status_t;
 
 #ifdef __cplusplus

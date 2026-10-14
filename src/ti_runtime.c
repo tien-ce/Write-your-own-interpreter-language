@@ -53,6 +53,7 @@ static bool slot_attach(ti_runtime_t *rt);
 static ti_task_t *slot_detach(ti_runtime_t *rt);
 static void args_free(value_t **args, int arg_count);
 static ti_task_t *task_create(const char *func_name, value_t **args, int arg_count);
+static void runtime_sync_destroy(ti_runtime_t *rt);
 
 /* -------------------- Static Functions -------------------- */
 
@@ -214,29 +215,81 @@ static ti_task_t *task_create(const char *func_name, value_t **args, int arg_cou
 
 /* -------------------- Runtime Lifecycle Operations -------------------- */
 
+/**
+ * @brief Release the lock and signal objects of a runtime (each may be NULL).
+ * @param rt Runtime whose synchronization objects are destroyed.
+ */
+static void runtime_sync_destroy(ti_runtime_t *rt)
+{
+    ti_mutex_destroy(rt->exec_lock);
+    ti_signal_destroy(rt->handoff);
+    ti_signal_destroy(rt->wake);
+    ti_signal_destroy(rt->idle);
+    rt->exec_lock = NULL;
+    rt->handoff = NULL;
+    rt->wake = NULL;
+    rt->idle = NULL;
+}
+
 /* Initialize an existing runtime instance structure */
-void ti_runtime_init(ti_runtime_t *rt)
+bool ti_runtime_init(ti_runtime_t *rt)
 {
     if (!rt) {
-        return;
+        return false;
     }
+
+    /* Identity */
+    rt->handle = TI_INVALID_HANDLE;
+
+    /* Memory */
     rt->alloc_list = NULL;
+
+    /* Script state */
     rt->global_context = context_init(&rt->alloc_list);
     rt->user_functions = NULL;
     rt->user_function_count = 0;
+
+    /* Call stack */
     rt->call_depth = 0;
     rt->max_call_depth = 64;
-    rt->is_interrupted = false;
+
+    /* Execution status */
+    __atomic_store_n(&rt->is_interrupted, false, __ATOMIC_RELAXED);
     rt->status = TI_RT_OK;
     rt->error.kind = TI_OK;
     rt->error.line = 0;
     rt->error.message[0] = '\0';
-    rt->handle = TI_INVALID_HANDLE;
+
+    /* Event queue */
     rt->task_head = NULL;
     rt->task_tail = NULL;
     rt->task_count = 0;
+
+    /* Event dispatch */
     rt->active_task = NULL;
     rt->in_dispatch = false;
+
+    /* Execution lock */
+    rt->exec_lock = ti_mutex_create();
+    rt->exec_owner = TI_CALLER_NONE;
+    rt->lock_waiters = 0;
+    rt->handoff = ti_signal_create();
+
+    /* Wake-up */
+    rt->wake = ti_signal_create();
+
+    /* Usage pinning */
+    rt->users = 0;
+    rt->idle = ti_signal_create();
+
+    /* Any missing object means the runtime cannot synchronize: roll everything back */
+    if (!rt->global_context || !rt->exec_lock || !rt->handoff || !rt->wake || !rt->idle) {
+        runtime_sync_destroy(rt);
+        tracked_free_all(&rt->alloc_list);
+        rt->global_context = NULL;
+        return false;
+    }
+    return true;
 }
 
 /* Allocate, initialize and register a new runtime instance in the handle table */
@@ -246,11 +299,15 @@ ti_runtime_t *ti_runtime_create(void)
     if (!rt) {
         return NULL;
     }
-    ti_runtime_init(rt);
+    if (!ti_runtime_init(rt)) {
+        tracked_free(NULL, rt);
+        return NULL;
+    }
 
     /* Publish the runtime through a generation handle */
     if (!slot_attach(rt)) {
         ti_log("[Runtime Error] No free runtime slot (TI_MAX_RUNTIMES = %d)\n", TI_MAX_RUNTIMES);
+        runtime_sync_destroy(rt);
         tracked_free_all(&rt->alloc_list);
         tracked_free(NULL, rt);
         return NULL;
@@ -267,6 +324,18 @@ void ti_runtime_destroy(ti_runtime_t *rt)
 
     /* Invalidate the handle first: from here on every post/stop on it fails safely */
     ti_task_t *pending = slot_detach(rt);
+
+    /* Wait for calls pinned before the invalidation; none can pin it anymore */
+    for (;;) {
+        slot_lock();
+        int users = rt->users;
+        slot_unlock();
+        if (users == 0) {
+            break;
+        }
+        /* Timed wait: re-check even if the idle signal was consumed earlier */
+        ti_signal_take(rt->idle, 10);
+    }
 
     /* Discard events that were never dispatched */
     while (pending != NULL) {
@@ -287,8 +356,39 @@ void ti_runtime_destroy(ti_runtime_t *rt)
      */
     tracked_free_all(&rt->alloc_list);
 
+    /* Nobody uses the lock or signals anymore */
+    runtime_sync_destroy(rt);
+
     /* Free the runtime container itself */
     tracked_free(NULL, rt);
+}
+
+/* Resolve a handle and pin the runtime so it cannot be destroyed until released */
+ti_runtime_t *ti_runtime_acquire(ti_handle_t handle)
+{
+    /* Lookup and pin under one lock hold: destroy cannot slip in between */
+    slot_lock();
+    ti_runtime_t *rt = slot_lookup_locked(handle);
+    if (rt != NULL) {
+        rt->users++;
+    }
+    slot_unlock();
+    return rt;
+}
+
+/* Drop a pin taken by ti_runtime_acquire */
+void ti_runtime_release(ti_runtime_t *rt)
+{
+    if (rt == NULL) {
+        return;
+    }
+
+    /* Signal while still locked: destroy cannot free rt before this block ends */
+    slot_lock();
+    if (--rt->users == 0) {
+        ti_signal_give(rt->idle);
+    }
+    slot_unlock();
 }
 
 /* Resolve a handle to its live runtime instance */
@@ -305,22 +405,122 @@ ti_status_t ti_runtime_stop(ti_handle_t handle)
 {
     ti_status_t status = TI_ERR_STALE_HANDLE;
 
-    /* Set the flag under the lock so the runtime cannot be freed in between */
+    /* Set the flag and pin the runtime under the lock so it cannot be freed in between */
     slot_lock();
     ti_runtime_t *rt = slot_lookup_locked(handle);
     if (rt != NULL) {
-        rt->is_interrupted = true;
+        __atomic_store_n(&rt->is_interrupted, true, __ATOMIC_RELAXED);
+        rt->users++;
         status = TI_OK;
     }
     slot_unlock();
 
+    /* Wake a sleeping delay so it notices the stop immediately (outside the critical section) */
+    if (rt != NULL) {
+        ti_signal_give(rt->wake);
+        ti_runtime_release(rt);
+    }
     return status;
 }
 
 /* Check if execution cancellation has been requested */
 bool ti_runtime_is_interrupted(ti_runtime_t *rt)
 {
-    return rt ? rt->is_interrupted : false;
+    return rt ? __atomic_load_n(&rt->is_interrupted, __ATOMIC_RELAXED) : false;
+}
+
+/* -------------------- Execution Lock Operations -------------------- */
+
+/* Longest wait for the hand-off signal before the yielding script re-takes the lock (ms) */
+#define TI_YIELD_WAIT_MS 10
+
+/* Take the execution lock and record the caller as owner */
+bool ti_runtime_exec_lock(ti_runtime_t *rt, uint32_t timeout_ms)
+{
+    if (rt == NULL || !ti_mutex_lock(rt->exec_lock, timeout_ms)) {
+        return false;
+    }
+    __atomic_store_n(&rt->exec_owner, ti_current_caller(), __ATOMIC_RELAXED);
+    return true;
+}
+
+/* Release the execution lock held by the caller */
+void ti_runtime_exec_unlock(ti_runtime_t *rt)
+{
+    if (rt == NULL) {
+        return;
+    }
+    /* Clear the owner while still holding the lock so nobody sees a stale owner */
+    __atomic_store_n(&rt->exec_owner, TI_CALLER_NONE, __ATOMIC_RELAXED);
+    ti_mutex_unlock(rt->exec_lock);
+}
+
+/* Check whether the calling context currently holds the execution lock */
+bool ti_runtime_exec_held(ti_runtime_t *rt)
+{
+    /* Only the owner itself can read its own identity here, so the relaxed read is exact */
+    return rt != NULL && __atomic_load_n(&rt->exec_owner, __ATOMIC_RELAXED) == ti_current_caller();
+}
+
+/* Let waiting ti_call callers run, then take the lock back */
+void ti_runtime_yield(ti_runtime_t *rt)
+{
+    /* Never release a lock this context does not hold */
+    if (!ti_runtime_exec_held(rt)) {
+        return;
+    }
+
+    while (__atomic_load_n(&rt->lock_waiters, __ATOMIC_RELAXED) > 0) {
+        /* Drop a hand-off left by an earlier call that finished while nobody was yielding */
+        ti_signal_take(rt->handoff, 0);
+
+        ti_runtime_exec_unlock(rt);
+
+        /* A finished ti_call gives the hand-off; the timeout only bounds a lost signal */
+        ti_signal_take(rt->handoff, TI_YIELD_WAIT_MS);
+
+        ti_runtime_exec_lock(rt, TI_PORT_WAIT_FOREVER);
+    }
+}
+
+/* Sleep for ms, servicing events and ti_call callers; wakes early only on cancellation */
+ti_status_t ti_runtime_wait(ti_runtime_t *rt, uint32_t ms)
+{
+    if (rt == NULL) {
+        return TI_ERR_INVALID_ARG;
+    }
+
+    /* Only the plain script context may release the lock; inside a callback it stays held */
+    bool can_yield = ti_runtime_exec_held(rt) && !rt->in_dispatch;
+
+    /* Absolute deadline: time spent running events or waiting for the lock counts toward the delay */
+    uint32_t start = ti_millis();
+
+    for (;;) {
+        if (ti_runtime_is_interrupted(rt)) {
+            return TI_ERR_INTERRUPTED;
+        }
+
+        uint32_t elapsed = ti_millis() - start;
+        if (elapsed >= ms) {
+            return TI_OK;
+        }
+
+        /* Run queued events first, then re-check the deadline (the callbacks took time) */
+        if (can_yield && __atomic_load_n(&rt->task_head, __ATOMIC_RELAXED) != NULL) {
+            ti_runtime_dispatch_pending_events(rt);
+            continue;
+        }
+
+        /* Sleep with the lock released so ti_call callers can run; an event or a stop gives wake */
+        if (can_yield) {
+            ti_runtime_exec_unlock(rt);
+        }
+        ti_signal_take(rt->wake, ms - elapsed);
+        if (can_yield) {
+            ti_runtime_exec_lock(rt, TI_PORT_WAIT_FOREVER);
+        }
+    }
 }
 
 /* -------------------- Event Queue Operations -------------------- */
@@ -352,6 +552,7 @@ ti_status_t ti_runtime_post_event(ti_handle_t handle, const char *func_name, val
 
     /* Validate the handle and link the task under the same lock that destroy takes */
     ti_status_t status = TI_ERR_STALE_HANDLE;
+    ti_runtime_t *pinned = NULL;
     slot_lock();
     ti_runtime_t *rt = slot_lookup_locked(handle);
     if (rt != NULL && rt->task_count >= TI_MAX_PENDING_EVENTS) {
@@ -365,6 +566,8 @@ ti_status_t ti_runtime_post_event(ti_handle_t handle, const char *func_name, val
         }
         rt->task_tail = task;
         rt->task_count++;
+        rt->users++; /* Keep the runtime alive until the wake-up below is delivered */
+        pinned = rt;
         status = TI_OK;
     }
     slot_unlock();
@@ -372,7 +575,12 @@ ti_status_t ti_runtime_post_event(ti_handle_t handle, const char *func_name, val
     /* Rejected task: release it together with its values outside the lock */
     if (status != TI_OK) {
         ti_task_free(task);
+        return status;
     }
+
+    /* Wake a sleeping delay so the event runs now instead of after the delay */
+    ti_signal_give(pinned->wake);
+    ti_runtime_release(pinned);
     return status;
 }
 

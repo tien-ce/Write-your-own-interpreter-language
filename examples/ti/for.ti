@@ -1,0 +1,5 @@
+list int a = [7,2,5,4];
+for (int i = 0; i < 4; i+=1)
+{
+    print(a[i]);
+}

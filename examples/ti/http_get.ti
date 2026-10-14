@@ -1,0 +1,14 @@
+string url = "http://httpbin.org/get";
+string response = http_get(url);
+
+int status_code = get_json(response, "code");
+string body = get_json(response, "payload");
+
+print("HTTP GET Status Code: ", status_code);
+print("HTTP GET Response Body: ", body);
+
+if (status_code == 200) {
+    print("HTTP GET successfully executed!");
+} else {
+    print("HTTP GET failed with code: ", status_code);
+}

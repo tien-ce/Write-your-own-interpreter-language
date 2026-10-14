@@ -155,22 +155,24 @@ value_t *eval_assignment(ti_runtime_t *rt, context_t *ctx, ast_t *node)
 
     case AST_ARRAY_ACCESS: { /* arr[0] = rhs or arr["key"] = rhs */
         const char *container_name = target_node->value.array_access.id;
+
+        /* Evaluate the key or index expression first: it may run script code that changes variables,
+         * so the container is looked up only afterwards and used with no evaluation in between */
+        key_val = visitor_visit(rt, ctx, target_node->value.array_access.index_expr);
+        if (key_val == NULL) {
+            goto out;
+        }
+
         variable = eval_lookup_variable(rt, ctx, container_name, node->line);
         if (variable == NULL) {
             goto out;
         }
 
-        /* Only dict and list support subscript assignment */
+        /* Only dict, list and bytes support subscript assignment */
         val_type_t container_type = variable->value->type;
         if (container_type != VAL_DICT && container_type != VAL_LIST && container_type != VAL_BYTES) {
             ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line,
                      "Type '%s' does not support subscript assignment", val_type_to_str(container_type));
-            goto out;
-        }
-
-        /* Evaluate the key or index expression */
-        key_val = visitor_visit(rt, ctx, target_node->value.array_access.index_expr);
-        if (key_val == NULL) {
             goto out;
         }
 
@@ -287,15 +289,17 @@ value_t *eval_array_access(ti_runtime_t *rt, context_t *ctx, ast_t *node)
     value_t *key_val = NULL;
     ti_status_t status = TI_OK;
 
-    /* Look up the container variable */
-    variable_t *container_var = eval_lookup_variable(rt, ctx, container_name, node->line);
-    if (container_var == NULL) {
+    /* Evaluate the index/key expression first; NULL means it already failed or was cancelled.
+     * It may run script code (a call, a delay) that changes variables, so the container must not
+     * be looked up before it: a pointer taken earlier could point at a value that no longer exists. */
+    key_val = visitor_visit(rt, ctx, node->value.array_access.index_expr);
+    if (key_val == NULL) {
         goto out;
     }
 
-    /* Evaluate the index/key expression; NULL means it already failed or was cancelled */
-    key_val = visitor_visit(rt, ctx, node->value.array_access.index_expr);
-    if (key_val == NULL) {
+    /* Only now resolve the container and use it, with no evaluation in between */
+    variable_t *container_var = eval_lookup_variable(rt, ctx, container_name, node->line);
+    if (container_var == NULL) {
         goto out;
     }
 

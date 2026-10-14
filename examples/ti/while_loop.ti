@@ -1,0 +1,6 @@
+int a = 5;
+while (true)
+{
+  print(a, "\n");
+  delay(1000);
+}

@@ -1,0 +1,140 @@
+# Developer Guide: Functions & Native C Extension API
+
+> **Audience:** Developers writing TI functions or binding external C libraries, hardware drivers (GPIO, I2C, MQTT), and system services into the TI interpreter runtime.
+
+---
+
+## 1. User-Defined Functions in TI Scripts
+
+Functions in TI use standard C syntax with mandatory type declarations for return values and parameters.
+
+### 1.1 Declaring Functions
+```c
+/* Void function without return statement */
+void show_greeting(string name) {
+    print("Welcome, " + name);
+}
+
+/* Value-returning function */
+int calculate_area(int width, int height) {
+    return width * height;
+}
+```
+
+### 1.2 Calling Functions
+```c
+show_greeting("ESP32 User");
+int area = calculate_area(5, 10);
+```
+
+### 1.3 Execution Constraints & Invariants
+* **Strict Type Enforcement:** Parameters and return values are verified at runtime. Passing incompatible types raises `TI_ERR_TYPE_MISMATCH`.
+* **Arity Checking:** Calling a function with too few or too many arguments raises `TI_ERR_INVALID_ARG`.
+* **Missing Return Guard:** Non-void functions that finish their body without hitting a `return` statement raise `TI_ERR_RUNTIME`.
+* **Recursion Limit:** The runtime enforces a maximum call depth limit (`rt->max_call_depth`, default 64) to protect against stack overflows on resource-constrained embedded targets. Exceeding this raises `TI_ERR_LIMIT_EXCEEDED`.
+
+---
+
+## 2. Native C Functions: Architecture & Registration
+
+Native functions bridge C code into the TI script environment, allowing scripts to call hardware drivers and system functions directly.
+
+### 2.1 The Native Function Signature (`native_fn_t`)
+Defined in `src/include/ti_type.h`:
+```c
+typedef value_t *(*native_fn_t)(ti_handle_t handle, value_t **args, int argc);
+```
+* **`handle` (`ti_handle_t`)**: An opaque, generation-checked reference representing the calling runtime instance. Native functions must never access `ti_runtime_t *` directly; all runtime interactions must go through this handle.
+* **`args` (`value_t **`)**: Array of pointers to evaluated arguments.
+* **`argc` (`int`)**: Number of arguments passed by the script.
+* **Return Value (`value_t *`)**: Must return a dynamically allocated `value_t *` (e.g. via `val_new_void()`, `val_new_int()`, etc.). The interpreter takes ownership and frees it automatically.
+
+---
+
+## 3. Registering Built-in Functions
+
+### 3.1 Registration API
+```c
+bool register_builtin_function(const char *name, 
+                               val_type_t return_type, 
+                               param_t *params, 
+                               int param_count, 
+                               native_fn_t function);
+```
+Defined in `src/include/ti_type_func.h`:
+* `name`: Identifier used by scripts to invoke the function.
+* `return_type`: Expected return value type (`VAL_INT`, `VAL_VOID`, `VAL_DICT`, etc.).
+* `params`: Array of `param_t` specifying parameter names and expected types.
+* `param_count`: Number of elements in `params`. Pass `-1` to declare a **variadic** function.
+* `function`: Function pointer matching `native_fn_t`.
+
+---
+
+## 4. Practical Implementation Patterns
+
+### 4.1 Pattern 1: Strictly-Typed Native Function
+When parameter types are explicitly declared, the interpreter's `run_function()` automatically validates both argument count and argument types **before** calling your C function. If there is a mismatch, the interpreter reports an informative error and unwinds cleanly.
+
+```c
+#include "src/TienInterpreter.h"
+#include "src/include/ti_type.h"
+#include "src/include/ti_type_value.h"
+
+/* 1. Define the native callback */
+static value_t *native_relay_set(ti_handle_t handle, value_t **args, int argc)
+{
+    (void)handle;
+    (void)argc; /* Guaranteed to be 2 by the interpreter */
+
+    int relay_id = args[0]->int_val;
+    bool state   = args[1]->bool_val;
+
+    /* Call hardware driver */
+    hardware_set_relay(relay_id, state);
+
+    return val_new_void();
+}
+
+/* 2. Register into interpreter table */
+void register_relay_functions(void)
+{
+    static param_t relay_params[] = {
+        { VAL_INT,  "id" },
+        { VAL_BOOL, "state" }
+    };
+
+    register_builtin_function("relay_set", VAL_VOID, relay_params, 2, native_relay_set);
+}
+```
+
+### 4.2 Pattern 2: Variadic Functions (`param_count = -1`)
+For functions accepting a dynamic number of arguments of various types (such as `print`):
+```c
+static value_t *native_custom_log(ti_handle_t handle, value_t **args, int argc)
+{
+    (void)handle;
+    for (int i = 0; i < argc; i++) {
+        if (args[i]->type == VAL_STRING) {
+            printf("%s ", args[i]->string_val);
+        } else if (args[i]->type == VAL_INT) {
+            printf("%d ", args[i]->int_val);
+        }
+    }
+    printf("\n");
+    return val_new_void();
+}
+
+void register_variadic_log(void)
+{
+    /* Pass NULL and -1 to accept arbitrary arguments */
+    register_builtin_function("custom_log", VAL_VOID, NULL, -1, native_custom_log);
+}
+```
+
+---
+
+## 5. Summary of Best Practices for Native C Code
+
+1. **Avoid Pointer Retaining:** Never store raw `value_t *` pointers from `args` across function calls. If you need to keep data, copy it using standard C functions (e.g. `strdup`) or `val_copy()`.
+2. **Never Panic:** Do not call `exit()` or abort from native functions. Return `val_new_null()` or `val_new_void()`.
+3. **Keep Execution Short:** A native runs while holding the runtime's execution lock, so a long C loop blocks events and `ti_call` callers. To wait, call `ti_wait(handle, ms)` (it releases the lock while sleeping and services events and callbacks). Never sleep with `sleep()`/`usleep()` or wait on a lock another thread may hold while it calls `ti_call`.
