@@ -65,6 +65,12 @@ bool register_builtin_function(const char *name, val_type_t return_type, param_t
         s_builtin_map = chashmap_create(32, NULL); 
     }
 
+    /* A fixed parameter count needs a parameter table to check against */
+    if (param_count > 0 && params == NULL) {
+        ti_log("Function '%s' declares %d parameter(s) but has no parameter table\n", name, param_count);
+        return false;
+    }
+
     /* O(1) Check for existing function */
     if (chashmap_get(s_builtin_map, name) != NULL) {
         ti_log("Function name already exists\n");
@@ -287,6 +293,11 @@ value_t *run_function(ti_runtime_t *rt, context_t *ctx, function_t *func, value_
 
     /* Check argument types against declared parameter types */
     for (int i = 0; i < func->param_count; i++) {
+        /* VAL_ANY accepts every type. Only native signatures use it (scripts cannot declare it), so
+         * this check never changes the behavior of a script function. */
+        if (func->params[i].type == VAL_ANY) {
+            continue;
+        }
         if (argv[i]->type != func->params[i].type) {
             ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line, "Function '%s' parameter %d ('%s') expected type %s, but got %s",
                      func->name, i + 1,

@@ -16,6 +16,11 @@ value_t g_val_ok = { .type = VAL_NULL };
 /* Allocate a new value_t of the specified type */
 value_t *val_init(int type)
 {
+    /* VAL_ANY only describes what a native parameter accepts; no value can have that type */
+    if (type == VAL_ANY) {
+        return NULL;
+    }
+
     /* Allocate zero-initialized memory for value structure using raw memory allocator */
     value_t *value = (value_t *)ti_raw_calloc(1, sizeof(struct VALUE_STRUCT));
     if (value) {
