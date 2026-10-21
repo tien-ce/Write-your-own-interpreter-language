@@ -37,6 +37,10 @@ static ast_t *parser_parse_break_statement(parser_t *parser);
 static ast_t *parser_parse_continue_statement(parser_t *parser);
 static ast_t *parser_parse_expr(parser_t *parser);
 static ast_t *parser_parse_comparison(parser_t *parser);
+static ast_t *parser_parse_bit_or(parser_t *parser);
+static ast_t *parser_parse_bit_xor(parser_t *parser);
+static ast_t *parser_parse_bit_and(parser_t *parser);
+static ast_t *parser_parse_shift(parser_t *parser);
 static ast_t *parser_parse_additive(parser_t *parser);
 static ast_t *parser_parse_term(parser_t *parser);
 static ast_t *parser_parse_primary(parser_t *parser);
@@ -63,6 +67,11 @@ static int token_type_to_op(parser_t *parser, int token_type)
     case TOKEN_GTE:         return OP_GTE;
     case TOKEN_LOGIC_AND:   return OP_LOGICAL_AND;
     case TOKEN_LOGIC_OR:    return OP_LOGICAL_OR;
+    case TOKEN_AND:         return OP_BIT_AND;
+    case TOKEN_OR:          return OP_BIT_OR;
+    case TOKEN_XOR:         return OP_BIT_XOR;
+    case TOKEN_SHL:         return OP_SHL;
+    case TOKEN_SHR:         return OP_SHR;
     default:
         ti_log("[Parser Error] Unknown operator token %s at line %d\n",
                token_to_str(token_type), parser->lexer->line_num);
@@ -407,14 +416,80 @@ static ast_t *parser_parse_expr(parser_t *parser)
 }
 
 /**
+ * @brief Parse one left-associative binary level: operand (op operand)*.
+ * @param parser Pointer to parser.
+ * @param token_a First operator token accepted at this level.
+ * @param token_b Second operator token accepted at this level (or -1).
+ * @param next Parser function for the next higher precedence level.
+ * @return AST expression node.
+ */
+static ast_t *parser_parse_binary_level(parser_t *parser, int token_a, int token_b,
+                                        ast_t *(*next)(parser_t *))
+{
+    ast_t *left = next(parser);
+
+    while ((int)parser->current_token->type == token_a || (int)parser->current_token->type == token_b) {
+        int op = parser->current_token->type;
+        parser_eat(parser, op);
+        ast_t *right = next(parser);
+        ast_t *binary_node = ast_init(parser->alloc_list, AST_BINARY_EXPR, parser->lexer->line_num);
+        binary_node->value.binary_expr.op = token_type_to_op(parser, op);
+        binary_node->value.binary_expr.left = left;
+        binary_node->value.binary_expr.right = right;
+        left = binary_node;
+    }
+    return left;
+}
+
+/**
+ * @brief Parse bitwise OR expressions (|), lower than ^ and &, higher than comparison.
+ * @param parser Pointer to parser.
+ * @return AST expression node.
+ */
+static ast_t *parser_parse_bit_or(parser_t *parser)
+{
+    return parser_parse_binary_level(parser, TOKEN_OR, -1, parser_parse_bit_xor);
+}
+
+/**
+ * @brief Parse bitwise XOR expressions (^).
+ * @param parser Pointer to parser.
+ * @return AST expression node.
+ */
+static ast_t *parser_parse_bit_xor(parser_t *parser)
+{
+    return parser_parse_binary_level(parser, TOKEN_XOR, -1, parser_parse_bit_and);
+}
+
+/**
+ * @brief Parse bitwise AND expressions (&).
+ * @param parser Pointer to parser.
+ * @return AST expression node.
+ */
+static ast_t *parser_parse_bit_and(parser_t *parser)
+{
+    return parser_parse_binary_level(parser, TOKEN_AND, -1, parser_parse_shift);
+}
+
+/**
+ * @brief Parse shift expressions (<<, >>), lower than additive.
+ * @param parser Pointer to parser.
+ * @return AST expression node.
+ */
+static ast_t *parser_parse_shift(parser_t *parser)
+{
+    return parser_parse_binary_level(parser, TOKEN_SHL, TOKEN_SHR, parser_parse_additive);
+}
+
+/**
  * @brief Parse comparison expressions (==, !=, <, <=, >, >=).
  * @param parser Pointer to parser.
  * @return AST expression node.
  */
 static ast_t *parser_parse_comparison(parser_t *parser)
 {
-    /* Parse higher precedence additive expression first */
-    ast_t *left = parser_parse_additive(parser);
+    /* Parse higher precedence bitwise expression first (so "x & 0x80 == 0x80" means "(x & 0x80) == 0x80") */
+    ast_t *left = parser_parse_bit_or(parser);
 
     /* Left-associatively chain comparison operations */
     while (parser->current_token->type == TOKEN_DEQUALS ||
@@ -425,7 +500,7 @@ static ast_t *parser_parse_comparison(parser_t *parser)
            parser->current_token->type == TOKEN_GTE) {
         int op = parser->current_token->type;
         parser_eat(parser, op);
-        ast_t *right = parser_parse_additive(parser);
+        ast_t *right = parser_parse_bit_or(parser);
         ast_t *binary_node = ast_init(parser->alloc_list, AST_BINARY_EXPR, parser->lexer->line_num);
         binary_node->value.binary_expr.op = token_type_to_op(parser, op);
         binary_node->value.binary_expr.left = left;
@@ -496,7 +571,13 @@ static ast_t *parser_parse_primary(parser_t *parser)
     case TOKEN_INT: {
         /* Parse integer literal and convert string representation to integer value */
         ast_t *int_node = ast_init(parser->alloc_list, AST_INT_LITERAL, parser->lexer->line_num);
-        int_node->value.int_value = atoi(parser->current_token->value);
+        const char *text = parser->current_token->value;
+        if (text[0] == '0' && (text[1] == 'x' || text[1] == 'X')) {
+            /* Hex literal (lexer limits it to 8 digits): wraps like C, so 0xFFFFFFFF is -1 */
+            int_node->value.int_value = (int)(uint32_t)strtoul(text + 2, NULL, 16);
+        } else {
+            int_node->value.int_value = atoi(text);
+        }
         parser_eat(parser, TOKEN_INT);
         return int_node;
     }
@@ -528,15 +609,18 @@ static ast_t *parser_parse_primary(parser_t *parser)
         return bool_node;
     }
     case TOKEN_NOT:
+    case TOKEN_TILDE:
     case TOKEN_PLUS:
     case TOKEN_MINUS: {
-        /* Parse unary prefix operator (!, +, -) and recursively evaluate primary operand */
+        /* Parse unary prefix operator (!, ~, +, -) and recursively evaluate primary operand */
         int token_type = parser->current_token->type;
         parser_eat(parser, token_type);
 
         ast_t *unary_node = ast_init(parser->alloc_list, AST_UNARY_EXPR, parser->lexer->line_num);
         if (token_type == TOKEN_NOT) {
             unary_node->value.unary_expr.op = OP_NOT;
+        } else if (token_type == TOKEN_TILDE) {
+            unary_node->value.unary_expr.op = OP_BNOT;
         } else if (token_type == TOKEN_PLUS) {
             unary_node->value.unary_expr.op = OP_POS;
         } else if (token_type == TOKEN_MINUS) {

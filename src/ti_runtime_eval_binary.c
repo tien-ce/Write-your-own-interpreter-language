@@ -20,6 +20,7 @@ static value_t *binary_greater_equal(ti_runtime_t *rt, value_t *left, value_t *r
 static value_t *binary_less_equal(ti_runtime_t *rt, value_t *left, value_t *right, int line);
 static value_t *binary_logical_and(ti_runtime_t *rt, value_t *left, value_t *right, int line);
 static value_t *binary_logical_or(ti_runtime_t *rt, value_t *left, value_t *right, int line);
+static value_t *binary_bitwise(ti_runtime_t *rt, int op, value_t *left, value_t *right, int line);
 
 /* -------------------- Static Operator Functions -------------------- */
 
@@ -543,6 +544,60 @@ static value_t *binary_logical_or(ti_runtime_t *rt, value_t *left, value_t *righ
     return value;
 }
 
+/**
+ * @brief Evaluate a bitwise or shift operator (&, |, ^, <<, >>); int operands only.
+ * The result is a plain int, so it is not limited to a byte: a range check happens only when
+ * the value is stored somewhere narrower (e.g. a bytes element), never per operator.
+ * @param rt Pointer to active runtime instance.
+ * @param op Operator (OP_BIT_AND, OP_BIT_OR, OP_BIT_XOR, OP_SHL or OP_SHR).
+ * @param left Left operand value.
+ * @param right Right operand value.
+ * @param line Source line number for error reporting.
+ * @return Newly allocated int value_t, or NULL after raising an error.
+ */
+static value_t *binary_bitwise(ti_runtime_t *rt, int op, value_t *left, value_t *right, int line)
+{
+    /* Validate operands are non-null */
+    if (left == NULL || right == NULL) {
+        ti_raise(rt, TI_ERR_INTERNAL, line, "Invalid operands in binary '%s'", binary_op_to_str(op));
+        return NULL;
+    }
+    /* Bitwise operators are defined for int only (bool uses && and ||) */
+    if (left->type != VAL_INT || right->type != VAL_INT) {
+        ti_raise(rt, TI_ERR_TYPE_MISMATCH, line, "Operator '%s' only supports int operands, got %s and %s",
+                 binary_op_to_str(op), val_type_to_str(left->type), val_type_to_str(right->type));
+        return NULL;
+    }
+
+    int l = left->int_val;
+    int r = right->int_val;
+
+    switch (op) {
+    case OP_BIT_AND:
+        return val_new_int(l & r);
+    case OP_BIT_OR:
+        return val_new_int(l | r);
+    case OP_BIT_XOR:
+        return val_new_int(l ^ r);
+    case OP_SHL:
+    case OP_SHR:
+        /* A shift by a negative count or by the type width or more is undefined in C: reject it */
+        if (r < 0 || r > 31) {
+            ti_raise(rt, TI_ERR_VALUE_OUT_OF_RANGE, line, "Shift count %d out of range (0..31)", r);
+            return NULL;
+        }
+        if (op == OP_SHL) {
+            /* Shift as unsigned so bits shifted past the sign bit wrap instead of being undefined */
+            return val_new_int((int)((uint32_t)l << r));
+        }
+        /* Arithmetic shift right: the sign bit is copied in (written without relying on >> of negatives) */
+        return val_new_int(l >= 0 ? (l >> r) : ~(~l >> r));
+    default:
+        ti_raise(rt, TI_ERR_INTERNAL, line, "Unknown bitwise operator: %d", op);
+        return NULL;
+    }
+}
+
 /* -------------------- Public Expression Evaluators -------------------- */
 
 /* Evaluate a binary expression node (+, -, *, /, ==, <, etc.) */
@@ -607,6 +662,13 @@ value_t *eval_binary_expr(ti_runtime_t *rt, context_t *ctx, ast_t *node)
     case OP_LOGICAL_OR:
         result = binary_logical_or(rt, left, right, node->line);
         break;
+    case OP_BIT_AND:
+    case OP_BIT_OR:
+    case OP_BIT_XOR:
+    case OP_SHL:
+    case OP_SHR:
+        result = binary_bitwise(rt, node->value.binary_expr.op, left, right, node->line);
+        break;
     default:
         ti_raise(rt, TI_ERR_INTERNAL, node->line, "Unknown operator: %d", node->value.binary_expr.op);
         break;
@@ -666,6 +728,15 @@ value_t *eval_unary_expr(ti_runtime_t *rt, context_t *ctx, ast_t *node)
             result = val_new_bool(!operand->bool_val);
         } else {
             ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line, "Unary '!' only supports bool, got type %s", val_type_to_str(operand->type));
+        }
+        break;
+
+    case OP_BNOT:
+        /* Bitwise complement: int only */
+        if (operand->type == VAL_INT) {
+            result = val_new_int(~operand->int_val);
+        } else {
+            ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line, "Unary '~' only supports int, got type %s", val_type_to_str(operand->type));
         }
         break;
 

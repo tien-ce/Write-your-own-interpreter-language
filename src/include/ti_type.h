@@ -23,6 +23,8 @@ typedef enum {
     VAL_DICT,
     VAL_LIST,    // Homogeneous list type (list int, list string, ...)
     VAL_BYTES,   // Raw byte buffer (binary payloads, protocol frames)
+    VAL_ANY,     // Parameter wildcard for native functions only: accepts a value of any type.
+                 // Never the type of a real value, a variable, a return value or a script parameter.
 } val_type_t;
 
 /**

@@ -64,8 +64,8 @@ bool register_builtin_function(const char *name,
 Defined in `src/include/ti_type_func.h`:
 * `name`: Identifier used by scripts to invoke the function.
 * `return_type`: Expected return value type (`VAL_INT`, `VAL_VOID`, `VAL_DICT`, etc.).
-* `params`: Array of `param_t` specifying parameter names and expected types.
-* `param_count`: Number of elements in `params`. Pass `-1` to declare a **variadic** function.
+* `params`: Array of `param_t` (`{ type, name, element_type }`) specifying parameter names and expected types. Use `VAL_ANY` as a parameter's `type` to accept a value of **any** type there (see 4.3).
+* `param_count`: Number of elements in `params`; the runtime rejects calls with a different argument count. Pass `-1` to declare a **fully variadic** function (neither count nor types are checked). `params` may be `NULL` only when `param_count` is `0` or `-1`; otherwise registration fails.
 * `function`: Function pointer matching `native_fn_t`.
 
 ---
@@ -130,6 +130,47 @@ void register_variadic_log(void)
     register_builtin_function("custom_log", VAL_VOID, NULL, -1, native_custom_log);
 }
 ```
+
+### 4.3 Pattern 3: Any-Typed Parameters (`VAL_ANY`)
+Use `VAL_ANY` when a parameter may be of any type but the **argument count (and the other parameters' types) must still be enforced**. This avoids falling back to `-1` and re-checking `argc` by hand.
+
+```c
+/* log_value(string label, any value): label must be a string, value can be anything */
+static value_t *native_log_value(ti_handle_t handle, value_t **args, int argc)
+{
+    (void)handle;
+    (void)argc; /* Guaranteed to be 2 by the interpreter */
+
+    /* args[0] is a string; args[1] has whatever type the script passed, so branch on it */
+    switch (args[1]->type) {
+    case VAL_INT:
+        printf("%s = %d\n", args[0]->string_val, args[1]->int_val);
+        break;
+    case VAL_STRING:
+        printf("%s = %s\n", args[0]->string_val, args[1]->string_val);
+        break;
+    default:
+        printf("%s = <%s>\n", args[0]->string_val, val_type_to_str(args[1]->type));
+        break;
+    }
+    return val_new_void();
+}
+
+void register_log_value(void)
+{
+    static param_t params[] = {
+        { VAL_STRING, "label", VAL_NULL },
+        { VAL_ANY,    "value", VAL_NULL },
+    };
+    register_builtin_function("log_value", VAL_VOID, params, 2, native_log_value);
+}
+```
+
+Rules:
+* `VAL_ANY` is for **native function parameters only**. Scripts have no `any` keyword, so a script function can never declare it, and no value, variable or return type is ever `VAL_ANY` (`val_init(VAL_ANY)` returns `NULL`). `run_function` skips the type check for such a parameter for every function, but only native signatures can contain one, so script functions behave exactly as before.
+* The native must check `args[i]->type` itself before reading a union member.
+* Use `-1` only when the argument **count** is also open (like `print`, or an optional argument such as `to_int(value [, base])`).
+* The core built-ins `to_string(any)`, `to_float(any)` and `to_bool(any)` are registered this way.
 
 ---
 

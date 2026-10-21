@@ -37,10 +37,14 @@ typedef enum token_type {
     TOKEN_DEQUALS,      // ==
     TOKEN_NOT,          // !
     TOKEN_NOT_EQUALS,   // !=
-    TOKEN_AND,
-    TOKEN_LOGIC_AND,
-    TOKEN_OR,
-    TOKEN_LOGIC_OR,
+    TOKEN_AND,          // &  (bitwise and)
+    TOKEN_LOGIC_AND,    // &&
+    TOKEN_OR,           // |  (bitwise or)
+    TOKEN_LOGIC_OR,     // ||
+    TOKEN_XOR,          // ^  (bitwise xor)
+    TOKEN_TILDE,        // ~  (bitwise not)
+    TOKEN_SHL,          // << (shift left)
+    TOKEN_SHR,          // >> (shift right)
     TOKEN_PLUS,         // +
     TOKEN_MINUS,        // -
     TOKEN_STAR,         // *

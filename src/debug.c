@@ -37,6 +37,10 @@ const char *token_type_to_str(int type)
     case TOKEN_LOGIC_AND: return "TOKEN_LOGIC_AND";
     case TOKEN_OR:        return "TOKEN_OR";
     case TOKEN_LOGIC_OR:  return "TOKEN_LOGIC_OR";
+    case TOKEN_XOR:       return "TOKEN_XOR";
+    case TOKEN_TILDE:     return "TOKEN_TILDE";
+    case TOKEN_SHL:       return "TOKEN_SHL";
+    case TOKEN_SHR:       return "TOKEN_SHR";
     case TOKEN_PLUS:      return "TOKEN_PLUS";
     case TOKEN_MINUS:     return "TOKEN_MINUS";
     case TOKEN_STAR:      return "TOKEN_STAR";
@@ -111,6 +115,11 @@ const char *binary_op_to_str(int op)
     case OP_GTE:         return ">=";
     case OP_LOGICAL_AND: return "&&";
     case OP_LOGICAL_OR:  return "||";
+    case OP_BIT_AND:     return "&";
+    case OP_BIT_OR:      return "|";
+    case OP_BIT_XOR:     return "^";
+    case OP_SHL:         return "<<";
+    case OP_SHR:         return ">>";
     default:             return "?";
     }
 }
@@ -141,6 +150,7 @@ const char *val_type_to_str(val_type_t type)
     case VAL_LIST:   return "list";
     case VAL_BYTES:  return "bytes";
     case VAL_FUNC:   return "func";
+    case VAL_ANY:    return "any";
     default:         return "?";
     }
 }

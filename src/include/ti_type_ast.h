@@ -69,7 +69,12 @@ typedef struct AST_STRUCT {
           OP_GTE,             // >=
           OP_LOGICAL_AND,     // &&
           OP_LOGICAL_OR,      // ||
-         } op; 
+          OP_BIT_AND,         // &  (int only)
+          OP_BIT_OR,          // |  (int only)
+          OP_BIT_XOR,         // ^  (int only)
+          OP_SHL,             // << (int only)
+          OP_SHR,             // >> (int only, arithmetic)
+         } op;
         struct AST_STRUCT *left; 
         struct AST_STRUCT *right;
     } binary_expr;

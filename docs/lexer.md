@@ -120,6 +120,7 @@ The `lexer_t` struct encapsulates the complete traversal state of the tokenizer.
      - While `isdigit(lexer->c)`, appends fractional digits.
      - **Invalid suffix validation:** Checks `if (isalpha(lexer->c) || lexer->c == '_')`. If true (e.g. `3.14a` or `1.0_var`), logs an error (`"Invalid suffix '%c' on float constant"`) and calls `ti_fatal()`.
      - Returns `token_init(TOKEN_FLOAT, value)`.
+  2b. **Hexadecimal literal:** Checked right after the integer digits (before the `.` test). If the digits collected are exactly `"0"` and the next character is `x`/`X` followed by a hex digit, the lexer appends the prefix and every following hex digit (`isxdigit`), so `0xFF` stays the text `"0xFF"`. More than 8 digits logs `"Hex constant ... does not fit 32 bits"` and calls `ti_fatal()`; an alphabetic suffix (`0xFG`) logs the usual `"Invalid suffix"` error. Returns `TOKEN_INT`; the parser converts it.
   3. **Integer validation:** If no `.` was encountered:
      - Checks `if (isalpha(lexer->c) || lexer->c == '_')`. If true (e.g. `123abc`), logs an error (`"Invalid suffix '%c' on integer constant"`) and calls `ti_fatal()`.
      - Returns `token_init(TOKEN_INT, value)`.
@@ -193,8 +194,9 @@ The `lexer_t` struct encapsulates the complete traversal state of the tokenizer.
 For operators that can be either single-character or compound:
 - **`=`:** Advances. If next is `=`, returns `TOKEN_DEQUALS` (`==`). Else calls `lexer_go_back` and returns `TOKEN_EQUALS` (`=`).
 - **`!`:** Advances. If next is `=`, returns `TOKEN_NOT_EQUALS` (`!=`). Else calls `lexer_go_back` and returns `TOKEN_NOT` (`!`).
-- **`<`:** Advances. If next is `=`, returns `TOKEN_LTE` (`<=`). Else calls `lexer_go_back` and returns `TOKEN_LT` (`<`).
-- **`>`:** Advances. If next is `=`, returns `TOKEN_GTE` (`>=`). Else calls `lexer_go_back` and returns `TOKEN_GT` (`>`).
+- **`<`:** Advances. If next is `<`, returns `TOKEN_SHL` (`<<`); if next is `=`, returns `TOKEN_LTE` (`<=`). Else calls `lexer_go_back` and returns `TOKEN_LT` (`<`).
+- **`>`:** Advances. If next is `>`, returns `TOKEN_SHR` (`>>`); if next is `=`, returns `TOKEN_GTE` (`>=`). Else calls `lexer_go_back` and returns `TOKEN_GT` (`>`).
+- **`^`** returns `TOKEN_XOR` and **`~`** returns `TOKEN_TILDE` (single-character tokens, no lookahead).
 - **`&`:** Advances. If next is `&`, returns `TOKEN_LOGIC_AND` (`&&`). Else calls `lexer_go_back` and returns `TOKEN_AND` (`&`).
 - **`|`:** Advances. If next is `|`, returns `TOKEN_LOGIC_OR` (`||`). Else calls `lexer_go_back` and returns `TOKEN_OR` (`|`).
 

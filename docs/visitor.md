@@ -70,9 +70,14 @@ ti_runtime_eval_binary.c  ti_runtime_eval_control.c  ti_runtime_eval_func.c  ti_
 - Strictly checks `left->type == VAL_BOOL && right->type == VAL_BOOL`.
 - Returns a newly initialized boolean `value_t` holding `(left->bool_val && right->bool_val)`.
 
+#### `binary_bitwise` (`&`, `|`, `^`, `<<`, `>>`)
+- Both operands must be `VAL_INT`; any other type raises `TI_ERR_TYPE_MISMATCH` ("Operator '&' only supports int operands, ...").
+- `<<` / `>>` require a shift count in `0..31`, otherwise `TI_ERR_VALUE_OUT_OF_RANGE`. `<<` shifts as `uint32_t` so bits past the sign bit wrap; `>>` is arithmetic (`~(~l >> r)` for negative values), both without undefined behavior.
+- The result is a plain `int`. There is no per-operator byte check: a value is range-checked only when stored into a narrower slot (e.g. `val_bytes_set` rejects anything outside `0..255`), so scripts mask explicitly with `& 0xFF`.
+
 #### `eval_unary_expr`
-- Dispatches `OP_POS` (+), `OP_NEG` (-), and `OP_NOT` (!).
-- Validates that unary plus/minus only operate on numbers, and unary not (`!`) only operates on `VAL_BOOL`.
+- Dispatches `OP_POS` (+), `OP_NEG` (-), `OP_NOT` (!), and `OP_BNOT` (~).
+- Validates that unary plus/minus only operate on numbers, unary not (`!`) only on `VAL_BOOL`, and complement (`~`) only on `VAL_INT`.
 - Frees the single `operand` intermediate value before returning `result`.
 
 ---
@@ -152,8 +157,9 @@ Function management in `src/ti_runtime_eval_func.c` maintains strict separation 
 ### 5.2. Parameter & Function Representation
 ```c
 typedef struct PARAM_STRUCT {
-    val_type_t type;          /* Expected parameter type (VAL_INT, VAL_STRING, etc.) */
+    val_type_t type;          /* Expected parameter type (VAL_INT, VAL_STRING, etc.); VAL_ANY (natives only) accepts any type */
     char *name;               /* Parameter identifier name (e.g. "a", "count") */
+    val_type_t element_type;  /* Expected element type when type is VAL_LIST (VAL_NULL accepts any) */
 } param_t;
 
 typedef struct FUNCTION_STRUCT {
@@ -173,7 +179,7 @@ typedef struct FUNCTION_STRUCT {
   ```c
   bool register_builtin_function(const char *name, val_type_t return_type, param_t *params, int param_count, native_fn_t function);
   ```
-  Sets `params = NULL` and `param_count = -1` for variadic C functions (such as `print`), or explicit `params` and `param_count` for typed native functions (e.g. `delay`, `relay_set_state`).
+  Sets `params = NULL` and `param_count = -1` for fully variadic C functions (such as `print`: neither count nor types checked), or explicit `params` and `param_count` for typed native functions (e.g. `delay`, `relay_set_state`). A parameter typed `VAL_ANY` keeps the count enforced but accepts any argument type (e.g. `to_string(any)`). Registration fails if `param_count > 0` and `params` is `NULL`.
 
 ### 5.3. Lookup Helpers
 - `builtin_find_function(const char *name)`: Scans `s_builtin_functions` by identifier.
@@ -204,7 +210,7 @@ typedef struct FUNCTION_STRUCT {
   ```
 - **Execution Flow:**
   1. **Count Check:** If `func->param_count >= 0`, verifies `argc == func->param_count`. Emits fatal error if mismatched.
-  2. **Type Check:** Loops through `0` to `func->param_count - 1`, asserting `argv[i]->type == func->params[i].type`. Emits fatal error with parameter name, expected type, and actual type at `node->line` if mismatched.
+  2. **Type Check:** Loops through `0` to `func->param_count - 1`. A parameter whose `type` is `VAL_ANY` is skipped (any argument type is accepted); otherwise asserts `argv[i]->type == func->params[i].type`. Raises `TI_ERR_TYPE_MISMATCH` with parameter name, expected type, and actual type at `node->line` if mismatched. Only native signatures can contain `VAL_ANY` (scripts cannot declare it), so this skip never affects script functions.
   3. **Dispatch:**
      - `FUNC_BUILTIN`: Calls `func->native_fn(argv, argc)`.
      - `FUNC_TI`: Calls `run_ti_function(rt, ctx, func, argv, argc, node)`.

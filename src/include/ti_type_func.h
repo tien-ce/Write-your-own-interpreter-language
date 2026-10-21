@@ -33,7 +33,7 @@ extern "C" {
 typedef value_t *(*native_fn_t)(ti_handle_t handle, value_t **args, int argc);
 
 typedef struct PARAM_STRUCT {
-    val_type_t type;          /* Expected parameter type (VAL_INT, VAL_STRING, etc.) */
+    val_type_t type;          /* Expected parameter type (VAL_INT, VAL_STRING, etc.); VAL_ANY (natives only) accepts any type */
     char *name;               /* Parameter identifier name (e.g. "a", "count") */
     val_type_t element_type;  /* Expected element type when type is VAL_LIST (VAL_NULL accepts any) */
 } param_t;
@@ -57,10 +57,11 @@ typedef struct FUNCTION_STRUCT {
  * @brief Register a native C function into the interpreter global functions table.
  * @param name Function name in Ti scripts.
  * @param return_type Declared return value type.
- * @param params Array of parameter metadata (or NULL).
- * @param param_count Number of parameters (-1 for variadic).
+ * @param params Array of parameter metadata (NULL only when param_count is 0 or -1). A parameter of
+ *               type VAL_ANY accepts a value of any type, so the argument count stays checked.
+ * @param param_count Number of parameters (-1 for fully variadic: neither count nor types are checked).
  * @param function Native C callback function.
- * @return true on success, false if name exists or out of memory.
+ * @return true on success, false if name exists, the parameter table is inconsistent or out of memory.
  */
 bool register_builtin_function(const char *name, val_type_t return_type, param_t *params, int param_count, native_fn_t function);
 

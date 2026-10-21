@@ -709,7 +709,7 @@ static value_t *builtin_to_bool(ti_handle_t handle, value_t **argv, int argc)
  */
 static value_t *builtin_to_string(ti_handle_t handle, value_t **argv, int argc)
 {
-    /* The function is variadic so it can take any type; the argument count is checked here */
+    /* The VAL_ANY signature already enforces one argument; this guards direct calls from C */
     if (argc != 1) {
         ti_raise_error(handle, TI_ERR_INVALID_ARG, "to_string expects 1 argument, but received %d", argc);
         return NULL;
@@ -748,9 +748,13 @@ void ti_register_core_builtins(void)
     }
     s_core_registered = true;
 
-    /* Variadic (-1) because the argument may be of any type (and to_int has an optional base) */
-    register_builtin_function("to_string", VAL_STRING, NULL, -1, builtin_to_string);
+    /* One argument of any type: VAL_ANY keeps the type open while the runtime still checks the count */
+    static param_t any_param[] = { { VAL_ANY, "value", VAL_NULL } };
+
+    register_builtin_function("to_string", VAL_STRING, any_param, 1, builtin_to_string);
+    register_builtin_function("to_float", VAL_FLOAT, any_param, 1, builtin_to_float);
+    register_builtin_function("to_bool", VAL_BOOL, any_param, 1, builtin_to_bool);
+
+    /* Variadic (-1) only because of the optional base: to_int(value) or to_int(text, base) */
     register_builtin_function("to_int", VAL_INT, NULL, -1, builtin_to_int);
-    register_builtin_function("to_float", VAL_FLOAT, NULL, -1, builtin_to_float);
-    register_builtin_function("to_bool", VAL_BOOL, NULL, -1, builtin_to_bool);
 }

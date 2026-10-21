@@ -1,4 +1,5 @@
-bytes a = x"1A 0F 2C";
+bytes a = x"1A FA 2C";
 bytes b = modbus_read_request(1,22,1);
-b[1] = 200;
-print(b);
+
+int c = a[1] & 0x0F;
+print(c);

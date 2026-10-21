@@ -244,6 +244,36 @@ static token_t *lexer_collect_number(lexer_t *lexer)
         lexer_advance(lexer);
     }
 
+    /* Hexadecimal literal: "0x" or "0X" followed by 1..8 hex digits (kept as text, parsed later) */
+    if (strcmp(value, "0") == 0 && (lexer->c == 'x' || lexer->c == 'X') &&
+        isxdigit((unsigned char)lexer->contents[lexer->i + 1])) {
+        int digits = 0;
+        bool prefix_done = false;
+        do {
+            /* The first character is the 'x' of the prefix; every later one is a hex digit */
+            char *s = lexer_get_current_char_as_string(lexer);
+            value = tracked_realloc(lexer->alloc_list, value, strlen(value) + strlen(s) + 1);
+            strcat(value, s);
+            tracked_free(lexer->alloc_list, s);
+            lexer_advance(lexer);
+            if (prefix_done) {
+                digits++;
+            }
+            prefix_done = true;
+        } while (isxdigit((unsigned char)lexer->c));
+        if (digits > 8) {
+            ti_log("[Lexer Error] Hex constant '%s' does not fit 32 bits at line %d\n", value, lexer->line_num);
+            ti_log_line(lexer->line);
+            ti_fatal();
+        }
+        if (isalpha((unsigned char)lexer->c) || lexer->c == '_') {
+            ti_log("[Lexer Error] Invalid suffix '%c' on integer constant '%s' at line %d\n", lexer->c, value, lexer->line_num);
+            ti_log_line(lexer->line);
+            ti_fatal();
+        }
+        return token_init(lexer->alloc_list, TOKEN_INT, value);
+    }
+
     /* Check for decimal point to process floating-point number */
     if (lexer->c == '.') {
         char *dot = lexer_get_current_char_as_string(lexer);
@@ -460,8 +490,11 @@ token_t *lexer_get_next_token(lexer_t *lexer)
             return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_NOT, NULL));
         }
         case '<': {
-            /* Check for less-than-or-equal (<=) vs less-than (<) */
+            /* Check for shift left (<<), less-than-or-equal (<=) vs less-than (<) */
             lexer_advance(lexer);
+            if (lexer->c == '<') {
+                return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_SHL, NULL));
+            }
             if (lexer->c == '=') {
                 return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_LTE, NULL));
             }
@@ -469,14 +502,21 @@ token_t *lexer_get_next_token(lexer_t *lexer)
             return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_LT, NULL));
         }
         case '>': {
-            /* Check for greater-than-or-equal (>=) vs greater-than (>) */
+            /* Check for shift right (>>), greater-than-or-equal (>=) vs greater-than (>) */
             lexer_advance(lexer);
+            if (lexer->c == '>') {
+                return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_SHR, NULL));
+            }
             if (lexer->c == '=') {
                 return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_GTE, NULL));
             }
             lexer_go_back(lexer);
             return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_GT, NULL));
         }
+        case '^':
+            return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_XOR, NULL));
+        case '~':
+            return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_TILDE, NULL));
         default:
             ti_log("[Lexer Error] Unexpected character %c, at line %d\n", lexer->c, lexer->line_num);
             ti_log_line(lexer->line);

@@ -63,6 +63,10 @@ const char *token_to_str(int token_type)
     case TOKEN_LOGIC_AND:   return "'&&'";
     case TOKEN_OR:          return "'|'";
     case TOKEN_LOGIC_OR:    return "'||'";
+    case TOKEN_XOR:         return "'^'";
+    case TOKEN_TILDE:       return "'~'";
+    case TOKEN_SHL:         return "'<<'";
+    case TOKEN_SHR:         return "'>>'";
     case TOKEN_PLUS:        return "'+'";
     case TOKEN_MINUS:       return "'-'";
     case TOKEN_STAR:        return "'*'";

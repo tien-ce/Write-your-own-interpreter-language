@@ -31,6 +31,27 @@ bool is_active = true;
   config["timeout"] = 5000;
   ```
 
+### 1.3 Bitwise Operators (`int` only)
+
+| Operator | Meaning |
+|---|---|
+| `a & b`, `a \| b`, `a ^ b` | AND, OR, XOR |
+| `~a` | Complement |
+| `a << n`, `a >> n` | Shift left; shift right (arithmetic: the sign is kept) |
+
+* Operands must be `int` (32-bit signed). `bool`, `float`, `string` and `bytes` are a type error; use `&&` / `||` for `bool`.
+* **Precedence** (high to low): `~ ! + -` (unary), `* /`, `+ -`, `<< >>`, `&`, `^`, `\|`, comparisons, `&& \|\|`. Unlike C, bitwise operators bind tighter than comparisons, so `x & 0x80 == 0x80` means `(x & 0x80) == 0x80`.
+* A shift count must be `0..31`, otherwise `TI_ERR_VALUE_OUT_OF_RANGE`. Bits shifted past the sign bit wrap (`1 << 31` is `-2147483648`).
+* Hexadecimal literals: `0x1F`, `0xFF`, up to 8 digits. A hex literal is an ordinary 32-bit `int` (not limited to one byte): `0xFFF` is `4095`, and `0xFFFFFFFF` wraps to `-1`. Decimal literals are unchanged (`010` is still `10`).
+* Shift operators bind tighter than `&`, so `a & b << 1` means `a & (b << 1)`.
+* The result is a plain `int`, never limited to a byte. Only **storing** into a `bytes` element is range-checked (`0..255`, else `TI_ERR_VALUE_OUT_OF_RANGE`), so mask explicitly when you need a byte:
+  ```c
+  bytes b = x"01 FF";
+  b[0] = (b[1] << 4) & 0xFF;   // OK: 0xF0
+  b[0] = b[1] << 4;            // runtime error: 4080 does not fit a byte
+  int hi = (b[1] >> 4) & 0x0F; // nibbles
+  ```
+
 ---
 
 ## 2. Control Flow
@@ -93,6 +114,7 @@ int total = calculate_sum(15, 25);
 
 The interpreter comes with several standard built-in functions:
 * `print(...)`: Prints arguments to standard output (variadic).
+* `to_string(value)`, `to_int(value [, base])`, `to_float(value)`, `to_bool(value)`: Type conversions. `to_string`, `to_float` and `to_bool` take exactly one argument of any type (`VAL_ANY` native parameter), so a wrong argument count is reported by the runtime.
 * `delay(ms)`: Pauses execution for `ms` milliseconds. Queued events and synchronous callbacks run immediately during the pause, then the delay continues for the remaining time; only a stop request ends it early.
 * `register_event(func_name)`: Registers a script function as an asynchronous event handler (fire and forget).
 * `register_callback(func_name)`: Registers a script function as a synchronous handler that a native driver calls and gets an answer from.

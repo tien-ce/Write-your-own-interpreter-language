@@ -18,6 +18,7 @@ Defined in `src/include/ti_type.h`:
 * `VAL_NULL`: Null sentinel, indicates no payload or uninitialized value.
 * `VAL_LIST`: Homogeneous, reference-counted array of elements (`list_t *`).
 * `VAL_DICT`: String-keyed hash map (`dict_t *`).
+* `VAL_ANY`: **Not a value type.** A wildcard used only in the parameter table of a native C function (`param_t.type`) meaning "any type is accepted here". No `value_t` ever carries it (`val_init(VAL_ANY)` returns `NULL`), scripts cannot declare it, and `val_type_to_str` prints it as `any`. See [Functions & Native C Extension API](FUNCTIONS_AND_NATIVE_API.md), section 4.3.
 
 ---
 

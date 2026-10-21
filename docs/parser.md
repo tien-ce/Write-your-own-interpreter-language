@@ -87,47 +87,65 @@ The parser uses an **LL(1)** recursive descent strategy with selective **LL(2)**
 Expressions are parsed using a strict precedence hierarchy where lower precedence functions call higher precedence functions.
 
 ```
-parser_parse_expr()        [Precedence 1: Logical OR (||)]
+parser_parse_expr()        [Precedence 1: Logical OR (||), Logical AND (&&)]
        │
        ▼
-parser_parse_comparison()  [Precedence 2: Logical AND (&&), Relational (==, !=, <, <=, >, >=)]
+parser_parse_comparison()  [Precedence 2: Relational (==, !=, <, <=, >, >=)]
        │
        ▼
-parser_parse_additive()    [Precedence 3: Addition (+), Subtraction (-)]
+parser_parse_bit_or()      [Precedence 3: Bitwise OR (|)]
        │
        ▼
-parser_parse_term()        [Precedence 4: Multiplication (*), Division (/)]
+parser_parse_bit_xor()     [Precedence 4: Bitwise XOR (^)]
        │
        ▼
-parser_parse_primary()     [Precedence 5: Unary (!, -, +), Grouping (expr), Literals, Identifiers, Calls]
+parser_parse_bit_and()     [Precedence 5: Bitwise AND (&)]
+       │
+       ▼
+parser_parse_shift()       [Precedence 6: Shift (<<, >>)]
+       │
+       ▼
+parser_parse_additive()    [Precedence 7: Addition (+), Subtraction (-)]
+       │
+       ▼
+parser_parse_term()        [Precedence 8: Multiplication (*), Division (/)]
+       │
+       ▼
+parser_parse_primary()     [Precedence 9: Unary (!, ~, -, +), Grouping (expr), Literals, Identifiers, Calls]
 ```
+
+Bitwise levels sit **above** comparisons (as in Python, unlike C), so `x & 0x80 == 0x80` parses as `(x & 0x80) == 0x80`. The four bitwise/shift levels share `parser_parse_binary_level()`, which builds the left-associative `AST_BINARY_EXPR` chain for the operator tokens of one level.
 
 ### Precedence Level Implementations
 
 #### Level 1: `parser_parse_expr(parser_t *parser)`
-- Evaluates logical OR (`||`).
+- Evaluates logical OR (`||`) and logical AND (`&&`) (same level, left-associative).
 - First calls `parser_parse_comparison()`.
-- While `current_token->type == TOKEN_LOGIC_OR`, consumes operator and wraps left and right sub-trees into an `AST_BINARY_EXPR` with `OP_LOGICAL_OR`.
+- While the current token is `TOKEN_LOGIC_OR` or `TOKEN_LOGIC_AND`, consumes it and wraps left and right sub-trees into an `AST_BINARY_EXPR` with `OP_LOGICAL_OR` / `OP_LOGICAL_AND`.
 
 #### Level 2: `parser_parse_comparison(parser_t *parser)`
-- Evaluates logical AND (`&&`) and comparisons (`==`, `!=`, `<`, `<=`, `>`, `>=`).
-- Calls `parser_parse_additive()`.
-- While the current token is a comparison or `&&`, builds left-associative `AST_BINARY_EXPR` nodes.
+- Evaluates comparisons (`==`, `!=`, `<`, `<=`, `>`, `>=`).
+- Calls `parser_parse_bit_or()`.
+- While the current token is a comparison, builds left-associative `AST_BINARY_EXPR` nodes.
 
-#### Level 3: `parser_parse_additive(parser_t *parser)`
+#### Levels 3-6: bitwise and shift (`int` operands, checked at run time)
+- `parser_parse_bit_or` (`|` &rarr; `OP_BIT_OR`), `parser_parse_bit_xor` (`^` &rarr; `OP_BIT_XOR`), `parser_parse_bit_and` (`&` &rarr; `OP_BIT_AND`), `parser_parse_shift` (`<<` &rarr; `OP_SHL`, `>>` &rarr; `OP_SHR`).
+- Each calls the next level down (`bit_or` &rarr; `bit_xor` &rarr; `bit_and` &rarr; `shift` &rarr; `additive`) through `parser_parse_binary_level()`.
+
+#### Level 7: `parser_parse_additive(parser_t *parser)`
 - Evaluates `+` and `-`.
 - Calls `parser_parse_term()`.
 - Converts token type to `OP_ADD` or `OP_SUB` via `token_type_to_op()`.
 
-#### Level 4: `parser_parse_term(parser_t *parser)`
+#### Level 8: `parser_parse_term(parser_t *parser)`
 - Evaluates `*` and `/`.
 - Calls `parser_parse_primary()`.
 - Converts token type to `OP_MUL` or `OP_DIV`.
 
-#### Level 5: `parser_parse_primary(parser_t *parser)` (Leaves & Unary)
+#### Level 9: `parser_parse_primary(parser_t *parser)` (Leaves & Unary)
 - **Parenthesized Expressions:** If `current_token == TOKEN_LPAREN`, eats `(`, calls root `parser_parse_expr()`, and eats `)`.
-- **Unary Operators:** If `current_token` is `!`, `-`, or `+`, eats the operator, recursively calls `parser_parse_primary()`, and wraps into an `AST_UNARY_EXPR` (`OP_NOT`, `OP_NEG`, `OP_POS`).
-- **Literals:** Directly constructs `AST_INT_LITERAL`, `AST_FLOAT_LITERAL`, `AST_STRING_LITERAL`, or `AST_BOOLEAN`.
+- **Unary Operators:** If `current_token` is `!`, `~`, `-`, or `+`, eats the operator, recursively calls `parser_parse_primary()`, and wraps into an `AST_UNARY_EXPR` (`OP_NOT`, `OP_BNOT`, `OP_NEG`, `OP_POS`).
+- **Literals:** Directly constructs `AST_INT_LITERAL`, `AST_FLOAT_LITERAL`, `AST_STRING_LITERAL`, or `AST_BOOLEAN`. An integer token starting with `0x`/`0X` is converted with `strtoul(..., 16)` (wraps to 32-bit like C); every other integer uses `atoi`.
 - **Identifiers vs Calls:** If `TOKEN_ID`:
   - Saves the identifier name.
   - Eats `TOKEN_ID`.
