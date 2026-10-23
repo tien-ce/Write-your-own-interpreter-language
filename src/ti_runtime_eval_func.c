@@ -96,6 +96,21 @@ bool register_builtin_function(const char *name, val_type_t return_type, param_t
     return true;
 }
 
+/* Register every row of a built-in table */
+bool ti_register_builtin_table(const ti_builtin_def_t *defs, int count)
+{
+    bool all_ok = true;
+
+    /* A failed row (duplicate name, bad table) must not stop the rows after it */
+    for (int i = 0; defs != NULL && i < count; i++) {
+        if (!register_builtin_function(defs[i].name, defs[i].return_type, defs[i].params,
+                                       defs[i].param_count, defs[i].function)) {
+            all_ok = false;
+        }
+    }
+    return all_ok;
+}
+
 /* -------------------- Function Evaluators -------------------- */
 
 /**

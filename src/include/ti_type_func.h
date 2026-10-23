@@ -66,6 +66,25 @@ typedef struct FUNCTION_STRUCT {
 bool register_builtin_function(const char *name, val_type_t return_type, param_t *params, int param_count, native_fn_t function);
 
 /**
+ * @brief One row of a built-in table: the same five values register_builtin_function takes.
+ */
+typedef struct {
+    const char  *name;         /* Identifier scripts call */
+    val_type_t   return_type;  /* Declared return type */
+    param_t     *params;       /* Parameter table (NULL when param_count is 0 or -1) */
+    int          param_count;  /* Fixed count, or -1 for variadic */
+    native_fn_t  function;     /* Native implementation */
+} ti_builtin_def_t;
+
+/**
+ * @brief Register every row of a built-in table with register_builtin_function.
+ * @param defs Array of rows (tables are normally static const).
+ * @param count Number of rows.
+ * @return true if every row registered; false if any failed (the remaining rows are still tried).
+ */
+bool ti_register_builtin_table(const ti_builtin_def_t *defs, int count);
+
+/**
  * @brief Dispatch and execute a function call with parameter count and type validation.
  * @param rt Pointer to active runtime instance.
  * @param ctx Pointer to active execution context scope.
