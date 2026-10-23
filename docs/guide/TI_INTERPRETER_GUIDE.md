@@ -115,6 +115,20 @@ int total = calculate_sum(15, 25);
 The interpreter comes with several standard built-in functions:
 * `print(...)`: Prints arguments to standard output (variadic).
 * `to_string(value)`, `to_int(value [, base])`, `to_float(value)`, `to_bool(value)`: Type conversions. `to_string`, `to_float` and `to_bool` take exactly one argument of any type (`VAL_ANY` native parameter), so a wrong argument count is reported by the runtime.
+* **Math** (arguments may be `int` or `float`; any other type is `TI_ERR_TYPE_MISMATCH`):
+
+  | Function | Result | Notes |
+  | :--- | :--- | :--- |
+  | `pow(x, y)`, `sqrt(x)`, `exp(x)` | `float` | `pow(2, 10)` is `1024.00`; use `to_int` for a whole number |
+  | `log(x)`, `log10(x)` | `float` | natural / base 10 |
+  | `sin(x)`, `cos(x)`, `tan(x)`, `atan2(y, x)` | `float` | radians; `atan2` takes `y` first like C |
+  | `pi()` | `float` | 3.14159... |
+  | `floor(x)`, `ceil(x)`, `round(x)` | `int` | `round` sends halves away from zero (`2.5` -> `3`, `-2.5` -> `-3`); an `int` argument is returned unchanged |
+  | `abs(x)` | same type as `x` | `abs` of the smallest `int` is an error |
+  | `min(x, y)`, `max(x, y)` | same type as the arguments | both arguments must be the same type: `min(1, 2.0)` is an error, write `min(to_float(1), 2.0)` |
+
+  A result that is not a finite number (`sqrt(-1)`, `log(0)`, `pow(0, -1)`, an overflow) raises `TI_ERR_VALUE_OUT_OF_RANGE`, so a script never holds NaN or infinity. `floor`/`ceil`/`round` raise the same error when the value does not fit an `int`. Math runs in 32-bit `float`, so an `int` above 2^24 can lose low digits when mixed into a float function. These names are reserved: a script cannot define its own function called `min`, `max`, `abs`, `round`, ...
+* `bytes_to_string(bytes)`, `string_to_bytes(string)`: Raw conversion for binary links such as a serial port, so a native only has to return `bytes`. `bytes_to_string` copies the bytes into a string as characters (the bytes are not changed, only read differently); a `0x00` stays in the buffer, but string functions such as `print` and `==` stop at it, so `bytes_to_string(x"48 49 00 5A")` reads as `"HI"`. Copying that string into a variable also keeps only the text before the `0x00`. `string_to_bytes` copies the characters without the terminator (at most 4096). Note that `to_string(bytes)` is different: it gives the **hex** text (`"4142"`) for logging.
 * `delay(ms)`: Pauses execution for `ms` milliseconds. Queued events and synchronous callbacks run immediately during the pause, then the delay continues for the remaining time; only a stop request ends it early.
 * `register_event(func_name)`: Registers a script function as an asynchronous event handler (fire and forget).
 * `register_callback(func_name)`: Registers a script function as a synchronous handler that a native driver calls and gets an answer from.
@@ -175,6 +189,7 @@ void register_custom_builtins(void)
 ## 6. Detailed Feature & Developer Guides
 
 For comprehensive, in-depth architectural and developer documentation, see the specialized guides:
+* [Native C and TI Scripts: How They Interact](NATIVE_SCRIPT_INTERACTION.md): **Start here.** Map of every channel between scripts and native code (arguments, return values, errors, events, callbacks, waiting) with the rules and a checklist for new natives.
 * [Types, Values & Memory Ownership](TYPES_AND_VALUES.md): Complete reference on primitive types, lists, dictionaries, C native value manipulation, and ownership invariants.
 * [Functions & Native C Extension API](FUNCTIONS_AND_NATIVE_API.md): Guide to writing TI functions, registering native C drivers, parameter validation, and variadic handlers.
 * [Asynchronous Events & Synchronous Callbacks](ASYNC_EVENTS_AND_CALLBACKS.md): Integrating background threads, MQTT/Web handlers and hardware interrupts with `ti_post_event` (async) and `ti_call` (sync), generation handles, and the execution lock.

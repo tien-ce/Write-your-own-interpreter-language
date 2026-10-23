@@ -68,6 +68,35 @@ Defined in `src/include/ti_type_func.h`:
 * `param_count`: Number of elements in `params`; the runtime rejects calls with a different argument count. Pass `-1` to declare a **fully variadic** function (neither count nor types are checked). `params` may be `NULL` only when `param_count` is `0` or `-1`; otherwise registration fails.
 * `function`: Function pointer matching `native_fn_t`.
 
+### 3.2 Registering Many Functions with a Table
+A file that owns several built-ins lists them in a `ti_builtin_def_t` table (same five values as `register_builtin_function`, one row each) and registers them in one call:
+
+```c
+static param_t s_bytes_param[] = { { VAL_BYTES, "data", VAL_NULL } };
+
+static const ti_builtin_def_t s_defs[] = {
+    { "bytes_to_string", VAL_STRING, s_bytes_param, 1, builtin_bytes_to_string },
+    { "crc16",           VAL_INT,    s_bytes_param, 1, builtin_crc16           },
+};
+
+void my_topic_register(void)
+{
+    ti_register_builtin_table(s_defs, (int)(sizeof(s_defs) / sizeof(s_defs[0])));
+}
+```
+`ti_register_builtin_table` returns `false` if any row failed (for example a duplicate name) but still registers the other rows. Parameter tables must outlive the call, so keep them `static`.
+
+**Where the core built-ins live** (flat files in `src/`, one per topic, each with one `ti_runtime_builtin_<topic>_register()` that `ti_register_core_builtins()` calls):
+
+| File | Functions |
+| :--- | :--- |
+| `ti_runtime_builtin_convert.c` | `to_string`, `to_int`, `to_float`, `to_bool` |
+| `ti_runtime_builtin_bytes.c` | `bytes_to_string`, `string_to_bytes` |
+| `ti_runtime_builtin_math.c` | `pow`, `sqrt`, `exp`, `log`, `log10`, `sin`, `cos`, `tan`, `atan2`, `pi`, `floor`, `ceil`, `round`, `abs`, `min`, `max` |
+| `ti_runtime_builtin_text.c/.h` | Internal text/JSON formatter shared by the topic files (not public API) |
+
+To add a core topic: create `ti_runtime_builtin_<topic>.c` with its own table, declare `ti_runtime_builtin_<topic>_register()` in `include/ti_runtime_builtin.h`, and call it from `ti_register_core_builtins()`. Core built-ins must work on every host, so anything that needs the OS or hardware belongs in the host layer instead (for the CLI: `cli/builtin/`).
+
 ---
 
 ## 4. Practical Implementation Patterns
@@ -170,7 +199,22 @@ Rules:
 * `VAL_ANY` is for **native function parameters only**. Scripts have no `any` keyword, so a script function can never declare it, and no value, variable or return type is ever `VAL_ANY` (`val_init(VAL_ANY)` returns `NULL`). `run_function` skips the type check for such a parameter for every function, but only native signatures can contain one, so script functions behave exactly as before.
 * The native must check `args[i]->type` itself before reading a union member.
 * Use `-1` only when the argument **count** is also open (like `print`, or an optional argument such as `to_int(value [, base])`).
+* A native's declared `return_type` is informational (the runtime does not check what a native returns). When the result type follows the arguments (`abs`, `min`, `max`), declare the return type as `VAL_ANY`.
 * The core built-ins `to_string(any)`, `to_float(any)` and `to_bool(any)` are registered this way.
+
+### 4.4 Reporting Errors from a Native (`ti_raise_error`)
+The runtime checks argument **count** and **type**; a native must check **values** (ranges, lengths, which types of a `VAL_ANY` it supports) and report problems itself:
+
+```c
+if (args[1]->type != VAL_INT && args[1]->type != VAL_STRING) {
+    ti_raise_error(handle, TI_ERR_TYPE_MISMATCH,
+                   "log_value: 'value' must be int or string, got %s",
+                   val_type_to_str(args[1]->type));
+    return NULL;   /* mandatory: free temporaries first, then return NULL */
+}
+```
+
+The error ends the script and is reported at the line of the call. Choosing the error kind, when to raise instead of returning a value, and the full contract are in [Native C and TI Scripts: How They Interact](NATIVE_SCRIPT_INTERACTION.md), section 4.
 
 ---
 

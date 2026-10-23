@@ -22,6 +22,9 @@ void ti_runtime_builtin_convert_register(void);
 /** @brief Register bytes_to_string, string_to_bytes. */
 void ti_runtime_builtin_bytes_register(void);
 
+/** @brief Register pow, sqrt, exp, log, log10, sin, cos, tan, atan2, pi, floor, ceil, round, abs, min, max. */
+void ti_runtime_builtin_math_register(void);
+
 #ifdef __cplusplus
 }
 #endif

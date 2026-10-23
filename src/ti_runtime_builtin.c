@@ -20,4 +20,5 @@ void ti_register_core_builtins(void)
     /* One register function per topic file */
     ti_runtime_builtin_convert_register();
     ti_runtime_builtin_bytes_register();
+    ti_runtime_builtin_math_register();
 }

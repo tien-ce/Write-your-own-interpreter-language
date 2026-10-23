@@ -117,6 +117,17 @@ value_t *eval_binary_expr(ti_runtime_t *rt, context_t *ctx, ast_t *node)
 }
 ```
 
+### 3.3. Raising from Native Functions (`ti_raise_error`)
+Natives never see `ti_runtime_t *`, so they use the handle-based wrapper declared in `src/TienInterpreter.h`:
+
+```c
+void ti_raise_error(ti_handle_t handle, ti_status_t kind, const char *fmt, ...);
+```
+- Resolves the handle, formats the message into a `TI_ERROR_MESSAGE_SIZE` buffer, then calls `ti_raise(rt, kind, 0, "%s", message)`. A stale handle is ignored.
+- Line `0` means "unknown": `run_function` fills in the line of the call node when a native returns `NULL` with `rt->error.line == 0`.
+- Same contract as `ti_raise`: the native MUST release its temporaries and `return NULL` right after. First-error latch applies.
+- Developer-facing rules (error kind choice, raise vs. return a value): see `docs/guide/NATIVE_SCRIPT_INTERACTION.md`, section 4.
+
 ---
 
 ## 4. Migration Plan & Status
