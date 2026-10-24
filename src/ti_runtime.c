@@ -348,6 +348,9 @@ void ti_runtime_destroy(ti_runtime_t *rt)
     ti_task_free(rt->active_task);
     rt->active_task = NULL;
 
+    /* Global variables own heap values (value_t) that are not on the alloc list: release them first */
+    context_free_internal(&rt->alloc_list, rt->global_context);
+
     /*
      * Batch deallocate 100% of all runtime-allocated objects:
      * Every variable, scope frame, user function, and dynamic string created

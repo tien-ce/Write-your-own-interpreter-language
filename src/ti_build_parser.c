@@ -76,7 +76,7 @@ static int token_type_to_op(parser_t *parser, int token_type)
         ti_log("[Parser Error] Unknown operator token %s at line %d\n",
                token_to_str(token_type), parser->lexer->line_num);
         ti_log_line(parser->lexer->line);
-        ti_fatal();
+        lexer_abort(parser->lexer);
         return -1;
     }
 }
@@ -122,7 +122,7 @@ static type_spec_t parser_parse_type(parser_t *parser)
         ti_log("[Parser Error] Unexpected type %s, at line %d\n",
                token_to_str(parser->current_token->type), parser->lexer->line_num);
         ti_log_line(parser->lexer->line);
-        ti_fatal();
+        lexer_abort(parser->lexer);
         return spec;
     }
     parser_eat(parser, parser->current_token->type); // Eat <type>
@@ -162,7 +162,7 @@ static ast_t *parser_parse_param(parser_t *parser)
     if (type.type == VAL_VOID) {
         ti_log("[Parser Error] Parameter cannot have type void, at line %d\n", parser->lexer->line_num);
         ti_log_line(parser->lexer->line);
-        ti_fatal();
+        lexer_abort(parser->lexer);
     }
     char *param_name = parser_take_identifier(parser);
 
@@ -239,7 +239,7 @@ static ast_t *parser_parse_definition(parser_t *parser)
         ti_log("[Parser Error] Unexpected token %s in definition at line %d\n",
                token_to_str(parser->current_token->type), parser->lexer->line_num);
         ti_log_line(parser->lexer->line);
-        ti_fatal();
+        lexer_abort(parser->lexer);
         return NULL;
     }
 }
@@ -271,7 +271,7 @@ static void parser_eat(parser_t *parser, int expected_type)
         ti_log("Expected token %s, but received %s\n",
                token_to_str(expected_type),
                token_to_str(parser->current_token->type));
-        ti_fatal();
+        lexer_abort(parser->lexer);
     }
 }
 
@@ -321,7 +321,7 @@ static ast_t *parser_parse_statement(parser_t *parser)
                parser->current_token->value ? parser->current_token->value : "",
                parser->lexer->line_num);
         ti_log_line(parser->lexer->line);
-        ti_fatal();
+        lexer_abort(parser->lexer);
         return NULL;
     }
 }
@@ -671,7 +671,7 @@ static ast_t *parser_parse_primary(parser_t *parser)
             if (parser->current_token->type != TOKEN_STRING) {
                 ti_log("[Parser Error] Dictionary key must be a string literal at line %d\n", parser->lexer->line_num);
                 ti_log_line(parser->lexer->line);
-                ti_fatal();
+                lexer_abort(parser->lexer);
             }
             
             /* Extract string and transfer ownership to AST */
@@ -683,7 +683,7 @@ static ast_t *parser_parse_primary(parser_t *parser)
             if (parser->current_token->type != TOKEN_COLON) {
                 ti_log("[Parser Error] Expected ':' after dictionary key at line %d\n", parser->lexer->line_num);
                 ti_log_line(parser->lexer->line);
-                ti_fatal();
+                lexer_abort(parser->lexer);
             }
             parser_eat(parser, TOKEN_COLON);
             
@@ -692,7 +692,7 @@ static ast_t *parser_parse_primary(parser_t *parser)
             if (v_type != TOKEN_INT && v_type != TOKEN_FLOAT && v_type != TOKEN_STRING && v_type != TOKEN_BOOL) {
                 ti_log("[Parser Error] Dictionary value must be a primitive literal at line %d\n", parser->lexer->line_num);
                 ti_log_line(parser->lexer->line);
-                ti_fatal();
+                lexer_abort(parser->lexer);
             }
             /* Parse the literal value into an AST node */
             ast_t *val_node = parser_parse_primary(parser);
@@ -711,7 +711,7 @@ static ast_t *parser_parse_primary(parser_t *parser)
                 /* If not a comma and not a right brace, it's a syntax error */
                 ti_log("[Parser Error] Expected ',' or '}' in dictionary literal at line %d\n", parser->lexer->line_num);
                 ti_log_line(parser->lexer->line);
-                ti_fatal();
+                lexer_abort(parser->lexer);
             }
         }
         parser_eat(parser, TOKEN_RBRACE); // Eat '}'
@@ -734,7 +734,7 @@ static ast_t *parser_parse_primary(parser_t *parser)
         if (length > TI_MAX_BYTES_LEN) {
           ti_log("[Parser Error] Bytes literal exceeds %d bytes at line %d\n", TI_MAX_BYTES_LEN, parser->lexer->line_num);
           ti_log_line(parser->lexer->line);
-          ti_fatal();
+          lexer_abort(parser->lexer);
         }
 
         ast_t *bytes_node = ast_init(parser->alloc_list, AST_BYTES_LITERAL, parser->lexer->line_num);
@@ -769,7 +769,7 @@ static ast_t *parser_parse_primary(parser_t *parser)
                parser->current_token->value ? parser->current_token->value : "",
                parser->lexer->line_num);
         ti_log_line(parser->lexer->line);
-        ti_fatal();
+        lexer_abort(parser->lexer);
         return NULL;
     }
 }
@@ -793,7 +793,7 @@ static val_type_t parser_parse_list_element_type(parser_t *parser)
         ti_log("[Parser Error] List element type must be int, float, string or bool, but got %s at line %d\n",
                token_to_str(parser->current_token->type), parser->lexer->line_num);
         ti_log_line(parser->lexer->line);
-        ti_fatal();
+        lexer_abort(parser->lexer);
         return VAL_NULL;
     }
     parser_eat(parser, parser->current_token->type); // Eat <elem_type>
@@ -821,14 +821,14 @@ static ast_t *parser_parse_list_literal(parser_t *parser)
         if (parser->current_token->type == TOKEN_LBRACKET) {
             ti_log("[Parser Error] Nested list literals are not supported at line %d\n", parser->lexer->line_num);
             ti_log_line(parser->lexer->line);
-            ti_fatal();
+            lexer_abort(parser->lexer);
         }
 
         /* Reject literals that could never fit in a list at runtime */
         if (element_count >= TI_MAX_LIST_ITEMS) {
             ti_log("[Parser Error] List literal exceeds %d elements at line %d\n", TI_MAX_LIST_ITEMS, parser->lexer->line_num);
             ti_log_line(parser->lexer->line);
-            ti_fatal();
+            lexer_abort(parser->lexer);
         }
 
         /* Elements are arbitrary expressions, evaluated and type-checked at runtime */
@@ -843,7 +843,7 @@ static ast_t *parser_parse_list_literal(parser_t *parser)
         } else if (parser->current_token->type != TOKEN_RBRACKET) {
             ti_log("[Parser Error] Expected ',' or ']' in list literal at line %d\n", parser->lexer->line_num);
             ti_log_line(parser->lexer->line);
-            ti_fatal();
+            lexer_abort(parser->lexer);
         }
     }
     parser_eat(parser, TOKEN_RBRACKET); // Eat ']'
@@ -1024,7 +1024,7 @@ static ast_t *parser_parse_assignment_expr(parser_t *parser, ast_t *target)
             ti_log("[Parser Error] Unexpected token %s in assignment at line %d\n",
                    token_to_str(token_type), parser->lexer->line_num);
             ti_log_line(parser->lexer->line);
-            ti_fatal();
+            lexer_abort(parser->lexer);
             return NULL;
         }
         parser_eat(parser, token_type); // Eat the operator token
@@ -1043,7 +1043,7 @@ static ast_t *parser_parse_assignment_expr(parser_t *parser, ast_t *target)
         if (left == NULL) {
             ti_log("[Parser Error] Unsupported target for compound assignment at line %d\n", line);
             ti_log_line(parser->lexer->line);
-            ti_fatal();
+            lexer_abort(parser->lexer);
             return NULL;
         }
 
@@ -1191,7 +1191,7 @@ static ast_t *parser_parse_for_statement(parser_t *parser)
         if (!parser_is_update_token(parser->current_token->type)) {
             ti_log("[Parser Error] for-loop init must be a definition or an assignment at line %d\n", parser->lexer->line_num);
             ti_log_line(parser->lexer->line);
-            ti_fatal();
+            lexer_abort(parser->lexer);
         }
         init = parser_parse_assignment_expr(parser, target);
         break;
@@ -1200,7 +1200,7 @@ static ast_t *parser_parse_for_statement(parser_t *parser)
         ti_log("[Parser Error] Unexpected token %s in for-loop init at line %d\n",
                token_to_str(parser->current_token->type), parser->lexer->line_num);
         ti_log_line(parser->lexer->line);
-        ti_fatal();
+        lexer_abort(parser->lexer);
     }
     parser_eat(parser, TOKEN_SEMI); // Eat first ';'
 
@@ -1215,14 +1215,14 @@ static ast_t *parser_parse_for_statement(parser_t *parser)
         if (parser->current_token->type != TOKEN_ID) {
             ti_log("[Parser Error] for-loop step must be an assignment at line %d\n", parser->lexer->line_num);
             ti_log_line(parser->lexer->line);
-            ti_fatal();
+            lexer_abort(parser->lexer);
         }
         /* Current token is TOKEN_ID, so the AST returned from parser_expr should be identifier or array access*/
         ast_t *target = parser_parse_expr(parser);
         if (!parser_is_update_token(parser->current_token->type)) {
             ti_log("[Parser Error] for-loop step must be an assignment at line %d\n", parser->lexer->line_num);
             ti_log_line(parser->lexer->line);
-            ti_fatal();
+            lexer_abort(parser->lexer);
         }
         step = parser_parse_assignment_expr(parser, target);
     }

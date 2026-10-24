@@ -116,8 +116,24 @@ ti_program_t *ti_compile(const char *source_code)
     lexer_t *lexer = lexer_init(&prog->alloc_list, contents);
     parser_t *parser = parser_init(&prog->alloc_list, lexer);
 
-    /* Construct the Abstract Syntax Tree (AST) */
-    prog->root_ast = parser_parse(parser);
+    if (!lexer || !parser) {
+        ti_program_free(prog);
+        return NULL;
+    }
+
+    /* Build errors jump back here (lexer_abort) instead of calling ti_fatal mid-parse */
+    jmp_buf err_jmp;
+    lexer->err_jmp = &err_jmp;
+    bool build_failed = false;
+
+    if (setjmp(err_jmp) == 0) {
+        /* Construct the Abstract Syntax Tree (AST) */
+        prog->root_ast = parser_parse(parser);
+    } else {
+        /* A build error was already logged: nothing to run, free everything below */
+        build_failed = true;
+        prog->root_ast = NULL;
+    }
 
     /* Reclaim transient frontend state machines (AST nodes remain on alloc_list) */
     tracked_free(&prog->alloc_list, parser);
@@ -125,8 +141,12 @@ ti_program_t *ti_compile(const char *source_code)
     tracked_free(&prog->alloc_list, contents);
 
     /* Verify compilation outcome */
-    if (!prog->root_ast) {
+    if (prog->root_ast == NULL) {
+        /* Release all build memory first: the fatal handler may never return */
         ti_program_free(prog);
+        if (build_failed) {
+            ti_fatal();
+        }
         return NULL;
     }
 
@@ -175,8 +195,9 @@ ti_status_t ti_destroy(ti_handle_t handle)
  *    - `FLOW_RETURN`: If top-level script returned a value, normalizes flow_state back to
  *      `FLOW_NORMAL` so subsequent executions on this runtime remain clean.
  */
-ti_status_t ti_execute(ti_handle_t handle, ti_program_t *prog)
+static ti_status_t ti_execute_no_fatal(ti_handle_t handle, ti_program_t *prog, bool *fatal_out)
 {
+    *fatal_out = false;
     if (!prog || !prog->root_ast) {
         return TI_ERR_INVALID_ARG;
     }
@@ -213,11 +234,20 @@ ti_status_t ti_execute(ti_handle_t handle, ti_program_t *prog)
         status = rt->error.kind;
     }
 
-    /* Release before ti_fatal: the fatal handler may block or never return, which must not wedge ti_call */
+    /* Release before any fatal: the fatal handler may block or never return, which must not wedge ti_call */
     ti_runtime_exec_unlock(rt);
     ti_runtime_release(rt);
 
-    /* The single place that turns a raised runtime error into a fatal (host decides how to stop) */
+    /* The caller decides when to raise the fatal, after its own cleanup */
+    *fatal_out = fatal;
+    return status;
+}
+
+ti_status_t ti_execute(ti_handle_t handle, ti_program_t *prog)
+{
+    /* Run, then turn a raised runtime error into a fatal (host decides how to stop) */
+    bool fatal = false;
+    ti_status_t status = ti_execute_no_fatal(handle, prog, &fatal);
     if (fatal) {
         ti_fatal();
     }
@@ -256,12 +286,18 @@ void ti_run_string(const char *source_code)
         return;
     }
 
-    /* Execute script */
-    ti_execute(handle, prog);
+    /* Execute script (a runtime error is reported as a fatal only after teardown) */
+    bool fatal = false;
+    ti_execute_no_fatal(handle, prog, &fatal);
 
     /* Phase 3: Deterministic teardown of both execution environments */
     ti_destroy(handle);
     ti_program_free(prog);
+
+    /* Everything is released, so a fatal handler that never returns leaks nothing */
+    if (fatal) {
+        ti_fatal();
+    }
 }
 
 /**

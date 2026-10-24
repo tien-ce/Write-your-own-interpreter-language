@@ -126,7 +126,7 @@ static token_t *lexer_collect_string(lexer_t *lexer)
     if (lexer->c == '\0') {
         ti_log("[Lexer Error] Missing close quote at line %d\n", lexer->line_num);
         ti_log_line(lexer->line);
-        ti_fatal();
+        lexer_abort(lexer);
     }
     lexer_advance(lexer); // Skip close quote
     return token_init(lexer->alloc_list, TOKEN_STRING, value);
@@ -157,7 +157,7 @@ static token_t *lexer_collect_hex_bytes(lexer_t *lexer)
         if (!isxdigit((unsigned char)lexer->c)) {
             ti_log("[Lexer Error] Invalid character '%c' in bytes literal at line %d\n", lexer->c, lexer->line_num);
             ti_log_line(lexer->line);
-            ti_fatal();
+            lexer_abort(lexer);
         }
         value = tracked_realloc(lexer->alloc_list, value, (length+1) * sizeof(char) + 1);
         value[length++] = lexer->c;
@@ -168,12 +168,12 @@ static token_t *lexer_collect_hex_bytes(lexer_t *lexer)
     if (lexer->c == '\0') {
         ti_log("[Lexer Error] Missing close quote in bytes literal at line %d\n", lexer->line_num);
         ti_log_line(lexer->line);
-        ti_fatal();;
+        lexer_abort(lexer);
     }
     if (length % 2 != 0) {
         ti_log("[Lexer Error] Bytes literal needs an even number of hex digits at line %d\n", lexer->line_num);
         ti_log_line(lexer->line);
-        ti_fatal();
+        lexer_abort(lexer);
     }
     lexer_advance(lexer); // Skip close quote
     return token_init(lexer->alloc_list, TOKEN_BYTES, value);
@@ -264,12 +264,12 @@ static token_t *lexer_collect_number(lexer_t *lexer)
         if (digits > 8) {
             ti_log("[Lexer Error] Hex constant '%s' does not fit 32 bits at line %d\n", value, lexer->line_num);
             ti_log_line(lexer->line);
-            ti_fatal();
+            lexer_abort(lexer);
         }
         if (isalpha((unsigned char)lexer->c) || lexer->c == '_') {
             ti_log("[Lexer Error] Invalid suffix '%c' on integer constant '%s' at line %d\n", lexer->c, value, lexer->line_num);
             ti_log_line(lexer->line);
-            ti_fatal();
+            lexer_abort(lexer);
         }
         return token_init(lexer->alloc_list, TOKEN_INT, value);
     }
@@ -295,7 +295,7 @@ static token_t *lexer_collect_number(lexer_t *lexer)
         if (isalpha(lexer->c) || lexer->c == '_') {
             ti_log("[Lexer Error] Invalid suffix '%c' on float constant '%s' at line %d\n", lexer->c, value, lexer->line_num);
             ti_log_line(lexer->line);
-            ti_fatal();
+            lexer_abort(lexer);
         }
         return token_init(lexer->alloc_list, TOKEN_FLOAT, value);
     }
@@ -304,7 +304,7 @@ static token_t *lexer_collect_number(lexer_t *lexer)
     if (isalpha(lexer->c) || lexer->c == '_') {
         ti_log("[Lexer Error] Invalid suffix '%c' on integer constant '%s' at line %d\n", lexer->c, value, lexer->line_num);
         ti_log_line(lexer->line);
-        ti_fatal();
+        lexer_abort(lexer);
     } 
     return token_init(lexer->alloc_list, TOKEN_INT, value);
 }
@@ -327,6 +327,13 @@ lexer_t *lexer_init(alloc_hdr_t **list, char *str)
     return lexer;
 }
 
+/* Abort the build after an error has been logged */
+void lexer_abort(lexer_t *lexer)
+{
+    /* Unwind to the setjmp in ti_compile; it frees the program and then calls ti_fatal */
+    longjmp(*lexer->err_jmp, 1);
+}
+
 /* Create a shallow copy of the given lexer state */
 lexer_t *lexer_copy(lexer_t *lexer)
 {
@@ -336,6 +343,7 @@ lexer_t *lexer_copy(lexer_t *lexer)
         return new_lexer;
     }
     new_lexer->alloc_list = lexer->alloc_list;
+    new_lexer->err_jmp = lexer->err_jmp;
     new_lexer->contents = lexer->contents;
     new_lexer->i = lexer->i;
     new_lexer->c = lexer->c;
@@ -520,7 +528,7 @@ token_t *lexer_get_next_token(lexer_t *lexer)
         default:
             ti_log("[Lexer Error] Unexpected character %c, at line %d\n", lexer->c, lexer->line_num);
             ti_log_line(lexer->line);
-            ti_fatal();
+            lexer_abort(lexer);
         }
     }
     /* End of source text reached */

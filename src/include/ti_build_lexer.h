@@ -3,11 +3,13 @@
 
 #include "ti_build_token.h"
 #include "tracked_memory.h"
+#include <setjmp.h>
 
 /* -------------------- Lexer Structure -------------------- */
 
 typedef struct LEXER_STRUCT {
     alloc_hdr_t **alloc_list; /* Dedicated allocation list pointer */
+    jmp_buf *err_jmp;       // Where lexer_abort() jumps on a build error (set by ti_compile)
     char c;                 // Current character
     unsigned int i;         // Current index
     unsigned int line_num;  // Current line number (1-based)
@@ -38,5 +40,13 @@ lexer_t *lexer_copy(lexer_t *lexer);
  * @return Pointer to next token_t.
  */
 token_t *lexer_get_next_token(lexer_t *lexer);
+
+/**
+ * @brief Abort the build after an error has been logged. Does not return.
+ * Jumps back to the setjmp in ti_compile(), which frees the program and then calls ti_fatal().
+ * lexer->err_jmp must be set by the code that created the lexer (only ti_compile does).
+ * @param lexer Pointer to active lexer instance.
+ */
+void lexer_abort(lexer_t *lexer);
 
 #endif /* !TI_BUILD_LEXER_H */
