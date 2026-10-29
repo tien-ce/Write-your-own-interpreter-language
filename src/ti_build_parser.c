@@ -687,15 +687,9 @@ static ast_t *parser_parse_primary(parser_t *parser)
             }
             parser_eat(parser, TOKEN_COLON);
             
-            /* 3. Strict Validation: Value MUST be a primitive literal (Int, Float, String, Bool) */
-            int v_type = parser->current_token->type;
-            if (v_type != TOKEN_INT && v_type != TOKEN_FLOAT && v_type != TOKEN_STRING && v_type != TOKEN_BOOL) {
-                ti_log("[Parser Error] Dictionary value must be a primitive literal at line %d\n", parser->lexer->line_num);
-                ti_log_line(parser->lexer->line);
-                lexer_abort(parser->lexer);
-            }
-            /* Parse the literal value into an AST node */
-            ast_t *val_node = parser_parse_primary(parser);
+            /* 3. Allow complex expression instead of only litteral value*/
+            /* Parse the expresion value into an AST node */
+            ast_t *val_node = parser_parse_expr(parser);
             
             /* 4. Store the pair dynamically */
             keys = tracked_realloc(parser->alloc_list, keys, (pair_count + 1) * sizeof(char *));

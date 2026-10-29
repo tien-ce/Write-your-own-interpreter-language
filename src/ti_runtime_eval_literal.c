@@ -72,25 +72,11 @@ value_t *eval_dict_literal(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         const char *key = node->value.dict_literal.keys[i];
         /* Values are literals only (strict validation in the parser) */
         ast_t *val_node = node->value.dict_literal.values[i];
-        value_t *val = NULL;
-        switch (val_node->type) {
-        case AST_INT_LITERAL:
-            val = val_new_int(val_node->value.int_value);
-            break;
-        case AST_FLOAT_LITERAL:
-            val = val_new_float(val_node->value.float_value);
-            break;
-        case AST_STRING_LITERAL:
-            val = val_new_string(val_node->value.string_value);
-            break;
-        case AST_BOOLEAN:
-            val = val_new_bool(val_node->value.bool_value);
-            break;
-        default:
-            /* Never reached because of strict validation in the parser */
-            break;
+        value_t *val = visitor_visit(rt, ctx, val_node); // Visit the val_node because this can be the node of complex expression
+        if(val == NULL)
+        {
+            goto out;
         }
-
         /* val_dict_set takes ownership of val even on failure */
         ti_status_t status = val_dict_set(dict_val->dict_val, key, val);
         if (status != TI_OK) {
@@ -121,7 +107,7 @@ value_t *eval_list_literal(ti_runtime_t *rt, context_t *ctx, ast_t *node)
     if (element_count == 0) {
         result = val_new_list(element_type);
         if (result == NULL) {
-            ti_raise(rt, TI_ERR_RUNTIME, node->line, "Cannot determine element type of empty list");
+            ti_raise(rt, TI_ERR_NO_MEMORY, node->line, "Cannot create list value");
         }
         return result;
     }
