@@ -18,6 +18,7 @@ Two sides talk to each other. Every channel is one of the rows below; pick the r
 | Push an external event into the script (fire and forget) | native → script | `ti_post_event` | 5.1 |
 | Ask the script a question and wait for the answer | native → script | `ti_call` | 5.2 |
 | Wait inside a native without freezing the script's events | native | `ti_wait` | 6 |
+| Block a native until another thread finishes I/O | native ← I/O thread | `ti_wait_flag` + `ti_give` | 6.1 |
 
 What the two sides **cannot** do:
 
@@ -233,6 +234,77 @@ ti_wait(handle, ms);      /* releases the lock, runs queued events/callbacks, th
 
 It returns early only if the script is stopped or the runtime destroyed. Check its return value if you must stop your own work on interruption.
 
+### 6.1 Waiting for another thread (`ti_wait_flag` + `ti_give`)
+
+When the native starts work that another thread finishes (a serial request answered by a UART task, a network reply), it blocks on a completion flag instead of polling with `ti_wait`:
+
+```c
+ti_status_t ti_wait_flag(ti_handle_t handle, bool *is_done, uint32_t timeout_ms);  /* native, script thread */
+ti_status_t ti_give(ti_handle_t handle);                                           /* any thread, not ISR */
+```
+
+While it waits, queued events and `ti_call` callbacks run exactly as during `ti_wait`. It returns:
+
+| Status | When |
+| :--- | :--- |
+| `TI_OK` | `*is_done` is true (checked first, so an already-set flag returns at once) |
+| `TI_ERR_TIMEOUT` | `timeout_ms` passed (`TI_PORT_WAIT_FOREVER` = no limit) |
+| `TI_ERR_INTERRUPTED` | `ti_stop` was called |
+| `TI_ERR_INVALID_ARG` / `TI_ERR_STALE_HANDLE` | `is_done` is `NULL` / bad handle |
+
+**The producer's three steps, in this order:**
+
+```c
+/* I/O thread, when the reply is complete */
+s_req.len = n;                                            /* 1. write the result               */
+__atomic_store_n(&s_req.done, true, __ATOMIC_RELEASE);   /* 2. publish the flag (release)     */
+ti_give(s_req.handle);                                    /* 3. wake the waiting native        */
+```
+
+* `ti_give` only wakes the waiter; it does not set the flag. If the producer forgets step 2, the native sleeps until the timeout. If it forgets step 3, the native still sees the flag, but only at the next wake-up (an event, a stop, or the timeout).
+* Write the flag with `__atomic_store_n(..., __ATOMIC_RELEASE)`, not a plain assignment: the waiter reads it with acquire ordering, which is what makes the result data written in step 1 visible on the other core.
+* Clear the flag **before** starting the I/O, never after.
+* A wake-up can come from an unrelated event or an earlier `ti_give`. That is harmless: the wait re-checks the flag every time.
+
+**Lifetime: the most important rule.** After `TI_ERR_TIMEOUT` or `TI_ERR_INTERRUPTED` the native returns, but the I/O thread may still be running and will later write the result and the flag. So the flag and the result buffer must **outlive the I/O**, not the native call:
+
+* Keep them in static storage or in the driver's own struct, **never on the native's stack**, unless the native cancels the I/O (and waits for the cancel to take effect) before it returns.
+* Store the handle the producer will pass to `ti_give` together with them; a `ti_give` after the runtime is destroyed safely returns `TI_ERR_STALE_HANDLE`.
+* One flag serves one request at a time. Do not start a new request while the previous one may still complete.
+
+```c
+typedef struct {
+    ti_handle_t handle;
+    bool        done;
+    uint8_t     buf[64];
+    int         len;
+} serial_req_t;
+
+static serial_req_t s_req;                     /* static: survives a timeout */
+
+static value_t *native_serial_query(ti_handle_t handle, value_t **args, int argc)
+{
+    (void)argc;
+    s_req.handle = handle;
+    __atomic_store_n(&s_req.done, false, __ATOMIC_RELAXED);   /* clear before starting */
+    uart_send_async(args[0], &s_req);          /* your driver: sends the request; its reply task fills s_req */
+
+    ti_status_t st = ti_wait_flag(handle, &s_req.done, 500);
+    if (st == TI_ERR_INTERRUPTED) {
+        return NULL;                           /* script is stopping */
+    }
+    if (st != TI_OK) {
+        ti_raise_error(handle, TI_ERR_TIMEOUT, "serial_query: no reply in 500 ms");
+        return NULL;
+    }
+    return val_new_bytes(s_req.buf, s_req.len);
+}
+```
+
+Inside an event or callback handler the wait cannot release the lock, so it only sleeps until the flag, timeout or stop, without running other events (same as `ti_wait`). Test: `tests/test_ti_wait_flag.c`.
+
+**Runnable example (CLI):** `cli/builtin/builtin_autonics.c` implements `autonics_tk_get_pv()` this way: it starts a worker thread that answers after 5 seconds and waits with `ti_wait_flag`. Run `./ti.out examples/ti/wait_flag.ti` and type lines while it waits; each line is delivered to the script's event handler immediately, and the PV arrives at the 5-second mark. On ESP32, replace the pthread worker with a FreeRTOS task (`xTaskCreate` + `vTaskDelay`); the `ti_wait_flag` / `ti_give` part is unchanged.
+
 ---
 
 ## 7. Putting It Together: One Request, Both Directions
@@ -281,5 +353,5 @@ Examples to run: `examples/ti/async_event.ti`, `examples/ti/sync_callback.ti`; C
 3. Every error path: free temporaries, `ti_raise_error`, `return NULL`.
 4. Expected non-errors (miss, empty) return values, not errors.
 5. Return the declared type, freshly allocated; never free what you return.
-6. Keep it short; wait with `ti_wait`, never `sleep`.
+6. Keep it short; wait with `ti_wait` (time) or `ti_wait_flag` (another thread's I/O), never `sleep` or a busy loop. Keep the flag and result buffer outside the native's stack.
 7. Reach back into the script only with `ti_post_event` (no answer needed) or `ti_call` (answer needed), never while holding your own lock.

@@ -344,6 +344,23 @@ ti_status_t ti_wait(ti_handle_t handle, uint32_t ms)
     return ti_runtime_wait(rt, ms);
 }
 
+/* Block a native until another thread reports completion, without blocking events or ti_call callers */
+ti_status_t ti_wait_flag(ti_handle_t handle, bool *is_done, uint32_t timeout_ms)
+{
+    /* Caller is a native running on this runtime, so it stays alive for this call */
+    ti_runtime_t *rt = ti_runtime_resolve(handle);
+    if (rt == NULL) {
+        return TI_ERR_STALE_HANDLE;
+    }
+    return ti_runtime_wait_flag(rt, is_done, timeout_ms);
+}
+
+/* Wake a native blocked in ti_wait_flag (or ti_wait) from another thread */
+ti_status_t ti_give(ti_handle_t handle)
+{
+    return ti_runtime_give(handle);
+}
+
 /* Call a script function synchronously from outside the script's execution context */
 ti_status_t ti_call(ti_handle_t handle, const char *func_name, value_t **args, int argc,
                     value_t **result, uint32_t timeout_ms)

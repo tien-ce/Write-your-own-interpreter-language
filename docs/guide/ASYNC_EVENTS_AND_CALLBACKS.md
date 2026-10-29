@@ -42,7 +42,7 @@ Both run the script function **to completion**: a handler is never interrupted b
 Each runtime has one **execution lock**. Whoever runs TI code holds it.
 
 * `ti_execute` holds it for the whole script run.
-* The script gives it up only at **safe points**: statement boundaries, loop iterations, and while inside `delay()` / `ti_wait()`. At a safe point it checks for waiting `ti_call` callers and for queued events.
+* The script gives it up only at **safe points**: statement boundaries, loop iterations, and while inside `delay()` / `ti_wait()` / `ti_wait_flag()`. At a safe point it checks for waiting `ti_call` callers and for queued events.
 * A callback (event or `ti_call`) holds it for the whole callback. Nothing else runs TI code meanwhile.
 
 ```text
@@ -176,7 +176,7 @@ If a native that the script called itself calls `ti_call` on the same handle, th
 ## 5. Rules for drivers
 
 1. **Never hold a module mutex while calling `ti_call`.** The handler may run a native that takes the same mutex. Copy the handle and name out under your mutex, release it, then call (see `cli_simulate_call`).
-2. **Natives that wait must not hold the lock while blocked.** Use `ti_wait(handle, ms)` to sleep. It releases the lock and services events and calls. Do not use `sleep()`/`usleep()` or block on a lock another thread holds while it calls `ti_call`.
+2. **Natives that wait must not hold the lock while blocked.** Use `ti_wait(handle, ms)` to sleep, or `ti_wait_flag(handle, &done, timeout_ms)` + `ti_give(handle)` to wait for another thread's I/O. Both release the lock and service events and calls. Do not use `sleep()`/`usleep()` or block on a lock another thread holds while it calls `ti_call`.
 3. **Not from an ISR.** `ti_post_event` and `ti_call` allocate. From an ISR, notify a task and let the task post or call. (`ti_stop` is the exception and is safe from an ISR.)
 4. **Dispatcher stack size.** A `ti_call` handler runs on the *caller's* stack. Size the dispatcher task for the interpreter's recursion (`max_call_depth`, 64 by default, deep call chains use a lot) and test the deepest handler.
 5. **Priority (FreeRTOS).** The execution lock is a mutex with priority inheritance. A high-priority dispatcher that waits on a low-priority script lifts the script's priority until the next safe point. Keep handlers short.
@@ -202,4 +202,4 @@ In the `cli`, a line starting with `!` is sent as a synchronous call (`cli_simul
 script alive, ticks=1 served=1
 ```
 
-Thread-safety tests for both paths are in `tests/test_ti_call.c` and `tests/test_ti_wait.c` (build with `-fsanitize=thread`).
+Thread-safety tests for both paths are in `tests/test_ti_call.c`, `tests/test_ti_wait.c` and `tests/test_ti_wait_flag.c` (build with `-fsanitize=thread`).

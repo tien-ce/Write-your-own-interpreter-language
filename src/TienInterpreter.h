@@ -146,6 +146,30 @@ ti_status_t ti_dispatch_events(ti_handle_t handle);
 ti_status_t ti_wait(ti_handle_t handle, uint32_t ms);
 
 /**
+ * @brief Block a native until another thread sets *is_done, while staying responsive like ti_wait.
+ * Queued events and ti_call callbacks keep running during the wait. The producer thread must write
+ * its result, then set the flag with release ordering, then call ti_give:
+ *   result = ...; __atomic_store_n(&done, true, __ATOMIC_RELEASE); ti_give(handle);
+ * The flag and any result buffer must stay valid until the producer is finished with them, also
+ * after a timeout or a stop (never on the native's stack unless the I/O is cancelled first).
+ * Must only be called from a native function executing on this runtime.
+ * @param handle Runtime handle passed to the native function.
+ * @param is_done Completion flag; the caller clears it before starting the I/O.
+ * @param timeout_ms Wait limit in ms (TI_PORT_WAIT_FOREVER for no limit).
+ * @return TI_OK when the flag is set, TI_ERR_TIMEOUT, TI_ERR_INTERRUPTED if stopped,
+ *         TI_ERR_INVALID_ARG (is_done is NULL) or TI_ERR_STALE_HANDLE.
+ */
+ti_status_t ti_wait_flag(ti_handle_t handle, bool *is_done, uint32_t timeout_ms);
+
+/**
+ * @brief Wake a native blocked in ti_wait_flag (or ti_wait) so it re-checks its flag now.
+ * Only wakes: setting the flag is the producer's job. Safe to call from any task/thread, but not from ISR.
+ * @param handle Runtime handle.
+ * @return TI_OK, or TI_ERR_STALE_HANDLE if the handle is stale or invalid.
+ */
+ti_status_t ti_give(ti_handle_t handle);
+
+/**
  * @brief Call a script function synchronously from outside the script (e.g. a driver task).
  * The script is paused at its next safe point (statement or loop-iteration boundary, or inside a
  * delay) and the callback runs to completion on the caller's stack before the script resumes.

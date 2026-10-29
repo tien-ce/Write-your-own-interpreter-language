@@ -100,7 +100,7 @@ typedef struct TI_RUNTIME_STRUCT {
     ti_signal_t        *handoff;             /* Given by a finished ti_call so the yielding script resumes */
 
     /* Wake-up: interrupts a sleeping delay on new events or stop */
-    ti_signal_t        *wake;                /* Given by post_event and stop */
+    ti_signal_t        *wake;                /* Given by post_event, stop and ti_give */
 
     /* Usage pinning: keeps the runtime alive while external calls use it */
     int                 users;               /* Calls currently pinned via acquire (guarded by slot lock) */
@@ -271,6 +271,24 @@ void ti_runtime_yield(ti_runtime_t *rt);
  * @return TI_OK when the time has elapsed, TI_ERR_INTERRUPTED if the runtime was stopped.
  */
 ti_status_t ti_runtime_wait(ti_runtime_t *rt, uint32_t ms);
+
+/**
+ * @brief Wait until *is_done becomes true, servicing events and ti_call callers like ti_runtime_wait.
+ * The flag is read with acquire ordering; the producer sets it with release ordering, then ti_runtime_give.
+ * @param rt Pointer to runtime instance.
+ * @param is_done Completion flag owned by the caller.
+ * @param timeout_ms Wait limit in ms (TI_PORT_WAIT_FOREVER for no limit).
+ * @return TI_OK when the flag is set, TI_ERR_TIMEOUT, TI_ERR_INTERRUPTED if stopped, or TI_ERR_INVALID_ARG.
+ */
+ti_status_t ti_runtime_wait_flag(ti_runtime_t *rt, const bool *is_done, uint32_t timeout_ms);
+
+/**
+ * @brief Wake a wait loop (ti_runtime_wait / ti_runtime_wait_flag) of the runtime referenced by handle.
+ * Safe to call from any task/thread, but not from ISR.
+ * @param handle Runtime handle.
+ * @return TI_OK, or TI_ERR_STALE_HANDLE if the handle is stale or invalid.
+ */
+ti_status_t ti_runtime_give(ti_handle_t handle);
 
 /**
  * @brief Run a script-defined function as a callback, isolating any error it raises.

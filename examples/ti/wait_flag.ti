@@ -1,0 +1,22 @@
+/*
+ * Waiting for another thread: like async_event.ti, but the loop waits inside a native instead of delay().
+ * autonics_tk_get_pv() starts a worker thread that answers after 5 seconds (ti_wait_flag + ti_give).
+ * Run:  ./ti.out examples/ti/wait_flag.ti
+ * Then type a line and press Enter while it waits; each line is delivered to on_message() at once.
+ */
+
+int received = 0;
+
+/* Runs during the wait, in the order the events were posted */
+void on_message(string text) {
+    received++;
+    print("event #" + to_string(received) + ": " + text);
+}
+
+register_event(on_message);
+
+while (true) {
+    print("reading PV (takes 5 s)...");
+    float pv = autonics_tk_get_pv();
+    print("PV = " + to_string(pv) + ", events so far: " + to_string(received));
+}
