@@ -20,9 +20,8 @@ bool is_active = true;
 * **Homogeneous Lists (`list <type>`)**:
   ```c
   list int numbers = [1, 2, 3, 4];
-  numbers.push(5);
   int first = numbers[0];
-  int count = numbers.len();
+  numbers[1] = 20;
   ```
 * **Dictionaries (`dict`)**:
   ```c
@@ -30,6 +29,13 @@ bool is_active = true;
   string host = config["host"];
   config["timeout"] = 5000;
   ```
+* **Nesting and JSON**: lists and dicts can hold each other (`list dict`, `list list`, a dict value that is a list), up to 4 levels. Inserting a container stores a copy; a variable, an argument or `x[i]` shares it. `to_string` turns them into JSON:
+  ```c
+  list dict stations = [{"name": "tien"}];
+  dict payload = {"stations": stations, "count": 1};
+  print(to_string(payload));   // {"count":1,"stations":[{"name":"tien"}]}
+  ```
+  Details: [Types & Values](TYPES_AND_VALUES.md), sections 2.4 to 2.6.
 
 ### 1.3 Bitwise Operators (`int` only)
 
