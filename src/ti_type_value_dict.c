@@ -66,7 +66,41 @@ ti_status_t val_dict_set(dict_t *dict, const char *key, value_t *val)
         return TI_ERR_TYPE_MISMATCH;
     }
 
+    // If the val is container, deep copy the value
+    if (val->type == VAL_LIST || val->type == VAL_DICT)
+    {
+        value_t *cloned = val_deep_copy(val, TI_MAX_CONTAINER_DEPTH);
+        val_free(val); // Free the input val
+        if(cloned == NULL)
+        {
+            return TI_ERR_LIMIT_EXCEEDED; // Also might be no memory but we can't know
+        }
+        val = cloned;
+    }
+
     /* Transfer ownership directly without val_copy, based on interpreter conventions */
+    chashmap_set(dict->map, key, val);
+    return TI_OK;
+}
+
+/* Insert or update a key-value pair directly without cloning; intended for val_deep_copy */
+ti_status_t val_dict_set_raw(dict_t *dict, const char *key, value_t *val)
+{
+    if (val == NULL) {
+        return TI_ERR_INVALID_ARG;
+    }
+    if (dict == NULL || key == NULL) {
+        val_free(val);
+        return TI_ERR_INVALID_ARG;
+    }
+
+    /* Overwriting an existing key must keep its type */
+    value_t *cur_val = (value_t *)chashmap_get(dict->map, key);
+    if (cur_val != NULL && cur_val->type != val->type) {
+        val_free(val);
+        return TI_ERR_TYPE_MISMATCH;
+    }
+
     chashmap_set(dict->map, key, val);
     return TI_OK;
 }

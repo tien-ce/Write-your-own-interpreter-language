@@ -49,6 +49,15 @@ void list_release(list_t *list);
 ti_status_t val_list_push(list_t *list, value_t *val);
 
 /**
+ * @brief Append a value to the end of the list directly without deep copying containers.
+ * Ownership of val is always transferred: on failure the value is freed.
+ * @param list List reference object.
+ * @param val Value to append (must match the list element type).
+ * @return TI_OK, TI_ERR_TYPE_MISMATCH, TI_ERR_NO_MEMORY or TI_ERR_INVALID_ARG.
+ */
+ti_status_t val_list_push_raw(list_t *list, value_t *val);
+
+/**
  * @brief Remove the last element of the list and hand it to the caller.
  * @param list List reference object.
  * @param out Receives the removed value (caller owns it) on success.

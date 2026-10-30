@@ -37,6 +37,16 @@ void dict_release(dict_t *dict);
 ti_status_t val_dict_set(dict_t *dict, const char *key, value_t *val);
 
 /**
+ * @brief Insert or update a key-value pair directly without deep copying containers.
+ * Ownership of val is always transferred: on failure the value is freed.
+ * @param dict Dictionary reference object.
+ * @param key String identifier for the entry.
+ * @param val Value to insert.
+ * @return TI_OK, TI_ERR_TYPE_MISMATCH or TI_ERR_INVALID_ARG.
+ */
+ti_status_t val_dict_set_raw(dict_t *dict, const char *key, value_t *val);
+
+/**
  * @brief Retrieve a deep copy of the value associated with the key.
  * @param dict Dictionary reference object.
  * @param key String identifier for the entry.

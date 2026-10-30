@@ -168,6 +168,34 @@ ti_status_t val_list_push(list_t *list, value_t *val)
     return TI_OK;
 }
 
+/* Append a value directly without cloning; intended for val_deep_copy */
+ti_status_t val_list_push_raw(list_t *list, value_t *val)
+{
+    if (val == NULL) {
+        return TI_ERR_INVALID_ARG;
+    }
+
+    ti_status_t status = TI_OK;
+    if (list == NULL) {
+        status = TI_ERR_INVALID_ARG;
+    } else if (val->type != list->elem_type) {
+        status = TI_ERR_TYPE_MISMATCH;
+    } else if (list->count + 1 > TI_MAX_LIST_ITEMS) {
+        status = TI_ERR_LIMIT_EXCEEDED;
+    } else if (!list_reserve(list, list->count + 1)) {
+        status = TI_ERR_NO_MEMORY;
+    }
+
+    if (status != TI_OK) {
+        val_free(val);
+        return status;
+    }
+
+    list_move_in(&list->items[list->count], val);
+    list->count++;
+    return TI_OK;
+}
+
 /* Remove the last element of the list and hand it to the caller */
 ti_status_t val_list_pop(list_t *list, value_t **out)
 {

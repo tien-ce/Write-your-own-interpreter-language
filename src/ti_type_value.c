@@ -251,8 +251,8 @@ static bool copy_dict_entry_cb(const char *key, value_t *value, void *user_conte
         ctx->success = false;
         return false;
     }
-    // Add new value to dict
-    ti_status_t status = val_dict_set(ctx->dst_dcit, key, cloned_item);
+    // Add new value to dict directly without second-pass cloning
+    ti_status_t status = val_dict_set_raw(ctx->dst_dcit, key, cloned_item);
     if (status != TI_OK)
     {
         ctx->success = false;
@@ -290,7 +290,7 @@ value_t *val_deep_copy(const value_t *src, uint8_t max_depth)
                 val_free(result);
                 return NULL;
             }
-            ti_status_t status = val_list_push(result->list_val, cloned_item);
+            ti_status_t status = val_list_push_raw(result->list_val, cloned_item);
             if (status != TI_OK)
             {
                 val_free(result);
