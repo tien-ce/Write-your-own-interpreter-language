@@ -6,6 +6,7 @@
 #include "include/tracked_memory.h"
 #include "include/debug.h"
 #include "TienInterpreter.h"
+#include <stdint.h>
 #include <string.h>
 
 /* Shared success sentinel (see TI_VAL_OK in ti_type_value.h): static storage, never freed */
@@ -231,6 +232,90 @@ value_t *val_copy(const value_t *val)
         return NULL;
     }
     return copy;
+}
+
+/* Context pass to call back of dict for each to save the result and depth */
+typedef struct {
+    dict_t *dst_dcit;
+    int max_depth;
+    bool success;
+}dict_copy_ctx_t;
+/* Call back is called each "key": "value", pair */
+static bool copy_dict_entry_cb(const char *key, value_t *value, void *user_context)
+{
+    dict_copy_ctx_t *ctx = (dict_copy_ctx_t*) user_context;
+    // Deep copy element value
+    value_t *cloned_item = val_deep_copy(value, ctx->max_depth - 1);
+    if (cloned_item == NULL)
+    {
+        ctx->success = false;
+        return false;
+    }
+    // Add new value to dict
+    ti_status_t status = val_dict_set(ctx->dst_dcit, key, cloned_item);
+    if (status != TI_OK)
+    {
+        ctx->success = false;
+        return false;
+    }
+    return true; // Continue iterate
+}
+
+value_t *val_deep_copy(const value_t *src, uint8_t max_depth)
+{
+    value_t *result = NULL;
+    // Base case 
+    if (max_depth == 0 || src == NULL)
+    {
+        return NULL;
+    }
+    // If the container, try to deep copy
+    if(src->type == VAL_LIST)
+    {
+        result = val_new_list(src->list_val->elem_type);
+        if(result == NULL)
+        {
+            val_free(result);
+            return NULL;
+        }
+        int count = src->list_val->count;
+        for (int i = 0; i < count; i++)
+        {
+            // Get ith element at source
+            value_t *item_src = &src->list_val->items[i];
+            // Recusivelly deep copy the element with depth - 1
+            value_t *cloned_item = val_deep_copy(item_src, max_depth - 1);
+            if(cloned_item == NULL)
+            {
+                val_free(result);
+                return NULL;
+            }
+            ti_status_t status = val_list_push(result->list_val, cloned_item);
+            if (status != TI_OK)
+            {
+                val_free(result);
+                return NULL;
+            }
+        }
+    }
+    else if (src->type == VAL_DICT)
+    {
+        // For each key val and deep copy the value to key
+        result = val_new_dict();
+        dict_copy_ctx_t ctx = {result->dict_val, max_depth, true};
+        val_dict_foreach(src->dict_val, copy_dict_entry_cb, &ctx);
+        if(!ctx.success)
+        {
+            val_free(result);
+            return NULL;
+        }
+    }
+    else
+    {
+        // If the scalar type, use val_copy
+        result = val_copy(src);
+    }
+    return result;
 }
 
 /* Create a function value referring to a script function by name */

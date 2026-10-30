@@ -782,9 +782,11 @@ static val_type_t parser_parse_list_element_type(parser_t *parser)
     case TOKEN_KW_FLOAT:  element_type = VAL_FLOAT;  break;
     case TOKEN_KW_STRING: element_type = VAL_STRING; break;
     case TOKEN_KW_BOOL:   element_type = VAL_BOOL;   break;
+    case TOKEN_KW_LIST:   element_type = VAL_LIST;   break;
+    case TOKEN_KW_DICT:   element_type = VAL_DICT;   break;
     default:
         /* Containers are rejected as elements: refcounting cannot reclaim reference cycles */
-        ti_log("[Parser Error] List element type must be int, float, string or bool, but got %s at line %d\n",
+        ti_log("[Parser Error] Expect list element type , but got %s at line %d\n",
                token_to_str(parser->current_token->type), parser->lexer->line_num);
         ti_log_line(parser->lexer->line);
         lexer_abort(parser->lexer);
@@ -811,12 +813,7 @@ static ast_t *parser_parse_list_literal(parser_t *parser)
 
     /* Parse comma-separated element expressions until the closing bracket */
     while (parser->current_token->type != TOKEN_RBRACKET) {
-        /* Nested list literals are rejected: elements must be scalar or string */
-        if (parser->current_token->type == TOKEN_LBRACKET) {
-            ti_log("[Parser Error] Nested list literals are not supported at line %d\n", parser->lexer->line_num);
-            ti_log_line(parser->lexer->line);
-            lexer_abort(parser->lexer);
-        }
+        /* Nested list literals are allowed: elements must be scalar or string */
 
         /* Reject literals that could never fit in a list at runtime */
         if (element_count >= TI_MAX_LIST_ITEMS) {

@@ -1,0 +1,12 @@
+int b = 10;
+dict a = {"key": "value"};
+
+list dict c = [a,{"name":"tien"}];
+
+dict item = c[0];
+print("item before: ",item["key"]);
+
+// Not the container, copy by reference to dict
+dict item1 = c[0];
+item1["key"] = "value_after";
+print("item after: ",item["key"]);

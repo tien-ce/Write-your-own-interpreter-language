@@ -1,4 +1,5 @@
 #include "include/ti_runtime_visitor.h"
+#include "include/ti_type.h"
 #include "include/ti_type_value.h"
 #include "include/ti_type_value_dict.h"
 #include "include/ti_type_value_list.h"
@@ -126,8 +127,8 @@ value_t *eval_list_literal(ti_runtime_t *rt, context_t *ctx, ast_t *node)
             }
             list_val = val_new_list(element_type);
             if (list_val == NULL) {
-                ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line, "Invalid list element type %s",
-                         val_type_to_str(elem_val->type));
+                /* Because already allow container, the most probability is no memory */
+                ti_raise(rt, TI_ERR_NO_MEMORY, node->line, "Cannot create list value");
                 goto out;
             }
         }

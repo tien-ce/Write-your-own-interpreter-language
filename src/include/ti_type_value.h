@@ -170,6 +170,8 @@ void val_free(value_t *value);
  */
 value_t *val_copy(const value_t *val);
 
+#define TI_MAX_CONTAINER_DEPTH 4
+value_t *val_deep_copy(const value_t *val, uint8_t max_depth);
 /* -------------------- Dictionary Functions -------------------- */
 
 /**

@@ -1,4 +1,6 @@
 #include "include/ti_type_value_list.h"
+#include "include/ti_type.h"
+#include "include/ti_type_value.h"
 #include "include/tracked_memory.h"
 #include <stdlib.h>
 
@@ -22,8 +24,8 @@ static void list_move_in(value_t *slot, value_t *val);
  */
 static bool list_is_valid_elem_type(val_type_t type)
 {
-    /* Containers are excluded: refcounting cannot reclaim reference cycles */
-    return type == VAL_INT || type == VAL_FLOAT || type == VAL_STRING || type == VAL_BOOL;
+    /* Aleary allowed container by deep copy for container value*/
+    return type == VAL_INT || type == VAL_FLOAT || type == VAL_STRING || type == VAL_BOOL || type == VAL_LIST || type == VAL_DICT;
 }
 
 /**
@@ -149,6 +151,18 @@ ti_status_t val_list_push(list_t *list, value_t *val)
         return status;
     }
 
+    // If the val is container, deep copy the value
+    if (val->type == VAL_LIST || val->type == VAL_DICT)
+    {
+        value_t *cloned = val_deep_copy(val, TI_MAX_CONTAINER_DEPTH);
+        val_free(val); // Free the input val
+        if(cloned == NULL)
+        {
+            return TI_ERR_LIMIT_EXCEEDED; // Also might be no memory but we can't know
+        }
+        val = cloned;
+    }
+
     list_move_in(&list->items[list->count], val);
     list->count++;
     return TI_OK;
@@ -217,7 +231,17 @@ ti_status_t val_list_set(list_t *list, int index, value_t *val)
         val_free(val);
         return status;
     }
-
+    // If the val is container, deep copy the value
+    if (val->type == VAL_LIST || val->type == VAL_DICT)
+    {
+        value_t *cloned = val_deep_copy(val, TI_MAX_CONTAINER_DEPTH);
+        val_free(val); // Free the input val
+        if(cloned == NULL)
+        {
+            return TI_ERR_LIMIT_EXCEEDED; // Also might be no memory but we can't know
+        }
+        val = cloned;
+    }
     /* Drop the old payload, then move the new one into the same slot */
     val_free_internal(&list->items[index]);
     list_move_in(&list->items[index], val);
