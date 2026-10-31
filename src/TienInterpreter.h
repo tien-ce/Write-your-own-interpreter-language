@@ -15,6 +15,18 @@ extern "C" {
 #include "include/ti_type_func.h"
 #include "include/ti_build_program.h"
 
+
+/* -------------------- Runtime Configuration -------------------- */
+/* Maximum number of simultaneously live runtimes (handle slot table size, at most 256) */
+#ifndef TI_MAX_RUNTIMES
+#define TI_MAX_RUNTIMES 10
+#endif
+
+/* Maximum number of events queued per runtime before posting is rejected */
+#ifndef TI_MAX_PENDING_EVENTS
+#define TI_MAX_PENDING_EVENTS 32
+#endif
+
 /* -------------------- Platform & Callback Types -------------------- */
 
 /**

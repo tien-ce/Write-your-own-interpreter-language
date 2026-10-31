@@ -13,18 +13,6 @@
 extern "C" {
 #endif
 
-/* -------------------- Runtime Configuration -------------------- */
-
-/* Maximum number of simultaneously live runtimes (handle slot table size, at most 256) */
-#ifndef TI_MAX_RUNTIMES
-#define TI_MAX_RUNTIMES 4
-#endif
-
-/* Maximum number of events queued per runtime before posting is rejected */
-#ifndef TI_MAX_PENDING_EVENTS
-#define TI_MAX_PENDING_EVENTS 32
-#endif
-
 /* -------------------- Pending Event Task -------------------- */
 
 /**
