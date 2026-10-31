@@ -5,8 +5,9 @@
 
 
 /* Internal callback triggered by chashmap to safely free a dictionary payload. */
-static void dict_payload_free_cb(void *payload)
+static void dict_payload_free_cb(void *payload, void *user_data)
 {
+    (void)user_data; /* Values free themselves; no context needed */
     if (payload != NULL) {
         value_t *val = (value_t *)payload;
         /* Delegate to the interpreter's native value destructor */
@@ -22,7 +23,12 @@ dict_t *dict_create(void)
         return NULL;
     }
     new_dict->refcount = 1;
-    new_dict->map = chashmap_create(16, dict_payload_free_cb);
+    /* No free context; NULL allocators: chashmap falls back to calloc/free */
+    new_dict->map = chashmap_create(16, dict_payload_free_cb, NULL, NULL, NULL);
+    if (new_dict->map == NULL) {
+        tracked_free(NULL, new_dict);
+        return NULL;
+    }
     return new_dict;
 }
 
@@ -78,8 +84,11 @@ ti_status_t val_dict_set(dict_t *dict, const char *key, value_t *val)
         val = cloned;
     }
 
-    /* Transfer ownership directly without val_copy, based on interpreter conventions */
-    chashmap_set(dict->map, key, val);
+    /* Transfer ownership directly without val_copy; on failure the map hands val back */
+    if (!chashmap_set(dict->map, key, val)) {
+        val_free(val);
+        return TI_ERR_NO_MEMORY;
+    }
     return TI_OK;
 }
 
@@ -101,7 +110,11 @@ ti_status_t val_dict_set_raw(dict_t *dict, const char *key, value_t *val)
         return TI_ERR_TYPE_MISMATCH;
     }
 
-    chashmap_set(dict->map, key, val);
+    /* On failure the map hands val back: free it to keep the always-take-ownership contract */
+    if (!chashmap_set(dict->map, key, val)) {
+        val_free(val);
+        return TI_ERR_NO_MEMORY;
+    }
     return TI_OK;
 }
 

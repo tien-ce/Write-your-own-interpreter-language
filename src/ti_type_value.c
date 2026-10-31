@@ -144,7 +144,16 @@ value_t *val_new_dict(void)
 {
     /* Create new value struct */
     value_t *val = val_init(VAL_DICT);
+    if (val == NULL) {
+        return NULL;
+    }
+
+    /* Out of memory: discard the half-built value */
     val->dict_val = dict_create();
+    if (val->dict_val == NULL) {
+        ti_raw_free(val);
+        return NULL;
+    }
     return val;
 }
 

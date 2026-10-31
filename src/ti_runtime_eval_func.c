@@ -62,7 +62,12 @@ bool register_builtin_function(const char *name, val_type_t return_type, param_t
 {
     /* Lazy initialize the hashmap if it doesn't exist */
     if (s_builtin_map == NULL) {
-        s_builtin_map = chashmap_create(32, NULL); 
+        /* No payload destructor or context; NULL allocators: chashmap falls back to calloc/free */
+        s_builtin_map = chashmap_create(32, NULL, NULL, NULL, NULL);
+        if (s_builtin_map == NULL) {
+            ti_log("Memory issue\n");
+            return false;
+        }
     }
 
     /* A fixed parameter count needs a parameter table to check against */
@@ -91,8 +96,12 @@ bool register_builtin_function(const char *name, val_type_t return_type, param_t
     func->param_count = param_count;
     func->native_fn = function;
 
-    /* Insert the function pointer into the hashmap */
-    chashmap_set(s_builtin_map, name, (void *)func);
+    /* Insert the function pointer into the hashmap; on failure the map hands func back */
+    if (!chashmap_set(s_builtin_map, name, (void *)func)) {
+        tracked_free(NULL, func);
+        ti_log("Memory issue\n");
+        return false;
+    }
     return true;
 }
 
