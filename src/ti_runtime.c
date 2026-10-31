@@ -245,7 +245,7 @@ bool ti_runtime_init(ti_runtime_t *rt)
     rt->alloc_list = NULL;
 
     /* Script state */
-    rt->global_context = context_init(&rt->alloc_list);
+    rt->global_context = context_init_global(&rt->alloc_list);
     rt->user_functions = NULL;
     rt->user_function_count = 0;
 

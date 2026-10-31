@@ -54,6 +54,10 @@ static bool visitor_execute_body(ti_runtime_t *rt, context_t *parent_ctx, ast_t 
 
     /* Create new local scope linked to parent context */
     context_t *local_ctx = context_init(&rt->alloc_list);
+    if (local_ctx == NULL) {
+        ti_raise(rt, TI_ERR_NO_MEMORY, body_node->line, "Cannot allocate block scope");
+        return false;
+    }
     local_ctx->parent = parent_ctx;
 
     /* Execute statements within the local scope */

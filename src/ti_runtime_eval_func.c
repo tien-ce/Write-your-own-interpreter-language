@@ -169,6 +169,11 @@ value_t *run_ti_function(ti_runtime_t *rt, context_t *ctx, function_t *func, val
 
     /* Create isolated context for function call linked to global context */
     func_ctx = context_init(&rt->alloc_list);
+    if (func_ctx == NULL) {
+        /* function_frame_release accepts a NULL frame and still restores call_depth */
+        ti_raise(rt, TI_ERR_NO_MEMORY, node->line, "Cannot allocate call frame for function '%s'", func->name);
+        goto out;
+    }
     func_ctx->parent = rt->global_context;
 
     /* Deep copy evaluated arguments and bind them to parameter variables in local context */

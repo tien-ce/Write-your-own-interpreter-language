@@ -3,6 +3,7 @@
 
 #include "ti_type_value.h"
 #include "tracked_memory.h"
+#include "chashmap.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -33,6 +34,7 @@ typedef struct CONTEXT_STRUCT {
     /* Variable symbol table */
     variable_t **variables;        // Symbol table of local variables
     int variable_count;            // Number of registered local variables
+    chashmap_t *var_map;           // Name -> variable_t map; non-NULL only for the global scope (array unused then)
 
     /* Control flow state */
     flow_state_t flow_state;       // Active flow interruption flag
@@ -48,6 +50,13 @@ typedef struct CONTEXT_STRUCT {
  * @return Pointer to newly allocated context_t.
  */
 context_t *context_init(alloc_hdr_t **list);
+
+/**
+ * @brief Allocate the root (global) context scope, which stores its variables in a hash map.
+ * @param list Pointer to head of allocation list (or NULL).
+ * @return Pointer to newly allocated context_t, or NULL if out of memory.
+ */
+context_t *context_init_global(alloc_hdr_t **list);
 
 /**
  * @brief Free an interpreter context and its scoped variables.

@@ -5,6 +5,22 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* -------------------- Constants -------------------- */
+
+#define CONTEXT_GLOBAL_MAP_CAPACITY 16 /* Initial bucket count of the global variable map */
+
+/* -------------------- Static Functions -------------------- */
+
+/**
+ * @brief chashmap payload destructor for the global variable map.
+ * @param payload variable_t owned by the map.
+ * @param user_data Allocation list (alloc_hdr_t **) the variable was tracked on.
+ */
+static void context_variable_free_cb(void *payload, void *user_data)
+{
+    variable_free((alloc_hdr_t **)user_data, (variable_t *)payload);
+}
+
 /* -------------------- Context & Variable Operations -------------------- */
 
 /* Initialize a new interpreter context scope */
@@ -16,10 +32,28 @@ context_t *context_init(alloc_hdr_t **list)
     }
     context->variables = NULL;
     context->variable_count = 0;
+    context->var_map = NULL;
     context->parent = NULL;
     context->flow_state = FLOW_NORMAL;
     context->return_value = NULL;
     context->alloc_list = list;
+    return context;
+}
+
+/* Initialize the root context scope backed by a variable hash map */
+context_t *context_init_global(alloc_hdr_t **list)
+{
+    context_t *context = context_init(list);
+    if (!context) {
+        return NULL;
+    }
+
+    /* The map owns each variable_t and frees it on the runtime's allocation list */
+    context->var_map = chashmap_create(CONTEXT_GLOBAL_MAP_CAPACITY, context_variable_free_cb, (void *)list, NULL, NULL);
+    if (context->var_map == NULL) {
+        tracked_free(list, context);
+        return NULL;
+    }
     return context;
 }
 
@@ -50,6 +84,17 @@ variable_t *context_find_variable(context_t *ctx, const char *variable_name)
 {
     context_t *current_ctx = ctx;
     while (current_ctx != NULL) {
+        /* Global scope: hash lookup; inner scopes shadow it because they are searched first */
+        if (current_ctx->var_map != NULL) {
+            variable_t *variable = (variable_t *)chashmap_get(current_ctx->var_map, variable_name);
+            if (variable != NULL) {
+                return variable;
+            }
+            current_ctx = current_ctx->parent;
+            continue;
+        }
+
+        /* Local scope: few variables, a linear scan is cheapest */
         for (int i = 0; i < current_ctx->variable_count; i++) {
             if (strcmp(current_ctx->variables[i]->name, variable_name) == 0) {
                 return current_ctx->variables[i];
@@ -78,7 +123,30 @@ ti_status_t context_add_variable(alloc_hdr_t **list, context_t *ctx, const char 
         return TI_ERR_INVALID_ARG;
     }
 
-    /* A name may be defined only once per scope */
+    /* Global scope: store in the hash map */
+    if (ctx->var_map != NULL) {
+        /* Must check first: chashmap_set would overwrite and free an existing variable */
+        if (chashmap_get(ctx->var_map, name) != NULL) {
+            return TI_ERR_RUNTIME;
+        }
+
+        variable_t *variable = variable_init(list, name);
+        if (variable == NULL) {
+            return TI_ERR_NO_MEMORY;
+        }
+        variable->value = value;
+
+        /* On failure the map hands the variable back: free only the struct, the caller keeps name and value */
+        if (!chashmap_set(ctx->var_map, name, variable)) {
+            tracked_free(list, variable);
+            return TI_ERR_NO_MEMORY;
+        }
+
+        /* Success: the map now owns the variable, its name and its value */
+        return TI_OK;
+    }
+
+    /* Local scope: a name may be defined only once per scope */
     for (int i = 0; i < ctx->variable_count; i++) {
         if (strcmp(ctx->variables[i]->name, name) == 0) {
             return TI_ERR_RUNTIME;
@@ -154,6 +222,12 @@ void context_free_internal(alloc_hdr_t **list, context_t *ctx)
 {
     if (!ctx) {
         return;
+    }
+
+    /* Free the global variable map: its destructor frees every variable_t */
+    if (ctx->var_map != NULL) {
+        chashmap_destroy(ctx->var_map);
+        ctx->var_map = NULL;
     }
 
     /* Free variables */
