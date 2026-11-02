@@ -1,2 +1,4 @@
-name = "van anh"
-print(name);
+dict a = {"key": "value"};
+list dict c = [a, {"name": "tien"}];
+dict payload = {"stations": c, "count": 2};
+print(to_string(payload));

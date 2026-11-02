@@ -9,7 +9,7 @@ int received = 0;
 /* Runs at the script's next safe point, in the order the events were posted */
 void on_message(string text) {
     received++;
-    print("event #" + to_string(received) + ": " + text);
+    print("event #" + to_string(received) + ": " + text);;
 }
 
 register_event(on_message);

@@ -220,7 +220,7 @@ static ast_t *parser_parse_function_definition(parser_t *parser, type_spec_t typ
 }
 
 /**
- * @brief Parse a definition: '<type> <identifier>' followed by '(' (function) or '=' (variable).
+ * @brief Parse a definition: '<type> <identifier>' followed by '(' (function), '=' or ';' (variable).
  * @param parser Pointer to parser.
  * @return AST definition node.
  */
@@ -234,6 +234,7 @@ static ast_t *parser_parse_definition(parser_t *parser)
     case TOKEN_LPAREN:
         return parser_parse_function_definition(parser, type, name);
     case TOKEN_EQUALS:
+    case TOKEN_SEMI: /* declaration without initializer */
         return parser_parse_variable_definition(parser, type, name);
     default:
         ti_log("[Parser Error] Unexpected token %s in definition at line %d\n",
@@ -847,22 +848,28 @@ static ast_t *parser_parse_list_literal(parser_t *parser)
 }
 
 /**
- * @brief Parse the rest of a variable declaration after '<type> <name>': '= expr', no ';'.
- * @param parser Pointer to parser (current token is '=').
+ * @brief Parse the rest of a variable declaration after '<type> <name>': '= expr' or nothing, no ';'.
+ * Without an initializer the node's value is NULL and the runtime creates the type's default value.
+ * @param parser Pointer to parser (current token is '=' or ';').
  * @param type Declared type (with element type for lists).
  * @param name Variable name (ownership passes to the AST node).
- * @return AST variable definition node.
+ * @return AST variable definition node (value is NULL for a plain declaration).
  */
-/* = <expr> */
+/* [= <expr>] */
 static ast_t *parser_parse_variable_declaration(parser_t *parser, type_spec_t type, char *name)
 {
-    /* Parse assignment operator and initialization expression */
-    parser_eat(parser, TOKEN_EQUALS); // Eat '='
-    ast_t *value = parser_parse_expr(parser);
+    ast_t *value = NULL;
 
-    /* A list literal takes its element type from the declaration (needed for empty lists) */
-    if (type.type == VAL_LIST && value->type == AST_LIST_LITERAL) {
-        value->value.list_literal.element_type = type.element_type;
+    /* Plain declaration: leave ';' for the caller, value stays NULL */
+    if (parser->current_token->type != TOKEN_SEMI) {
+        /* Definition: parse assignment operator and initialization expression */
+        parser_eat(parser, TOKEN_EQUALS); // Eat '='
+        value = parser_parse_expr(parser);
+
+        /* A list literal takes its element type from the declaration (needed for empty lists) */
+        if (type.type == VAL_LIST && value->type == AST_LIST_LITERAL) {
+            value->value.list_literal.element_type = type.element_type;
+        }
     }
 
     /* Construct AST variable definition node */
@@ -1103,8 +1110,8 @@ static ast_t *parser_parse_continue_statement(parser_t *parser)
 }
 
 /**
- * @brief Parse the rest of a variable definition after '<type> <name>': = expr;.
- * @param parser Pointer to parser (current token is '=').
+ * @brief Parse the rest of a variable definition after '<type> <name>': [= expr];.
+ * @param parser Pointer to parser (current token is '=' or ';').
  * @param type Declared type.
  * @param name Variable name (ownership passes to the AST node).
  * @return AST variable definition node.

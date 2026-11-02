@@ -398,7 +398,9 @@ value_t *eval_function_call(ti_runtime_t *rt, context_t *ctx, ast_t *node)
     /* Neither a script function nor a built-in: a variable holding a function value may be called */
     if (func == NULL) {
         variable_t *variable = context_find_variable(ctx, func_name);
-        if (variable != NULL && variable->value != NULL && variable->value->type == VAL_FUNC) {
+        /* An empty function value ('func f;', func_name NULL) names nothing: fall through to "undefined" */
+        if (variable != NULL && variable->value != NULL && variable->value->type == VAL_FUNC &&
+            variable->value->func_name != NULL) {
             /* The value stores a name, so resolve it now (the function may have been defined since) */
             func = user_find_function(rt, variable->value->func_name);
         }

@@ -38,8 +38,8 @@ static value_t *builtin_print(ti_handle_t handle, value_t **argv, int argc)
             printf("%s", argv[i]->bool_val ? "true" : "false");
             break;
         case VAL_FUNC:
-            /* A function value prints as its name in angle brackets */
-            printf("<func %s>", argv[i]->func_name);
+            /* A function value prints as its name in angle brackets; an empty one ('func f;') as "none" */
+            printf("<func %s>", argv[i]->func_name != NULL ? argv[i]->func_name : "none");
             break;
         case VAL_BYTES: {
             /* Binary data has no text form: print it as hex digits */

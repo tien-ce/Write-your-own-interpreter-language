@@ -347,7 +347,8 @@ ti_status_t ti_text_append_value(ti_text_buffer_t *text, const value_t *value)
         return text_append(text, "null");
 
     case VAL_FUNC:
-        return text_append(text, "<func %s>", value->func_name);
+        /* An empty function value ('func f;') has no name: never pass NULL to %s */
+        return text_append(text, "<func %s>", value->func_name != NULL ? value->func_name : "none");
 
     case VAL_BYTES: {
         /* Binary data has no text form: render it as hex digits */

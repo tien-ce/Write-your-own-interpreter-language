@@ -223,6 +223,11 @@ value_t *val_copy(const value_t *val)
         bytes_retain(copy->bytes_val);
         break;
     case VAL_FUNC:
+        if (val->func_name == NULL)
+        {
+            // Might be  default value
+            break;
+        }
         /* Each value owns its own copy of the name, so it can outlive the original */
         copy->func_name = ti_raw_strdup(val->func_name);
         if (copy->func_name == NULL) {

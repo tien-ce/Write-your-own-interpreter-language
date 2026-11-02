@@ -12,8 +12,63 @@
 /* -------------------- Static Function Prototypes -------------------- */
 
 static variable_t *eval_lookup_variable(ti_runtime_t *rt, context_t *ctx, const char *name, int line);
+static value_t *eval_default_value(ti_runtime_t *rt, ast_t *node);
 
 /* -------------------- Static Functions -------------------- */
+
+/**
+ * @brief Create the default value of a declaration without initializer ('int x;').
+ * @param rt Pointer to active runtime instance.
+ * @param node Variable definition AST node whose value is NULL.
+ * @return New value of the declared type, or NULL after ti_raise() (no default for the type, or out of memory).
+ */
+static value_t *eval_default_value(ti_runtime_t *rt, ast_t *node)
+{
+    val_type_t type = node->value.variable_definition.variable_type;
+    value_t *value = NULL;
+
+    switch (type) {
+    case VAL_INT:    /* 0 */
+    case VAL_FLOAT:  /* 0.0 */
+    case VAL_BOOL:   /* false */
+    case VAL_FUNC:   /* no function (func_name NULL): the script must assign one before calling it */
+        /* val_init zero-fills the payload, which is already the default for these types */
+        value = val_init(type);
+        break;
+
+    case VAL_STRING:
+        /* Empty string, never a NULL string_val, so string operations work on it */
+        value = val_new_string("");
+        break;
+
+    case VAL_DICT:
+        /* Empty dictionary */
+        value = val_new_dict();
+        break;
+
+    case VAL_LIST:
+        /* Empty list of the declared element type ('list int l;') */
+        value = val_new_list(node->value.variable_definition.element_type);
+        break;
+
+    case VAL_BYTES:
+        /* Empty buffer (length 0, no data block) */
+        value = val_new_bytes(NULL, 0);
+        break;
+
+    default:
+        /* 'void x;' and other non-value types have nothing to hold */
+        ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line, "Cannot declare variable '%s' of type %s",
+                 node->value.variable_definition.variable_name, val_type_to_str(type));
+        return NULL;
+    }
+
+    if (value == NULL) {
+        ti_raise(rt, TI_ERR_NO_MEMORY, node->line, "Cannot allocate default value of '%s'",
+                 node->value.variable_definition.variable_name);
+    }
+    return value;
+}
 
 /**
  * @brief Find a variable that must exist and hold a value; raise a runtime error otherwise.
@@ -62,8 +117,14 @@ value_t *eval_variable_definition(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         return NULL;
     }
 
-    /* Recursively evaluate initializer expression; NULL means it already failed or was cancelled */
-    value = visitor_visit(rt, ctx, node->value.variable_definition.value);
+    if (node->value.variable_definition.value == NULL) {
+        /* Declaration without initializer ('int x;'): use the type's default value */
+        value = eval_default_value(rt, node);
+    } else {
+        /* Recursively evaluate initializer expression */
+        value = visitor_visit(rt, ctx, node->value.variable_definition.value);
+    }
+    /* NULL means the default could not be created, or the expression failed or was cancelled */
     if (value == NULL) {
         goto out;
     }

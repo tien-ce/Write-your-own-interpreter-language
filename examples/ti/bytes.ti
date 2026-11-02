@@ -1,5 +1,3 @@
-bytes a = x"1A FA 2C";
-bytes b = modbus_read_request(1,22,1);
+bytes a = x"4D 53 47 3A 50 41 53 53";
 
-int c = a[1] & 0x0F;
-print(c);
+print(bytes_to_string(a));

@@ -3,12 +3,12 @@ CFLAGS = -Wall -Wextra -Isrc
 CFLAGS += -I./lib/chashmap/include #chashmap
 MEMCHECK_FLAGS = -fsanitize=address -g
 DEBUG_FLAGS = -g -O0 
-LDFLAGS = -lcjson -pthread
+LDFLAGS = -lcjson -pthread -lm
 LOG_FILE = memory_check.txt
-TEST_FILE = while_loop.ti 
+TEST_FILE = examples/ti/new_dict.ti 
 
-HEADERS = $(wildcard src/include/*.h)
-SOURCES = $(wildcard src/*.c cli/*.c lib/chashmap/src/*.c)
+HEADERS = $(wildcard src/include/*.h src/*.h)
+SOURCES = $(wildcard src/*.c cli/*.c cli/builtin/*.c lib/chashmap/src/*.c)
 OBJECTS = $(SOURCES:.c=.o)
 
 EXEC = ti.out
@@ -34,7 +34,7 @@ $(MEMCHECK_EXEC): $(OBJECTS)
 
 # Target debug: build with debug symbols and launch gdb in TUI mode
 debug: CFLAGS += $(DEBUG_FLAGS)
-debug: clean_objs $(DEBUG_EXEC)
+debug: $(DEBUG_EXEC)
 	gdb -tui --args ./$(DEBUG_EXEC) $(TEST_FILE)
 
 $(DEBUG_EXEC): $(OBJECTS)
