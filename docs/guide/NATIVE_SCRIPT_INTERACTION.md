@@ -207,7 +207,8 @@ A callback runs isolated, like a `try/except` around the call:
 | :--- | :--- |
 | Inside an event handler | Logged as `[Event Error] ... at line N`; the script keeps running |
 | Inside a `ti_call` callback | Returned to the native as the `ti_status_t` code (the message text is not returned); runtime status is reset to OK and the script keeps running |
-| A `ti_stop`/destroy while waiting | `TI_ERR_INTERRUPTED`; this is never swallowed |
+| A `ti_stop` while waiting | `TI_ERR_INTERRUPTED`; this is never swallowed |
+| The runtime destroyed while waiting | `TI_ERR_STALE_HANDLE`; the callback never ran |
 
 So a native using `ti_call` must **test the return code**:
 

@@ -86,15 +86,18 @@ ti_program_t *ti_compile(const char *source_code);
 
 /**
  * @brief Create a new runtime instance.
+ * The calling thread becomes the runtime's owner: ti_create, ti_execute and ti_destroy must be
+ * called on that thread, one after another. Other threads may only use ti_post_event, ti_stop,
+ * ti_give and ti_call.
  * @return Handle of the new runtime, or TI_INVALID_HANDLE if out of memory or no free slot.
  */
 ti_handle_t ti_create(void);
 
 /**
  * @brief Destroy a runtime, discard its pending events and invalidate its handle.
- * Every later call with this handle (from any driver or task) fails with TI_ERR_STALE_HANDLE.
- * Must not be called while ti_execute() is running on the same handle: call ti_stop() and
- * wait for ti_execute() to return first.
+ * Owner thread only, after ti_execute() has returned. Every later call with this handle
+ * (from any thread) fails with TI_ERR_STALE_HANDLE; a ti_call already waiting for the runtime
+ * returns TI_ERR_STALE_HANDLE without running.
  * @param handle Runtime handle.
  * @return TI_OK, or TI_ERR_STALE_HANDLE if the handle is stale or invalid.
  */
@@ -102,6 +105,8 @@ ti_status_t ti_destroy(ti_handle_t handle);
 
 /**
  * @brief Execute a compiled program on the specified runtime.
+ * Owner thread only (never two at once on one runtime). The runtime outlives the run: its
+ * globals and functions stay available to later ti_execute and ti_call until ti_destroy.
  * @param handle Runtime handle.
  * @param prog Pointer to compiled program.
  * @return TI_OK on completion, TI_ERR_INTERRUPTED if stopped, TI_ERR_STALE_HANDLE or TI_ERR_INVALID_ARG.
@@ -116,7 +121,7 @@ void ti_run_string(const char *source_code);
 
 /**
  * @brief Request execution cancellation to immediately halt running script.
- * Safe to call from any task/thread (and from ISR on ESP32).
+ * Safe to call from any task/thread, but not from ISR (takes the registry mutex).
  * @param handle Runtime handle.
  * @return TI_OK, or TI_ERR_STALE_HANDLE if the handle is stale or invalid.
  */

@@ -6,6 +6,7 @@
 #include "include/ti_runtime_visitor.h"
 #include "include/ti_build_program.h"
 #include "include/ti_runtime.h"
+#include "include/ti_runtime_registry.h"
 #include "include/ti_runtime_builtin.h"
 #include "include/tracked_memory.h"
 #include <stdio.h>
@@ -166,14 +167,8 @@ ti_handle_t ti_create(void)
 /* Destroy a runtime, discard its pending events and invalidate its handle */
 ti_status_t ti_destroy(ti_handle_t handle)
 {
-    /* A stale handle (e.g. double destroy) is rejected instead of double-freeing */
-    ti_runtime_t *rt = ti_runtime_resolve(handle);
-    if (rt == NULL) {
-        return TI_ERR_STALE_HANDLE;
-    }
-
-    ti_runtime_destroy(rt);
-    return TI_OK;
+    /* Detach is atomic: a stale handle (e.g. double destroy, even concurrent) is rejected, never double-freed */
+    return ti_runtime_destroy(handle);
 }
 
 /**
@@ -202,11 +197,15 @@ static ti_status_t ti_execute_no_fatal(ti_handle_t handle, ti_program_t *prog, b
         return TI_ERR_INVALID_ARG;
     }
 
-    /* Pin the runtime so a concurrent destroy waits for this run to finish */
-    ti_runtime_t *rt = ti_runtime_acquire(handle);
+    /*
+     * Resolve only: no pin is needed because create, execute and destroy run on the owner thread
+     * one after another, so destroy can never run while this function uses rt.
+     */
+    ti_runtime_t *rt = ti_registry_lock(handle);
     if (rt == NULL) {
         return TI_ERR_STALE_HANDLE;
     }
+    ti_registry_unlock();
 
     /* Hold the execution lock for the whole run: ti_call callers get in only at safe points */
     ti_runtime_exec_lock(rt, TI_PORT_WAIT_FOREVER);
@@ -226,7 +225,7 @@ static ti_status_t ti_execute_no_fatal(ti_handle_t handle, ti_program_t *prog, b
         }
     }
 
-    /* Decide the outcome while the runtime is still locked and pinned */
+    /* Decide the outcome while the runtime is still locked */
     ti_status_t status = ti_runtime_is_interrupted(rt) ? TI_ERR_INTERRUPTED : TI_OK;
     bool fatal = (rt->status == TI_RT_ERROR);
     if (fatal) {
@@ -236,7 +235,6 @@ static ti_status_t ti_execute_no_fatal(ti_handle_t handle, ti_program_t *prog, b
 
     /* Release before any fatal: the fatal handler may block or never return, which must not wedge ti_call */
     ti_runtime_exec_unlock(rt);
-    ti_runtime_release(rt);
 
     /* The caller decides when to raise the fatal, after its own cleanup */
     *fatal_out = fatal;
@@ -377,31 +375,47 @@ ti_status_t ti_call(ti_handle_t handle, const char *func_name, value_t **args, i
         }
     }
 
-    /* Pin the runtime: a concurrent destroy waits until this call is done */
-    ti_runtime_t *rt = ti_runtime_acquire(handle);
+    /* Step 1: resolve under the registry so destroy cannot detach the runtime meanwhile */
+    ti_runtime_t *rt = ti_registry_lock(handle);
     if (rt == NULL) {
         return TI_ERR_STALE_HANDLE;
     }
 
-    /* A call made by the lock holder itself (e.g. a native) already owns the runtime: run inline */
+    /* Step 2: a call made by the lock holder itself (e.g. a native) already owns the runtime: run inline */
     bool reentrant = ti_runtime_exec_held(rt);
-    ti_status_t status = TI_OK;
 
+    /*
+     * Step 3: register as a waiter while the registry is still held, so a destroy that detaches
+     * after this point is guaranteed to see the waiter and wait for it. Never block on exec_lock
+     * while holding the registry (the script takes the registry at its safe points).
+     */
     if (!reentrant) {
-        /* Register as a waiter so the script yields the lock at its next safe point */
-        __atomic_add_fetch(&rt->lock_waiters, 1, __ATOMIC_RELAXED);
-        bool locked = ti_runtime_exec_lock(rt, timeout_ms);
-        __atomic_sub_fetch(&rt->lock_waiters, 1, __ATOMIC_RELAXED);
+        __atomic_add_fetch(&rt->lock_waiters, 1, __ATOMIC_ACQ_REL);
+    }
+    ti_registry_unlock();
 
-        if (!locked) {
-            /* Wake a script that may be waiting for this caller before it re-takes the lock */
+    ti_status_t status = TI_OK;
+    if (!reentrant) {
+        /* Step 4: wait for the lock; the script yields it at its next safe point */
+        if (!ti_runtime_exec_lock(rt, timeout_ms)) {
+            /* Wake a script (or destroy) waiting for this caller, then leave; rt is not touched afterwards */
             ti_signal_give(rt->handoff);
-            ti_runtime_release(rt);
+            __atomic_sub_fetch(&rt->lock_waiters, 1, __ATOMIC_ACQ_REL);
             return TI_ERR_TIMEOUT;
+        }
+
+        /* Holding the lock: destroy cannot free rt until it is released, so leave the waiter count now */
+        __atomic_sub_fetch(&rt->lock_waiters, 1, __ATOMIC_ACQ_REL);
+
+        /* Step 5: detached while waiting: destroy is draining waiters, so leave without running */
+        if (__atomic_load_n(&rt->handle, __ATOMIC_ACQUIRE) == TI_INVALID_HANDLE) {
+            ti_signal_give(rt->handoff);
+            ti_runtime_exec_unlock(rt);
+            return TI_ERR_STALE_HANDLE;
         }
     }
 
-    /* From here on this context is the only one running TI code on the runtime */
+    /* Step 6: from here on this context is the only one running TI code on the runtime */
     if (ti_runtime_is_interrupted(rt)) {
         status = TI_ERR_INTERRUPTED;
     } else if (rt->status != TI_RT_OK) {
@@ -414,12 +428,14 @@ ti_status_t ti_call(ti_handle_t handle, const char *func_name, value_t **args, i
         }
     }
 
+    /*
+     * Step 7: give the hand-off BEFORE unlocking: once the lock is released, destroy may free rt.
+     * The yielding script wakes, then blocks on the lock until the unlock below.
+     */
     if (!reentrant) {
-        ti_runtime_exec_unlock(rt);
-        /* Let a script yielding to this call continue (also releases stale hand-offs harmlessly) */
         ti_signal_give(rt->handoff);
+        ti_runtime_exec_unlock(rt);
     }
-    ti_runtime_release(rt);
     return status;
 }
 

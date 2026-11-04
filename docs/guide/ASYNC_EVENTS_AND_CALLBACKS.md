@@ -12,7 +12,7 @@ A driver can reach a script function in two ways:
 | Gets the script's error? | No (logged by the runtime) | Yes (the error kind is the return status) |
 | Runs on | The script's own context, at its next safe point | The **caller's** context, while the script is paused |
 | Order | FIFO, one at a time | One caller at a time (first to take the lock) |
-| Callable from an ISR | Not today (it allocates) | No |
+| Callable from an ISR | No (it allocates and takes the registry mutex) | No |
 | Queue limit | `TI_MAX_PENDING_EVENTS`, then `TI_ERR_QUEUE_FULL` | None (callers wait, up to `timeout_ms`) |
 | Script registers with | `register_event(handler)` | `register_callback(handler)` |
 
@@ -58,7 +58,54 @@ Consequences:
 
 ### 2.1 Generation handles (`ti_handle_t`)
 
-Drivers never hold a runtime pointer, only a `ti_handle_t` (`[ generation:24 | slot:8 ]`). When a runtime is destroyed its slot generation increases, so a late `ti_post_event` / `ti_call` with the old handle fails safely with `TI_ERR_STALE_HANDLE` and never touches freed memory. `ti_destroy` also waits until every call in progress has returned.
+Drivers never hold a runtime pointer, only a `ti_handle_t` (`[ generation:24 | slot:8 ]`). When a runtime is destroyed its slot generation increases, so a late `ti_post_event` / `ti_call` with the old handle fails safely with `TI_ERR_STALE_HANDLE` and never touches freed memory. A `ti_call` that was already waiting for the lock when the runtime was destroyed also returns `TI_ERR_STALE_HANDLE` without running.
+
+### 2.2 Runtime ownership: the owner thread
+
+The thread that calls `ti_create` is the runtime's **owner**. Only the owner may call the lifecycle functions, one after another, never at the same time:
+
+```text
+owner thread:   ti_create ──> ti_execute ──> (ti_execute ...) ──> ti_destroy
+other threads:  ti_post_event, ti_call, ti_stop, ti_give   (any time, also after destroy: STALE)
+```
+
+| Function | Who may call it |
+|---|---|
+| `ti_create`, `ti_execute`, `ti_destroy` | Owner thread only, sequentially |
+| `ti_post_event`, `ti_call`, `ti_stop`, `ti_give` | Any thread (not an ISR) |
+| `ti_wait`, `ti_wait_flag`, `ti_dispatch_events`, `ti_raise_error` | Only a native running on this runtime |
+
+Consequences:
+* `ti_destroy` never runs while `ti_execute` is running, so the script never loses its runtime mid-run. To end a running script from another thread, call `ti_stop` and let the owner destroy the runtime after `ti_execute` returns.
+* The runtime outlives a run: its globals and functions stay available to a later `ti_execute` or `ti_call` until `ti_destroy`.
+* The rule is documented, not checked at run time. Calling `ti_destroy` from another thread while `ti_execute` is running is undefined behavior (use-after-free).
+
+A typical FreeRTOS host:
+
+```c
+void script_task(void *arg)
+{
+    ti_handle_t h = ti_create();          /* this task becomes the owner */
+    publish_handle(h);                    /* drivers only get the handle */
+    ti_execute(h, prog);                  /* returns on completion, error or ti_stop */
+    ti_destroy(h);                        /* same task, after execute: late drivers get STALE */
+    vTaskDelete(NULL);
+}
+```
+
+### 2.3 Two synchronization layers
+
+The library keeps two separate locks:
+
+| Layer | Lock | Protects | Held by |
+|---|---|---|---|
+| A. Host ↔ library | **Registry mutex** (one global, port mutex) | The handle table and every short interaction with a runtime: resolve handle, use the runtime, release | `ti_post_event`, `ti_stop`, `ti_give`, the start of `ti_call`, `ti_destroy` (detach) |
+| B. Between threads running TI code | **Execution lock** (one per runtime) | Interpreter state: only one context runs TI code at a time | `ti_execute`, a `ti_call` callback, event dispatch |
+
+* **Layer A** is a real mutex (not a spinlock or critical section), held for the whole interaction. `ti_destroy` must take the same mutex to detach the handle, so a runtime can never be freed while another thread is inside `ti_post_event` / `ti_stop` / `ti_give`. No reference counting is needed.
+* **Layer B** is the execution lock from section 2. `ti_call` registers itself as a waiter while still holding the registry, then releases the registry and waits for the execution lock. `ti_destroy` drains these waiters through the execution lock before freeing anything.
+* **Lock order:** holding the execution lock and then taking the registry is allowed (the script does this when it pops an event). Waiting for the execution lock while holding the registry is never done. Since the library never waits in the other direction, the two layers cannot deadlock.
+* Because layer A is a mutex, **no public function is callable from an ISR**.
 
 ---
 
@@ -177,13 +224,13 @@ If a native that the script called itself calls `ti_call` on the same handle, th
 
 1. **Never hold a module mutex while calling `ti_call`.** The handler may run a native that takes the same mutex. Copy the handle and name out under your mutex, release it, then call (see `cli_simulate_call`).
 2. **Natives that wait must not hold the lock while blocked.** Use `ti_wait(handle, ms)` to sleep, or `ti_wait_flag(handle, &done, timeout_ms)` + `ti_give(handle)` to wait for another thread's I/O. Both release the lock and service events and calls. Do not use `sleep()`/`usleep()` or block on a lock another thread holds while it calls `ti_call`.
-3. **Not from an ISR.** `ti_post_event` and `ti_call` allocate. From an ISR, notify a task and let the task post or call. (`ti_stop` is the exception and is safe from an ISR.)
+3. **Not from an ISR.** `ti_post_event` and `ti_call` allocate, and every handle function (`ti_stop` and `ti_give` included) takes the registry mutex. From an ISR, notify a task and let the task post, call or stop.
 4. **Dispatcher stack size.** A `ti_call` handler runs on the *caller's* stack. Size the dispatcher task for the interpreter's recursion (`max_call_depth`, 64 by default, deep call chains use a lot) and test the deepest handler.
 5. **Priority (FreeRTOS).** The execution lock is a mutex with priority inheritance. A high-priority dispatcher that waits on a low-priority script lifts the script's priority until the next safe point. Keep handlers short.
 6. **Values are not shared across threads.** `value_t` reference counts are not atomic. Create the argument values in the calling thread, free them there, and never keep a `value_t *` that belongs to the script. Copy data out (`strdup`, `val_copy`) instead.
 7. **Define functions at file scope.** Defining functions inside a function body, loop or callback is a user error. The function table must not change while a handler is running.
 8. **Callbacks run to completion.** Do not rely on one handler being interrupted by another. A long handler delays every other call and event.
-9. **Do not call `ti_destroy` from inside a handler or while `ti_execute` is still running.** Stop first (`ti_stop`), wait for `ti_execute` to return, then destroy.
+9. **Only the owner thread calls `ti_create`, `ti_execute` and `ti_destroy`** (section 2.2). Never destroy from a driver, from inside a handler, or while `ti_execute` is still running. A driver that wants the script gone calls `ti_stop`; the owner destroys after `ti_execute` returns.
 
 ---
 

@@ -26,6 +26,9 @@ typedef struct TI_TASK_STRUCT {
     int                    arg_count; /* Number of arguments */
 } ti_task_t;
 
+/* Longest wait for the hand-off signal before a yielding script (or destroy) re-takes the lock (ms) */
+#define TI_YIELD_WAIT_MS 10
+
 /* -------------------- Runtime Error Record -------------------- */
 
 /* Capacity of the formatted error message (fixed buffer: no heap use while handling errors) */
@@ -53,7 +56,7 @@ typedef struct {
 
 typedef struct TI_RUNTIME_STRUCT {
     /* Identity: generation handle used by every external API */
-    ti_handle_t         handle;              /* Handle of this runtime (TI_INVALID_HANDLE if unregistered) */
+    ti_handle_t         handle;              /* Handle of this runtime (TI_INVALID_HANDLE once detached; atomic access) */
 
     /* Memory: allocation tracking, released in one pass on destroy */
     alloc_hdr_t        *alloc_list;          /* Dedicated allocation tracking list for this runtime */
@@ -72,10 +75,10 @@ typedef struct TI_RUNTIME_STRUCT {
     volatile ti_rt_status_t status;          /* Execution state (TI_RT_ERROR after ti_raise) */
     ti_error_t          error;               /* First raised error, valid when status == TI_RT_ERROR */
 
-    /* Event queue: producers post under the slot lock, the executing context pops */
-    ti_task_t          *task_head;           /* Pending event FIFO head (written under slot lock, atomically) */
-    ti_task_t          *task_tail;           /* Pending event FIFO tail (guarded by slot lock) */
-    int                 task_count;          /* Number of pending events (guarded by slot lock) */
+    /* Event queue: producers post and the executing context pops under the registry mutex */
+    ti_task_t          *task_head;           /* Pending event FIFO head (written under registry mutex, atomically) */
+    ti_task_t          *task_tail;           /* Pending event FIFO tail (guarded by registry mutex) */
+    int                 task_count;          /* Number of pending events (guarded by registry mutex) */
 
     /* Event dispatch: state of the dispatcher running on the executing context */
     ti_task_t          *active_task;         /* Task being dispatched, reclaimed on destroy if unwound */
@@ -89,10 +92,6 @@ typedef struct TI_RUNTIME_STRUCT {
 
     /* Wake-up: interrupts a sleeping delay on new events or stop */
     ti_signal_t        *wake;                /* Given by post_event, stop and ti_give */
-
-    /* Usage pinning: keeps the runtime alive while external calls use it */
-    int                 users;               /* Calls currently pinned via acquire (guarded by slot lock) */
-    ti_signal_t        *idle;                /* Given when users drops to 0, lets destroy proceed */
 } ti_runtime_t;
 
 /**
@@ -110,38 +109,20 @@ static inline bool ti_should_unwind(const ti_runtime_t *rt)
 /* -------------------- Runtime Lifecycle Functions -------------------- */
 
 /**
- * @brief Initialize an existing runtime instance structure (not registered in the handle table).
- * @param rt Pointer to runtime structure to initialize.
- * @return true on success, false if a lock or signal could not be created (rt is left cleaned up).
- */
-bool ti_runtime_init(ti_runtime_t *rt);
-
-/**
  * @brief Allocate, initialize and register a new runtime instance in the handle table.
  * @return Pointer to newly allocated ti_runtime_t, or NULL if out of memory or no free slot.
  */
 ti_runtime_t *ti_runtime_create(void);
 
 /**
- * @brief Invalidate the runtime handle, discard pending events and release all resources.
- * Waits until every call pinned with ti_runtime_acquire has been released.
- * Must not be called while the runtime is executing.
- * @param rt Pointer to runtime instance to destroy.
- */
-void ti_runtime_destroy(ti_runtime_t *rt);
-
-/**
- * @brief Resolve a handle and pin the runtime so it cannot be destroyed until released.
+ * @brief Detach the handle, discard pending events and release all resources.
+ * Owner thread only: create, execute and destroy are called on one thread one after another,
+ * so no ti_execute can be running here. Detaching is atomic (a second destroy gets STALE), then
+ * every ti_call waiter registered before the detach is drained through the execution lock.
  * @param handle Runtime handle.
- * @return Pinned runtime, or NULL if the handle is stale or invalid.
+ * @return TI_OK, or TI_ERR_STALE_HANDLE if the handle is stale or invalid (e.g. already destroyed).
  */
-ti_runtime_t *ti_runtime_acquire(ti_handle_t handle);
-
-/**
- * @brief Drop a pin taken by ti_runtime_acquire; wakes a destroy waiting for idle.
- * @param rt Runtime returned by ti_runtime_acquire.
- */
-void ti_runtime_release(ti_runtime_t *rt);
+ti_status_t ti_runtime_destroy(ti_handle_t handle);
 
 /**
  * @brief Resolve a handle to its live runtime instance.
@@ -154,7 +135,7 @@ ti_runtime_t *ti_runtime_resolve(ti_handle_t handle);
 
 /**
  * @brief Request execution cancellation to immediately halt running script.
- * Safe to call from any task/thread (and from ISR on ESP32).
+ * Safe to call from any task/thread, but not from ISR (takes the registry mutex).
  * @param handle Runtime handle.
  * @return TI_OK, or TI_ERR_STALE_HANDLE if the handle is stale or invalid.
  */
@@ -305,6 +286,9 @@ ti_status_t ti_runtime_invoke(ti_runtime_t *rt, const char *func_name, value_t *
  */
 static inline bool ti_runtime_safe_point(ti_runtime_t *rt)
 {
+    if (ti_should_unwind(rt)) {
+        return true; // Try to unwind as fast as possible
+    }
     if (rt != NULL && !rt->in_dispatch) {
         /* Relaxed unlocked read is only a hint; waiters register before blocking on the lock */
         if (__atomic_load_n(&rt->lock_waiters, __ATOMIC_RELAXED) > 0) {
@@ -314,7 +298,7 @@ static inline bool ti_runtime_safe_point(ti_runtime_t *rt)
             ti_runtime_dispatch_pending_events(rt);
         }
     }
-    return ti_should_unwind(rt);
+    return ti_should_unwind(rt); // Stop signal can come to when run envent or ti_callback.
 }
 
 #ifdef __cplusplus
