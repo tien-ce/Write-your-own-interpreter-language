@@ -50,6 +50,18 @@ typedef struct PARAM_STRUCT {
  */
 #define PARAM(name, type)             { (type), (name), VAL_NULL, NULL }
 
+/* One-type shorthands for PARAM (plain positional initializers: usable from C and C++).
+ * Usage: static const param_t params[] = { PARAM_INT("baud"), PARAM_STRING("port") };
+ * @param name Parameter name (string literal). */
+#define PARAM_INT(name)               PARAM((name), VAL_INT)    /* int */
+#define PARAM_FLOAT(name)             PARAM((name), VAL_FLOAT)  /* float */
+#define PARAM_BOOL(name)              PARAM((name), VAL_BOOL)   /* bool */
+#define PARAM_STRING(name)            PARAM((name), VAL_STRING) /* string */
+#define PARAM_BYTES(name)             PARAM((name), VAL_BYTES)  /* bytes */
+#define PARAM_DICT(name)              PARAM((name), VAL_DICT)   /* dict */
+#define PARAM_FUNC(name)              PARAM((name), VAL_FUNC)   /* function name (callbacks) */
+#define PARAM_ANY(name)               PARAM((name), VAL_ANY)    /* any type: the native checks it (natives only) */
+
 /**
  * @brief Build a list parameter entry that requires a given element type.
  * @param name Parameter name (string literal).

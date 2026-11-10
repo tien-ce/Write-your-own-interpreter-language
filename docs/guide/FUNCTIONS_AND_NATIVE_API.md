@@ -69,6 +69,7 @@ Defined in `src/include/ti_type_func.h`:
   | Macro | Accepts |
   | :--- | :--- |
   | `PARAM("ms", VAL_INT)` | a value of that type (`VAL_ANY` accepts any type, see 4.3) |
+  | `PARAM_INT("ms")`, `PARAM_FLOAT`, `PARAM_BOOL`, `PARAM_STRING`, `PARAM_BYTES`, `PARAM_DICT`, `PARAM_FUNC`, `PARAM_ANY` | same as `PARAM` with that type |
   | `PARAM_LIST("names", VAL_STRING)` | a list whose elements have that type (`VAL_NULL`: any list) |
   | `PARAM_HANDLE("dev", &s_device_type)` | a handle of that type descriptor (`NULL`: any handle), see 4.5 |
 * `param_count`: Number of elements in `params`; the runtime rejects calls with a different argument count. Pass `-1` to declare a **fully variadic** function (neither count nor types are checked). `params` may be `NULL` only when `param_count` is `0` or `-1`; otherwise registration fails.
@@ -110,7 +111,7 @@ To add a core topic: create `ti_runtime_builtin_<topic>.c` with its own table, d
 static const param_t s_params[] = { PARAM("port", VAL_INT), PARAM_HANDLE("self", &s_uart_type) };
 ```
 
-* **Why:** a `static const` table goes to read-only memory (flash on ESP32, `.rodata` on Linux) instead of RAM, and the interpreter never writes to it: it only reads the types and names. Method tables and module tables (4.6) are already `static const`, so a whole native type or module can live in flash.
+* **Why:** a `static const` table goes to read-only memory (flash on ESP32, `.rodata` on Linux) instead of RAM, and the interpreter never writes to it: it only reads the types and names. Method tables (4.5) and module tables (4.6) are `static const` too, so a whole native type or module can live in flash.
 * **C++ (ESP32 sketches):** `PARAM("name", ...)` stores a string literal; with `const char *name` this compiles in C++ too.
 * **Migration from v2.2.0 and earlier:** `static param_t` tables still compile (non-`const` converts to `const`), but code that writes to `func->params[i]` or assigns `params[i].name` to a `char *` must be changed.
 
@@ -233,252 +234,96 @@ if (args[1]->type != VAL_INT && args[1]->type != VAL_STRING) {
 
 The error ends the script and is reported at the line of the call. Choosing the error kind, when to raise instead of returning a value, and the full contract are in [Native C and TI Scripts: How They Interact](NATIVE_SCRIPT_INTERACTION.md), section 4.
 
-### 4.5 Pattern 4: Native Objects Passed Through Many Calls (`VAL_HANDLE`)
-When a C object has no TI type (a driver config, a socket, a context struct), wrap it in a **handle** instead of flattening it into ints and strings. The script keeps one variable and uses it with functions (`device_read(dev)`), methods (`dev.read()`) and attributes (`dev.baud`). API: `src/include/ti_type_value_handle.h`.
+### 4.5 Pattern 4: Native Objects (`VAL_HANDLE`)
+Wrap a C object that has no TI type (driver config, socket, context struct) in a **handle**. API: `src/include/ti_type_value_handle.h`. Script usage: [Types & Values](TYPES_AND_VALUES.md), section 2.7.
 
-#### 4.5.1 The type descriptor
-Each C type gets **one** `static const ti_handle_type_t`. Its **address** is the type identity: two descriptors with the same name are still different types.
+**Reference code:** `cli/builtin/builtin_device.c` (functions, methods and attributes of one type), `cli/module/module_machine.c` (a handle returned by a module function).
+
+#### 4.5.1 The type descriptor (`ti_handle_type_t`)
+One `static const` descriptor per C type. Its **address** is the type identity: two descriptors with the same name are different types.
 
 | Field | Meaning |
 | :--- | :--- |
-| `name` | Shown by `print`, `to_string` and error messages (`<handle device_cfg>`). Must not be empty. |
-| `destroy` | `void (*)(void *ptr)`: called once, when the last copy is released or when a native closes the handle. `NULL` if the native keeps ownership (e.g. a static object). |
-| `methods`, `method_count` | Table of `ti_builtin_def_t` rows called as `obj.name(...)`. `params[0]` is the receiver (self). `NULL` / `0`: no methods. |
-| `get_attr` | `ti_status_t (*)(void *ptr, const char *name, value_t **out)`: reads `obj.name`. `NULL`: no readable attributes (a read reports "has no attribute"). |
-| `set_attr` | `ti_status_t (*)(void *ptr, const char *name, const value_t *value)`: writes `obj.name = value`. `NULL`: no writable attributes (a write reports "has no attribute"). |
+| `name` | Shown by `print`, `to_string` and error messages. Must not be empty. |
+| `destroy` | `void (*)(void *ptr)`: called once, when the last copy is released or on close. `NULL`: the native keeps ownership. |
+| `methods`, `method_count` | `ti_builtin_def_t` rows called as `obj.name(...)`. `params[0]` is self, so a free function's row can be reused. |
+| `get_attr` | `ti_status_t (*)(void *ptr, const char *name, value_t **out)`: reads `obj.name`. `NULL`: no readable attribute. |
+| `set_attr` | `ti_status_t (*)(void *ptr, const char *name, const value_t *value)`: writes `obj.name = value`. `NULL`: no writable attribute. |
 
-#### 4.5.2 Example
-```c
-static const ti_handle_type_t s_device_type;   /* forward: the tables below point to it */
-
-/* Called once, when the last copy is released or when a native closes the handle */
-static void device_destroy(void *ptr) { free(ptr); }
-
-/* handle device_open(string port, int baud) */
-static value_t *device_open(ti_handle_t handle, value_t **argv, int argc)
-{
-    device_cfg_t *cfg = calloc(1, sizeof(device_cfg_t));
-    if (cfg == NULL) {
-        ti_raise_error(handle, TI_ERR_NO_MEMORY, "device_open: out of memory");
-        return NULL;
-    }
-    /* ... fill cfg from argv ... */
-
-    value_t *result = val_new_handle(cfg, &s_device_type);
-    if (result == NULL) {
-        free(cfg);                       /* on failure cfg still belongs to the native */
-        ti_raise_error(handle, TI_ERR_NO_MEMORY, "device_open: out of memory");
-    }
-    return result;
-}
-
-/* int device_read(handle dev), also dev.read(): the runtime already checked the type */
-static value_t *device_read(ti_handle_t handle, value_t **argv, int argc)
-{
-    device_cfg_t *cfg = val_handle_get(argv[0], &s_device_type);
-    if (cfg == NULL) {                   /* only possible if the device was closed */
-        ti_raise_error(handle, TI_ERR_INVALID_VALUE, "device_read: device is closed");
-        return NULL;
-    }
-    return val_new_int(read_sample(cfg));
-}
-
-/* void device_close(handle dev), also dev.close(): destroy now; every copy reads as closed */
-static value_t *device_close(ti_handle_t handle, value_t **argv, int argc)
-{
-    if (val_handle_close(argv[0], &s_device_type) != TI_OK) {
-        ti_raise_error(handle, TI_ERR_INVALID_VALUE, "device_close: already closed");
-        return NULL;
-    }
-    return val_new_void();
-}
-
-/* dev.baud (int), dev.port (string): never raises, returns a status */
-static ti_status_t device_get_attr(void *ptr, const char *name, value_t **out)
-{
-    device_cfg_t *cfg = ptr;
-    if (strcmp(name, "baud") == 0) {
-        *out = val_new_int(cfg->baud);
-    } else if (strcmp(name, "port") == 0) {
-        *out = val_new_string(cfg->port);
-    } else {
-        return TI_ERR_UNDEFINED;         /* the interpreter reports "has no attribute" */
-    }
-    return (*out != NULL) ? TI_OK : TI_ERR_NO_MEMORY;
-}
-
-/* dev.baud = int; dev.port is read-only */
-static ti_status_t device_set_attr(void *ptr, const char *name, const value_t *value)
-{
-    device_cfg_t *cfg = ptr;
-    if (strcmp(name, "baud") == 0) {
-        if (value->type != VAL_INT)  return TI_ERR_TYPE_MISMATCH;   /* the native checks the type */
-        if (value->int_val <= 0)     return TI_ERR_VALUE_OUT_OF_RANGE;
-        cfg->baud = value->int_val;
-        return TI_OK;
-    }
-    return (strcmp(name, "port") == 0) ? TI_ERR_READ_ONLY : TI_ERR_UNDEFINED;
-}
-
-/* Parameter tables: params[0] of a method is self, so a free function's table is reused */
-static const param_t s_open_params[] = { PARAM("port", VAL_STRING), PARAM("baud", VAL_INT) };
-static const param_t s_dev_params[]  = { PARAM_HANDLE("dev", &s_device_type) };
-
-static const ti_builtin_def_t s_device_methods[] = {
-    { "read",  VAL_INT,  s_dev_params, 1, device_read },
-    { "close", VAL_VOID, s_dev_params, 1, device_close },
-};
-
-static const ti_handle_type_t s_device_type = {
-    .name         = "device_cfg",
-    .destroy      = device_destroy,
-    .methods      = s_device_methods,
-    .method_count = 2,
-    .get_attr     = device_get_attr,
-    .set_attr     = device_set_attr,
-};
-
-void device_register(void)
-{
-    register_builtin_function("device_open",  VAL_HANDLE, s_open_params, 2, device_open);
-    register_builtin_function("device_read",  VAL_INT,    s_dev_params,  1, device_read);
-    register_builtin_function("device_close", VAL_VOID,   s_dev_params,  1, device_close);
-}
-```
-Full working version: `cli/builtin/builtin_device.c`, script: `examples/ti/handle_device.ti`.
-
-#### 4.5.3 C API
+#### 4.5.2 Functions
 | Function | Use |
 | :--- | :--- |
-| `val_new_handle(ptr, &type)` | Return a new handle. On success the value owns `ptr`; on `NULL` it is still yours. |
-| `val_handle_get(value, &type)` | Get `ptr` back. `NULL` if not a handle, wrong type, empty, or closed. The type is mandatory. |
-| `val_handle_close(value, &type)` | Destroy the object now. `TI_ERR_TYPE_MISMATCH` for a wrong type, `TI_ERR_INVALID_VALUE` if already closed. |
-| `val_handle_type(value)`, `val_handle_is_open(value)` | For logging and checks (`val_handle_type(v)->name`). A closed handle keeps its type. |
-| `handle_type_find_method(&type, name)` | The method row the interpreter runs for `obj.name(...)`. |
-
-#### 4.5.4 How a method call runs
-`dev.read()` looks up `"read"` in `s_device_type.methods`, puts `dev` in `argv[0]` and runs the row exactly like a native function call. So:
-* Count and type errors count self: `dev.set_baud()` reports `expects 2 argument(s), but received 1`, and the first written argument is parameter 2.
-* `self` is type-checked like any `PARAM_HANDLE`: the native only has to handle "closed".
-* The receiver can be any expression: `device_open("/dev/ttyS1", 4800).info()`, `devices["a"].read()`.
-* A missing method raises `TI_ERR_UNDEFINED` (`Handle device_cfg has no method 'x'`); a method on a non-handle or on an empty handle raises `TI_ERR_TYPE_MISMATCH`.
-
-#### 4.5.5 How an attribute access runs
-`get_attr` and `set_attr` are **layer 1** functions: they return a status and never call `ti_raise_error`. The interpreter turns the status into the error the script sees:
-
-| Status returned | Script error |
-| :--- | :--- |
-| `TI_ERR_UNDEFINED` (or `get_attr` / `set_attr` is `NULL`) | `Handle device_cfg has no attribute 'x'` |
-| `TI_ERR_READ_ONLY` | `Cannot set attribute 'port' of handle device_cfg: read-only` |
-| any other status | `Cannot get/set attribute 'baud' of handle device_cfg: <status text>` |
-
-* A closed or empty handle is rejected **before** `get_attr` / `set_attr` run, so `ptr` is never `NULL` there.
-* `get_attr` returns a **new** value in `*out` (owned by the interpreter). `set_attr` receives a **borrowed** value: copy what you keep. Its type is not checked by the interpreter, so check it.
-* `dev.baud += 1` is rewritten as `dev.baud = dev.baud + 1`: one `get_attr`, then one `set_attr`. The receiver expression is evaluated twice (`devices[f()].baud += 1` calls `f()` twice).
-
-#### 4.5.6 Rules
-* **Declare the type in the parameter table** (`PARAM_HANDLE`): the runtime then rejects a wrong type or an empty handle before the native runs, so `val_handle_get` returning `NULL` only means "closed".
-* **The descriptor must outlive every handle**: make it `static const` and never free it.
-* **`destroy` runs on the script's context** (end of scope, overwritten variable, `close`), or inside `ti_destroy` for handles still held by globals. Keep it short and never call TI functions from it.
-* **Reference counts are not atomic.** Like every `value_t`, never keep a handle value in another thread. A driver thread may keep the raw `ptr` only if it manages that object's lifetime itself.
-
-### 4.6 Pattern 5: Modules (`import machine;`)
-A **module** groups native functions and constants under one name, like MicroPython's `machine`. Scripts only see it after `import`, and nothing is copied into the builtin table: the whole module stays in the native's `static const` tables. API: `src/include/ti_type_module.h`.
+| `val_new_handle(ptr, &type)` | New handle owning `ptr`. On `NULL` (bad argument, out of memory) `ptr` is still yours: free it. |
+| `val_handle_get(value, &type)` | `ptr` back, or `NULL` if not a handle, wrong type, empty or closed. |
+| `val_handle_close(value, &type)` | Destroy now; every copy reads as closed. `TI_ERR_TYPE_MISMATCH` (wrong type), `TI_ERR_INVALID_VALUE` (already closed). |
+| `val_handle_type(value)` | The descriptor (also for a closed handle), for messages: `val_handle_type(v)->name`. |
+| `val_handle_is_open(value)` | `true` while the object exists. |
+| `handle_type_find_method(&type, name)` | The row the interpreter runs for `obj.name(...)`. |
+| `PARAM_HANDLE("dev", &type)` | Parameter entry that accepts only that type (checked before the native runs). |
 
 ```c
-import machine;                                         // bind the module to the name 'machine'
-handle u = machine.UART(1, 9600, machine.SERIAL_8N1);   // module function + module constant
-u.write("hello");                                       // the returned handle has its own methods
+device_cfg_t *cfg = val_handle_get(argv[0], &s_device_type);   /* NULL here only means "closed" */
 ```
 
-#### 4.6.1 Where everything lives
-| Piece | Memory | Size |
-| :--- | :--- | :--- |
-| `ti_module_t` descriptor, its function table (`ti_builtin_def_t[]`), constant table (`ti_module_const_t[]`), parameter tables, handle types | `static const` in the native's file (flash on ESP32) | grows with the module |
-| Registry `s_modules[TI_MAX_MODULES]` (`src/ti_type_module.c`) | RAM | one pointer per module (`TI_MAX_MODULES`, default 16) |
-| Script variable `machine` after `import` | a `VAL_MODULE` value in the scope: holds only the descriptor's address | one `value_t` |
-| Reading `machine.SERIAL_8N1` | a new value copied from the constant (`val_copy`), owned by the script | one `value_t` |
-| Calling `machine.UART(...)` | a temporary `function_t` on the C stack that points to the row | none on the heap |
+#### 4.5.3 What the interpreter does for you
+* **Method call** `obj.m(a)`: the row runs like any native with `argv[0] = obj`, `argv[1] = a`. Count and type errors count self.
+* **Attribute** `obj.x` / `obj.x = v`: a closed or empty handle is rejected first, so `ptr` is never `NULL`. `get_attr` / `set_attr` return a status and **never raise**; the interpreter reports it:
 
-Compare with `register_builtin_function`: every registered builtin is copied into a heap `function_t` plus a hashmap entry (RAM), and is visible to every script. A module function costs no RAM until it is called.
-
-#### 4.6.2 Defining a module
-```c
-#define MACHINE_SERIAL_8N1 0x800001c
-#define MACHINE_SERIAL_8N2 0x800003c
-
-static const ti_handle_type_t s_uart_type;   /* returned by machine.UART, see 4.5 */
-static value_t *machine_uart_new(ti_handle_t handle, value_t **argv, int argc);
-
-static const param_t s_uart_new_params[] = {
-    PARAM("port", VAL_INT), PARAM("baud", VAL_INT), PARAM("config", VAL_INT)
-};
-
-/* machine.UART(port, baud, config): no self, arguments start at argv[0] */
-static const ti_builtin_def_t s_machine_funcs[] = {
-    { "UART", VAL_HANDLE, s_uart_new_params, 3, machine_uart_new },
-};
-
-/* Constants are value_t written with a static initializer (no val_new_*: it allocates) */
-static const ti_module_const_t s_machine_consts[] = {
-    { "SERIAL_8N1", { .type = VAL_INT, .int_val = MACHINE_SERIAL_8N1 } },
-    { "SERIAL_8N2", { .type = VAL_INT, .int_val = MACHINE_SERIAL_8N2 } },
-};
-
-static const ti_module_t s_machine_module = {
-    .name        = "machine",
-    .funcs       = s_machine_funcs,
-    .func_count  = (int)(sizeof(s_machine_funcs) / sizeof(s_machine_funcs[0])),
-    .consts      = s_machine_consts,
-    .const_count = (int)(sizeof(s_machine_consts) / sizeof(s_machine_consts[0])),
-};
-
-/* Call once at startup, before any runtime is created */
-void module_machine_register(void)
-{
-    ti_register_module(&s_machine_module);
-}
-```
-Full working version: `cli/module/module_machine.c` (registered by `ti_init_modules()` in `cli/module/module.c`), script: `examples/ti/module_machine.ti`.
-
-Constant initializers per type:
-
-| Type | Initializer |
+| Status | Script error |
 | :--- | :--- |
-| `int` | `{ .type = VAL_INT, .int_val = 7 }` |
-| `float` | `{ .type = VAL_FLOAT, .float_val = 0.5f }` |
-| `bool` | `{ .type = VAL_BOOL, .bool_val = true }` |
-| `string` | `{ .type = VAL_STRING, .string_val = (char *)"1.0" }`: the cast only satisfies the field type. The literal is never written or freed: a script read gets its own copy. |
+| `TI_ERR_UNDEFINED` (or the function is `NULL`) | `Handle <type> has no attribute 'x'` |
+| `TI_ERR_READ_ONLY` | `Cannot set attribute 'x' of handle <type>: read-only` |
+| other | `Cannot get/set attribute 'x' of handle <type>: <status>` |
 
-Only scalar and string constants are supported: a list, dict or handle needs heap memory and cannot be a static initializer.
+* `get_attr` stores a **new** value in `*out`; `set_attr` receives a **borrowed** value and must check its type.
 
-#### 4.6.3 C API
+#### 4.5.4 Rules
+* Declare the type in the parameter table (`PARAM_HANDLE`), so `val_handle_get` returning `NULL` only means "closed".
+* The descriptor must outlive every handle: `static const`, never freed.
+* `destroy` runs on the script's context (end of scope, close) or inside `ti_destroy`. Keep it short; never call TI functions from it.
+* Reference counts are not atomic: never keep a handle value in another thread.
+
+### 4.6 Pattern 5: Modules (`ti_module_t`)
+A module groups native functions and constants under one name that scripts `import`. Nothing is copied into the builtin table: the module stays in its `static const` tables, and the registry keeps one pointer per module. API: `src/include/ti_type_module.h`. Script usage: [Types & Values](TYPES_AND_VALUES.md), section 2.8.
+
+**Reference code:** `cli/module/module_machine.c` (module `machine`), registered by `ti_init_modules()` in `cli/module/module.c`.
+
+#### 4.6.1 The descriptor (`ti_module_t`)
+| Field | Meaning |
+| :--- | :--- |
+| `name` | Name used by `import`. Must not be empty and must be unique. |
+| `funcs`, `func_count` | `ti_builtin_def_t` rows called as `module.f(args)`, without self (`argv[0]` is the first argument). |
+| `consts`, `const_count` | `ti_module_const_t { name, value }` rows read as `module.NAME`. |
+
+Build each constant row with a helper (`val_new_*` allocates, so it cannot be used in a static table):
+
+| Helper | Constant |
+| :--- | :--- |
+| `TI_CONST_INT("SERIAL_8N1", 0x800001c)` | `int` |
+| `TI_CONST_FLOAT("VREF", 3.3f)` | `float` |
+| `TI_CONST_BOOL("HAS_PSRAM", true)` | `bool` |
+| `TI_CONST_STRING("VERSION", "1.0")` | `string` (the literal is never written or freed) |
+
+* Only these four types are possible: a list, dict, bytes or handle needs the heap. A script read gets a copy; the table is never written or freed.
+* The helpers pick the union member with a designated initializer (`.float_val = ...`), which C++17 does not have: **define constant tables in a `.c` file**. A `.cpp` file can still register the module (the headers are `extern "C"`).
+* Writing `{ VAL_FLOAT, 3.3f }` by hand is wrong: without a member name the value goes into the first union member (`int_val`), so C stores `3` and reads it back as a tiny float, and C++ rejects it as a narrowing conversion.
+
+#### 4.6.2 Functions
 | Function | Use |
 | :--- | :--- |
-| `ti_register_module(&module)` | Make a module importable. `false` for `NULL`, a `NULL` or empty name, a duplicate name, or a full registry. Only the address is kept: the descriptor must be `static const`. |
-| `ti_module_find(name)` | The registered module, or `NULL`. |
-| `ti_module_find_func(module, name)` | The function row, or `NULL`. |
-| `ti_module_find_const(module, name)` | The constant row, or `NULL`. |
+| `ti_register_module(&module)` | Make it importable. `false` for `NULL`, an empty name, a duplicate name, or a full registry (`TI_MAX_MODULES`, default 16). |
+| `ti_module_find(name)` | Registered module or `NULL`. |
+| `ti_module_find_func(module, name)` | Function row or `NULL`. |
+| `ti_module_find_const(module, name)` | Constant row or `NULL`. |
 
-#### 4.6.4 How the script side runs
-* **`import name;`** finds the module in the registry and declares a variable `name` (type `module`) in the **current scope**: top-level imports are visible in every function, an import inside a function or block is local to it. `import name as alias;` uses `alias` as the variable name.
-* **`module.f(args)`** finds `f` in the function table and runs it exactly like a builtin (count and types checked), but **without self**: argument 1 is `argv[0]`.
-* **`module.NAME`** finds the constant and returns a copy. Changing that copy never changes the module.
-* **Module values:** `==` / `!=` compare the descriptor (`m == machine` after `import machine as m;`), `to_string` / `print` give `<module machine>`. A module cannot be stored in a typed variable (`int x = machine;` is a type error).
+```c
+void module_machine_register(void) { ti_register_module(&s_machine_module); }
+```
 
-| Script | Error |
-| :--- | :--- |
-| `import network;` | `TI_ERR_UNDEFINED`: `Unknown module 'network'` |
-| `import machine;` twice in one scope | `Cannot import 'machine': already defined in this scope` |
-| `machine.SPI(1);` | `TI_ERR_UNDEFINED`: `Module machine has no function 'SPI'` |
-| `machine.SERIAL_7E1` | `TI_ERR_UNDEFINED`: `Module machine has no constant 'SERIAL_7E1'` |
-| `machine.SERIAL_8N1 = 5;` (or `+=`) | `TI_ERR_READ_ONLY`: `Cannot set 'SERIAL_8N1' of module machine: read-only` |
-| `machine.UART(1, 9600);` | `Function 'UART' expects 3 argument(s), but received 2` |
-
-#### 4.6.5 Rules
-* **Register before creating runtimes**, from one thread. The registry is not locked: it is read by every runtime and must not change while scripts run.
-* **Module or builtin?** Use a module for a hardware or protocol API that only some scripts need (`machine`, `modbus`, `network`). Keep `register_builtin_function` for functions every script uses (`print`, `delay`).
-* **Natives of a module raise errors like any native** (4.4). Values are the native's job: the runtime only checked the types.
+#### 4.6.3 Rules
+* Register at startup, from one thread, before any runtime is created: the registry is not locked.
+* Use a module for an API only some scripts need (`machine`, `modbus`); keep `register_builtin_function` for functions every script uses (`print`, `delay`).
+* Module natives raise errors like any native (4.4).
 
 ---
 

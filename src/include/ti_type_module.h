@@ -20,6 +20,43 @@ typedef struct {
     value_t     value; /* Constant value, e.g. { .type = VAL_INT, .int_val = 0x800001c } */
 } ti_module_const_t;
 
+/* -------------------- Constant Table Helpers -------------------- */
+
+/*
+ * Build one ti_module_const_t row. They use designated initializers to pick the union member,
+ * so they compile in C only (C++17 has no designated initializers): define constant tables in a .c file.
+ * Usage: static const ti_module_const_t s_consts[] = { TI_CONST_INT("SERIAL_8N1", 0x800001c) };
+ */
+
+/**
+ * @brief Build an int constant row.
+ * @param name Constant name (string literal).
+ * @param v Integer value.
+ */
+#define TI_CONST_INT(name, v)     { (name), { .type = VAL_INT,    .int_val    = (v) } }
+
+/**
+ * @brief Build a float constant row.
+ * @param name Constant name (string literal).
+ * @param v Float value (e.g. 0.5f).
+ */
+#define TI_CONST_FLOAT(name, v)   { (name), { .type = VAL_FLOAT,  .float_val  = (v) } }
+
+/**
+ * @brief Build a bool constant row.
+ * @param name Constant name (string literal).
+ * @param v true or false.
+ */
+#define TI_CONST_BOOL(name, v)    { (name), { .type = VAL_BOOL,   .bool_val   = (v) } }
+
+/**
+ * @brief Build a string constant row.
+ * The cast only fits the char * field: the literal is never written or freed (a script read gets a copy).
+ * @param name Constant name (string literal).
+ * @param s String literal.
+ */
+#define TI_CONST_STRING(name, s)  { (name), { .type = VAL_STRING, .string_val = (char *)(s) } }
+
 /**
  * @brief A built-in module: a named group of functions and constants, all in static const tables.
  * Define exactly one static const instance per module; it must live for the whole program
