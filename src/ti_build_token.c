@@ -47,6 +47,7 @@ const char *token_to_str(int token_type)
     case TOKEN_KW_DICT:     return "'dict'";
     case TOKEN_KW_LIST:     return "'list'";
     case TOKEN_KW_BYTES:    return "bytes";
+    case TOKEN_KW_HANDLE:   return "'handle'";
     case TOKEN_KW_FUNC:     return "'func'";
     case TOKEN_KW_IF:       return "'if'";
     case TOKEN_KW_ELSE:     return "'else'";
@@ -86,6 +87,7 @@ const char *token_to_str(int token_type)
     case TOKEN_LBRACKET:    return "'['";
     case TOKEN_RBRACKET:    return "']'";
     case TOKEN_COMMA:       return "','";
+    case TOKEN_DOT:         return "'.'";
     case TOKEN_LT:          return "'<'";
     case TOKEN_LTE:         return "'<='";
     case TOKEN_GT:          return "'>'";

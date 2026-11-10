@@ -82,6 +82,22 @@ void ast_free(ast_t *ast)
         break;
     }
 
+    case AST_METHOD_CALL:
+        /* Free receiver expression, method name string, argument expression nodes, and args array */
+        ast_free(ast->value.method_call.object);
+        tracked_free(NULL, ast->value.method_call.method);
+        for (int i = 0; i < ast->value.method_call.arg_count; i++) {
+            ast_free(ast->value.method_call.args[i]);
+        }
+        tracked_free(NULL, ast->value.method_call.args);
+        break;
+
+    case AST_ATTRIBUTE:
+        /* Free receiver expression and attribute name string */
+        ast_free(ast->value.attribute.object);
+        tracked_free(NULL, ast->value.attribute.name);
+        break;
+
     case AST_BINARY_EXPR:
         /* Free left and right binary operand subtrees */
         ast_free(ast->value.binary_expr.left);
@@ -253,6 +269,37 @@ ast_t *ast_clone(alloc_hdr_t **list, const ast_t *ast)
         }
         return copy;
     }
+
+    case AST_METHOD_CALL: {
+        int arg_count = ast->value.method_call.arg_count;
+        copy->value.method_call.object = ast_clone(list, ast->value.method_call.object);
+        copy->value.method_call.method = tracked_strdup(list, ast->value.method_call.method);
+        copy->value.method_call.args = tracked_calloc(list, arg_count > 0 ? arg_count : 1, sizeof(struct AST_STRUCT *));
+        if (!copy->value.method_call.object || !copy->value.method_call.method || !copy->value.method_call.args) {
+            break;
+        }
+        /* Count grows as children are cloned so a partial copy can be freed safely */
+        for (int i = 0; i < arg_count; i++) {
+            copy->value.method_call.args[i] = ast_clone(list, ast->value.method_call.args[i]);
+            if (!copy->value.method_call.args[i]) {
+                break;
+            }
+            copy->value.method_call.arg_count++;
+        }
+        if (copy->value.method_call.arg_count != arg_count) {
+            break;
+        }
+        return copy;
+    }
+
+    case AST_ATTRIBUTE:
+        /* Needed by compound assignment: dev.baud += 1 reads and writes the same attribute */
+        copy->value.attribute.object = ast_clone(list, ast->value.attribute.object);
+        copy->value.attribute.name = tracked_strdup(list, ast->value.attribute.name);
+        if (!copy->value.attribute.object || !copy->value.attribute.name) {
+            break;
+        }
+        return copy;
 
     default:
         /* Statement, definition and container-literal nodes are never cloned */

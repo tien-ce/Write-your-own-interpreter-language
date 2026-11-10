@@ -23,6 +23,7 @@ typedef enum {
     VAL_DICT,
     VAL_LIST,    // Homogeneous list type (list int, list string, ...)
     VAL_BYTES,   // Raw byte buffer (binary payloads, protocol frames)
+    VAL_HANDLE,  // Opaque native object (config, driver handle): scripts only hold and pass it
     VAL_ANY,     // Parameter wildcard for native functions only: accepts a value of any type.
                  // Never the type of a real value, a variable, a return value or a script parameter.
 } val_type_t;
@@ -77,6 +78,7 @@ typedef enum {
     TI_ERR_INTERNAL,            // Interpreter invariant violated (unknown operator/AST node)
     TI_ERR_RUNTIME,             // Generic script runtime error
     TI_ERR_TIMEOUT,             // Timed out waiting for the runtime execution lock
+    TI_ERR_READ_ONLY,           // Target can be read but not written (e.g. a read-only handle attribute)
 } ti_status_t;
 
 #ifdef __cplusplus

@@ -3,6 +3,7 @@
 #include "include/ti_type_value_dict.h"
 #include "include/ti_type_value_list.h"
 #include "include/ti_type_value_bytes.h"
+#include "include/ti_type_value_handle.h"
 #include "include/tracked_memory.h"
 #include "include/debug.h"
 #include "TienInterpreter.h"
@@ -115,6 +116,11 @@ void val_free_internal(value_t *value)
         bytes_release(value->bytes_val);
         value->bytes_val = NULL;
     }
+    /* Release handle reference and destroy the native object if refcount reaches 0 */
+    else if (value->type == VAL_HANDLE && value->handle_val != NULL) {
+        handle_release(value->handle_val);
+        value->handle_val = NULL;
+    }
     /* Release the function name string */
     else if (value->type == VAL_FUNC && value->func_name != NULL) {
         ti_raw_free(value->func_name);
@@ -221,6 +227,11 @@ value_t *val_copy(const value_t *val)
         /* Share the same buffer (reference semantics, like list and dict) */
         copy->bytes_val = val->bytes_val;
         bytes_retain(copy->bytes_val);
+        break;
+    case VAL_HANDLE:
+        /* Share the same native object: C objects cannot be copied, so even deep copies share it */
+        copy->handle_val = val->handle_val;
+        handle_retain(copy->handle_val);
         break;
     case VAL_FUNC:
         if (val->func_name == NULL)

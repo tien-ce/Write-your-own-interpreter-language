@@ -31,6 +31,7 @@ static value_t *eval_default_value(ti_runtime_t *rt, ast_t *node)
     case VAL_INT:    /* 0 */
     case VAL_FLOAT:  /* 0.0 */
     case VAL_BOOL:   /* false */
+    case VAL_HANDLE: /* empty handle (handle_val NULL): natives see it as closed until the script assigns one */
     case VAL_FUNC:   /* no function (func_name NULL): the script must assign one before calling it */
         /* val_init zero-fills the payload, which is already the default for these types */
         value = val_init(type);
@@ -180,7 +181,7 @@ value_t *eval_assignment(ti_runtime_t *rt, context_t *ctx, ast_t *node)
 {
     value_t *result = NULL;
     value_t *val = NULL;        /* right-hand side, owned until a container or variable takes it */
-    value_t *key_val = NULL;    /* temporary dict key or list index */
+    value_t *key_val = NULL;    /* temporary dict key, list index or attribute receiver */
     variable_t *variable = NULL;
     ti_status_t status = TI_OK;
     ast_t *target_node = node->value.assignment.target;
@@ -278,6 +279,56 @@ value_t *eval_assignment(ti_runtime_t *rt, context_t *ctx, ast_t *node)
                          key_val->int_val, container_name, ti_err_to_str(status));
                 goto out;
             }
+        }
+        break;
+    }
+
+    case AST_ATTRIBUTE: { /* obj.name = rhs */
+        const char *attr_name = target_node->value.attribute.name;
+
+        /* Evaluate the receiver after the rhs (same order as arr[i] = rhs); the copy keeps the
+         * handle alive during set_attr and is freed at out */
+        key_val = visitor_visit(rt, ctx, target_node->value.attribute.object);
+        if (key_val == NULL) {
+            goto out;
+        }
+
+        /* Only handles have attributes, and an empty handle ('handle h;') has no type */
+        if (key_val->type != VAL_HANDLE) {
+            ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line, "Cannot access attribute '%s' on %s",
+                     attr_name, val_type_to_str(key_val->type));
+            goto out;
+        }
+        const ti_handle_type_t *htype = val_handle_type(key_val);
+        if (htype == NULL) {
+            ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line, "Cannot access attribute '%s' on an empty handle", attr_name);
+            goto out;
+        }
+
+        /* set_attr receives the native object, so a closed handle is rejected here */
+        void *ptr = val_handle_get(key_val, htype);
+        if (ptr == NULL) {
+            ti_raise(rt, TI_ERR_INVALID_VALUE, node->line, "Cannot access attribute '%s': handle %s is closed",
+                     attr_name, htype->name);
+            goto out;
+        }
+
+        /* Write the attribute; a type without set_attr has no writable attribute. val is borrowed:
+         * set_attr copies what it keeps, and val is still freed at out */
+        status = TI_ERR_UNDEFINED;
+        if (htype->set_attr != NULL) {
+            status = htype->set_attr(ptr, attr_name, val);
+        }
+
+        /* set_attr never raises (layer 1), so its failure is reported here */
+        if (status == TI_ERR_UNDEFINED) {
+            ti_raise(rt, TI_ERR_UNDEFINED, node->line, "Handle %s has no attribute '%s'", htype->name, attr_name);
+            goto out;
+        }
+        if (status != TI_OK) {
+            ti_raise(rt, status, node->line, "Cannot set attribute '%s' of handle %s: %s",
+                     attr_name, htype->name, ti_err_to_str(status));
+            goto out;
         }
         break;
     }

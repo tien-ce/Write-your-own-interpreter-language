@@ -343,6 +343,20 @@ value_t *run_function(ti_runtime_t *rt, context_t *ctx, function_t *func, value_
                      val_type_to_str(func->params[i].element_type), val_type_to_str(argv[i]->list_val->elem_type));
             return NULL;
         }
+        /* Same handle type, different native object type (modbus_cfg vs uart_cfg). Only native signatures
+         * set a handle type (scripts declare a bare 'handle'), so script functions accept any handle. */
+        if (argv[i]->type == VAL_HANDLE && func->params[i].handle_type != NULL) {
+            /* One descriptor per type: comparing addresses is exact. An empty handle ('handle h;') has no
+             * type, so it can never satisfy a typed parameter */
+            const ti_handle_type_t *arg_type = val_handle_type(argv[i]);
+            if (arg_type != func->params[i].handle_type) {
+                ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line, "Function '%s' parameter %d ('%s') expected handle %s, but got %s%s",
+                         func->name, i + 1, func->params[i].name ? func->params[i].name : "unnamed",
+                         func->params[i].handle_type->name, arg_type != NULL ? "handle " : "an empty handle",
+                         arg_type != NULL ? arg_type->name : "");
+                return NULL;
+            }
+        }
     }
 
     /* Dispatch to implementation (natives only ever see the handle, never the runtime pointer) */
@@ -421,6 +435,145 @@ out:
         val_free(argv[i]);
     }
     tracked_free(&rt->alloc_list, argv);
+    return result;
+}
+
+/**
+ * @brief Evaluate a method call node: object.method(args) runs the method of the receiver's handle type,
+ * with the receiver passed as argument 0 (self).
+ * @param rt Pointer to active runtime instance.
+ * @param ctx Pointer to context.
+ * @param node Method call AST node.
+ * @return Returned value_t from the method's native function, or NULL on error.
+ */
+value_t *eval_method_call(ti_runtime_t *rt, context_t *ctx, ast_t *node)
+{
+    const char *method_name = node->value.method_call.method;
+    int written_argc = node->value.method_call.arg_count;
+    int argc = written_argc + 1; /* self + written arguments */
+    value_t *result = NULL;
+
+    value_t **argv = tracked_calloc(&rt->alloc_list, argc, sizeof(struct VALUE_STRUCT *));
+    if (argv == NULL) {
+        ti_raise(rt, TI_ERR_NO_MEMORY, node->line, "Cannot allocate arguments for method '%s'", method_name);
+        return NULL;
+    }
+
+    /* Step 1: evaluate the receiver; it is a copy, so the handle stays alive during the call */
+    argv[0] = visitor_visit(rt, ctx, node->value.method_call.object);
+    if (argv[0] == NULL) {
+        goto out;
+    }
+
+    /* Step 2: only handles have methods, and an empty handle ('handle h;') has no type to look in */
+    if (argv[0]->type != VAL_HANDLE) {
+        ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line, "Cannot call method '%s' on %s",
+                 method_name, val_type_to_str(argv[0]->type));
+        goto out;
+    }
+    const ti_handle_type_t *htype = val_handle_type(argv[0]);
+    if (htype == NULL) {
+        ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line, "Cannot call method '%s' on an empty handle", method_name);
+        goto out;
+    }
+
+    /* Step 3: find the method in the type's table */
+    const ti_builtin_def_t *method = handle_type_find_method(htype, method_name);
+    if (method == NULL) {
+        ti_raise(rt, TI_ERR_UNDEFINED, node->line, "Handle %s has no method '%s'", htype->name, method_name);
+        goto out;
+    }
+
+    /* Step 4: evaluate the written arguments after self; NULL means the argument already failed */
+    for (int i = 0; i < written_argc; i++) {
+        argv[i + 1] = visitor_visit(rt, ctx, node->value.method_call.args[i]);
+        if (argv[i + 1] == NULL) {
+            goto out;
+        }
+    }
+
+    /* Step 5: run the method like any native function: run_function checks count and types
+     * against the method's params, which include self at index 0 */
+    function_t func = {
+        .name        = method->name,
+        .type        = FUNC_BUILTIN,
+        .return_type = method->return_type,
+        .return_element_type = VAL_NULL,
+        .params      = method->params,
+        .param_count = method->param_count,
+        .native_fn   = method->function,
+    };
+    result = run_function(rt, ctx, &func, argv, argc, node);
+
+out:
+    /* Single cleanup point: free self and the evaluated arguments (unset slots are NULL) */
+    for (int i = 0; i < argc; i++) {
+        val_free(argv[i]);
+    }
+    tracked_free(&rt->alloc_list, argv);
+    return result;
+}
+
+/* -------------------- Handle Attributes -------------------- */
+
+/**
+ * @brief Evaluate an attribute read: object.name runs the receiver type's get_attr.
+ * @param rt Pointer to active runtime instance.
+ * @param ctx Pointer to context.
+ * @param node Attribute AST node.
+ * @return New value_t read from the native object, or NULL with an error raised.
+ */
+value_t *eval_attribute(ti_runtime_t *rt, context_t *ctx, ast_t *node)
+{
+    const char *name = node->value.attribute.name;
+    value_t *result = NULL;
+    ti_status_t status = TI_ERR_UNDEFINED;
+
+    /* Step 1: evaluate the receiver; it is a copy, so the handle stays alive during the call */
+    value_t *object = visitor_visit(rt, ctx, node->value.attribute.object);
+    if (object == NULL) {
+        return NULL;
+    }
+
+    /* Step 2: only handles have attributes, and an empty handle ('handle h;') has no type */
+    if (object->type != VAL_HANDLE) {
+        ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line, "Cannot access attribute '%s' on %s",
+                 name, val_type_to_str(object->type));
+        goto out;
+    }
+    const ti_handle_type_t *htype = val_handle_type(object);
+    if (htype == NULL) {
+        ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line, "Cannot access attribute '%s' on an empty handle", name);
+        goto out;
+    }
+
+    /* Step 3: get_attr receives the native object, so a closed handle is rejected here */
+    void *ptr = val_handle_get(object, htype);
+    if (ptr == NULL) {
+        ti_raise(rt, TI_ERR_INVALID_VALUE, node->line, "Cannot access attribute '%s': handle %s is closed",
+                 name, htype->name);
+        goto out;
+    }
+
+    /* Step 4: read the attribute; a type without get_attr has no readable attribute */
+    if (htype->get_attr != NULL) {
+        status = htype->get_attr(ptr, name, &result);
+    }
+
+    /* Step 5: get_attr never raises (layer 1), so its failure is reported here */
+    if (status == TI_ERR_UNDEFINED) {
+        ti_raise(rt, TI_ERR_UNDEFINED, node->line, "Handle %s has no attribute '%s'", htype->name, name);
+    } else if (status != TI_OK) {
+        ti_raise(rt, status, node->line, "Cannot get attribute '%s' of handle %s: %s",
+                 name, htype->name, ti_err_to_str(status));
+    } else if (result == NULL) {
+        /* A getter that reports TI_OK must set *out: otherwise the script would stop with no error */
+        ti_raise(rt, TI_ERR_INTERNAL, node->line, "Attribute '%s' of handle %s returned no value", name, htype->name);
+    }
+
+out:
+    /* Release the receiver copy only after the native object was used */
+    val_free(object);
     return result;
 }
 

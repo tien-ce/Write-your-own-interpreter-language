@@ -36,7 +36,32 @@ typedef struct PARAM_STRUCT {
     val_type_t type;          /* Expected parameter type (VAL_INT, VAL_STRING, etc.); VAL_ANY (natives only) accepts any type */
     char *name;               /* Parameter identifier name (e.g. "a", "count") */
     val_type_t element_type;  /* Expected element type when type is VAL_LIST (VAL_NULL accepts any) */
+    const ti_handle_type_t *handle_type; /* Expected handle type when type is VAL_HANDLE (NULL accepts any type); not owned */
 } param_t;
+
+/* -------------------- Parameter Table Helpers -------------------- */
+
+/**
+ * @brief Build one param_t entry of a native parameter table; unused fields get their "accept any" value.
+ * Usage: static param_t params[] = { PARAM("ms", VAL_INT), PARAM_HANDLE("cfg", &s_modbus_cfg_type) };
+ * @param name Parameter name (string literal).
+ * @param type Parameter type (VAL_INT, VAL_STRING, VAL_ANY, ...).
+ */
+#define PARAM(name, type)             { (type), (name), VAL_NULL, NULL }
+
+/**
+ * @brief Build a list parameter entry that requires a given element type.
+ * @param name Parameter name (string literal).
+ * @param elem_type Required element type (VAL_INT, VAL_DICT, ...); VAL_NULL accepts any list.
+ */
+#define PARAM_LIST(name, elem_type)   { VAL_LIST, (name), (elem_type), NULL }
+
+/**
+ * @brief Build a handle parameter entry that requires a given handle type (checked before the native runs).
+ * @param name Parameter name (string literal).
+ * @param htype Address of the required ti_handle_type_t (e.g. &s_modbus_cfg_type); NULL accepts any handle.
+ */
+#define PARAM_HANDLE(name, htype)     { VAL_HANDLE, (name), VAL_NULL, (htype) }
 
 typedef struct FUNCTION_STRUCT {
     const char *name;          /* Function identifier in Ti scripts */

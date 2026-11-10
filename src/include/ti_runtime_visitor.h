@@ -205,6 +205,29 @@ value_t *eval_bytes_literal(ti_runtime_t *rt, context_t *ctx, ast_t *node);
 value_t *eval_function_call(ti_runtime_t *rt, context_t *ctx, ast_t *node);
 
 /**
+ * @brief Evaluate a method call node (object.method(args)) on a handle value.
+ * The method is looked up in the receiver's handle type and run like a native function,
+ * with the receiver passed as argument 0 (self).
+ * @param rt Pointer to active runtime instance.
+ * @param ctx Pointer to active execution context scope.
+ * @param node Method call AST node.
+ * @return Returned value_t from the method, or NULL on error (not a handle, empty handle, unknown method).
+ */
+value_t *eval_method_call(ti_runtime_t *rt, context_t *ctx, ast_t *node);
+
+/**
+ * @brief Evaluate an attribute read (object.name) on a handle value.
+ * The receiver type's get_attr reads the native object; writes (object.name = value) are handled by
+ * eval_assignment.
+ * @param rt Pointer to active runtime instance.
+ * @param ctx Pointer to active execution context scope.
+ * @param node Attribute AST node.
+ * @return New value_t read from the native object, or NULL on error (not a handle, empty or closed handle,
+ *         no such attribute, getter failure).
+ */
+value_t *eval_attribute(ti_runtime_t *rt, context_t *ctx, ast_t *node);
+
+/**
  * @brief Evaluate a function definition node and register it into the runtime function table.
  * @param rt Pointer to active runtime instance.
  * @param ctx Pointer to active execution context scope.

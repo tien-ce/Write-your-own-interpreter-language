@@ -26,6 +26,10 @@ value_t *visitor_visit(ti_runtime_t *rt, context_t *ctx, ast_t *node)
     switch (node->type) {
     case AST_FUNCTION_CALL:
         return eval_function_call(rt, ctx, node);
+    case AST_METHOD_CALL:
+        return eval_method_call(rt, ctx, node);
+    case AST_ATTRIBUTE:
+        return eval_attribute(rt, ctx, node);
     case AST_COMPOUND:
         return eval_compound_statement(rt, ctx, node);
     case AST_VARIABLE_DEFINITION:

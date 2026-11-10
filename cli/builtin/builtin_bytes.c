@@ -144,11 +144,11 @@ static value_t *builtin_crc16(ti_handle_t handle, value_t **argv, int argc)
 void builtin_bytes_register(void)
 {
     static param_t request_params[] = {
-        { VAL_INT, "slave", VAL_NULL },
-        { VAL_INT, "address", VAL_NULL },
-        { VAL_INT, "count", VAL_NULL },
+        { VAL_INT, "slave", VAL_NULL, NULL },
+        { VAL_INT, "address", VAL_NULL, NULL },
+        { VAL_INT, "count", VAL_NULL, NULL },
     };
-    static param_t crc_params[] = { { VAL_BYTES, "data", VAL_NULL } };
+    static param_t crc_params[] = { { VAL_BYTES, "data", VAL_NULL, NULL } };
 
     /* The return type is VAL_BYTES, so scripts can assign the result to a 'bytes' variable */
     register_builtin_function("modbus_read_request", VAL_BYTES, request_params, 3, builtin_modbus_read_request);

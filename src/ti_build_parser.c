@@ -29,7 +29,10 @@ static ast_t *parser_parse_assignment(parser_t *parser, ast_t *target);
 static ast_t *parser_parse_assignment_expr(parser_t *parser, ast_t *target);
 static bool parser_is_update_token(int token_type);
 static ast_t *parser_parse_for_statement(parser_t *parser);
+static void *parser_check_alloc(parser_t *parser, void *ptr);
+static void parser_parse_args(parser_t *parser, ast_t ***args, int *arg_count);
 static ast_t *parser_parse_function_call(parser_t *parser, char *func_name);
+static ast_t *parser_parse_member_access(parser_t *parser, ast_t *node);
 static ast_t *parser_parse_while_statement(parser_t *parser);
 static ast_t *parser_parse_if_statement(parser_t *parser);
 static ast_t *parser_parse_return_statement(parser_t *parser);
@@ -117,6 +120,7 @@ static type_spec_t parser_parse_type(parser_t *parser)
     case TOKEN_KW_DICT:   spec.type = VAL_DICT;   break;
     case TOKEN_KW_LIST:   spec.type = VAL_LIST;   break;
     case TOKEN_KW_BYTES:  spec.type = VAL_BYTES;  break;
+    case TOKEN_KW_HANDLE: spec.type = VAL_HANDLE; break;
     case TOKEN_KW_FUNC:   spec.type = VAL_FUNC;   break;
     default:
         ti_log("[Parser Error] Unexpected type %s, at line %d\n",
@@ -292,6 +296,7 @@ static ast_t *parser_parse_statement(parser_t *parser)
     case TOKEN_KW_DICT:
     case TOKEN_KW_LIST:
     case TOKEN_KW_BYTES:
+    case TOKEN_KW_HANDLE:
     case TOKEN_KW_FUNC:
         return parser_parse_definition(parser);
     case TOKEN_ID: {
@@ -637,26 +642,29 @@ static ast_t *parser_parse_primary(parser_t *parser)
         parser->current_token->value = NULL; // Change the owner to ast instead of token
         parser_eat(parser, TOKEN_ID);
 
-        /* Function call: id(...) */
+        ast_t *node = NULL;
         if (parser->current_token->type == TOKEN_LPAREN) {
-            return parser_parse_function_call(parser, id_name);
-        }
-
-        /* Array index: id[expr] */
-        if (parser->current_token->type == TOKEN_LBRACKET) {
+            /* Function call: id(...) */
+            node = parser_parse_function_call(parser, id_name);
+        } else if (parser->current_token->type == TOKEN_LBRACKET) {
+            /* Array index: id[expr] */
             parser_eat(parser, TOKEN_LBRACKET);
             ast_t *index_expr = parser_parse_expr(parser);
             parser_eat(parser, TOKEN_RBRACKET);
-            ast_t *array_access_node = ast_init(parser->alloc_list, AST_ARRAY_ACCESS, parser->lexer->line_num);
-            array_access_node->value.array_access.id = id_name;
-            array_access_node->value.array_access.index_expr = index_expr;
-            return array_access_node;
+            node = ast_init(parser->alloc_list, AST_ARRAY_ACCESS, parser->lexer->line_num);
+            node->value.array_access.id = id_name;
+            node->value.array_access.index_expr = index_expr;
+        } else {
+            /* Simple identifier variable reference */
+            node = ast_init(parser->alloc_list, AST_IDENTIFIER, parser->lexer->line_num);
+            node->value.identifier = id_name;
         }
 
-        /* Simple identifier variable reference */
-        ast_t *variable_node = ast_init(parser->alloc_list, AST_IDENTIFIER, parser->lexer->line_num);
-        variable_node->value.identifier = id_name;
-        return variable_node;
+        /* Members of the node just parsed: dev.read(), f().info(), arr[0].baud */
+        if (parser->current_token->type == TOKEN_DOT) {
+            node = parser_parse_member_access(parser, node);
+        }
+        return node;
     }
     case TOKEN_LBRACE: {
         /* Parse Dictionary Literal: { "key": value, ... } */
@@ -943,6 +951,53 @@ static ast_t *parser_parse_if_statement(parser_t *parser)
 }
 
 /**
+ * @brief Abort the build when a parser allocation failed.
+ * Everything allocated so far is on the alloc list, so ti_compile frees it after the abort.
+ * @param parser Pointer to parser.
+ * @param ptr Result of the allocation to check.
+ * @return ptr itself (never NULL: on NULL the build is aborted and this does not return).
+ */
+static void *parser_check_alloc(parser_t *parser, void *ptr)
+{
+    if (ptr == NULL) {
+        ti_log("[Parser Error] Out of memory at line %d\n", parser->lexer->line_num);
+        lexer_abort(parser->lexer); // Does not return
+    }
+    return ptr;
+}
+
+/**
+ * @brief Parse a parenthesized argument list: (arg1, arg2, ...), shared by function and method calls.
+ * @param parser Pointer to parser.
+ * @param args Output: array of argument expression nodes (NULL when there are none).
+ * @param arg_count Output: number of arguments parsed.
+ */
+/* (<arg1>, <arg2>, ...) */
+static void parser_parse_args(parser_t *parser, ast_t ***args, int *arg_count)
+{
+    parser_eat(parser, TOKEN_LPAREN); // Eat '('
+    *args = NULL;
+    *arg_count = 0;
+
+    /* Parse comma-separated argument expression list */
+    if (parser->current_token->type != TOKEN_RPAREN) {
+        *args = parser_check_alloc(parser, tracked_calloc(parser->alloc_list, 1, sizeof(struct AST_STRUCT *)));
+        ast_t *arg_node = parser_parse_expr(parser);
+        (*args)[*arg_count] = arg_node;
+        (*arg_count)++;
+    }
+    while (parser->current_token->type == TOKEN_COMMA) {
+        parser_eat(parser, TOKEN_COMMA); // Eat ','
+        /* On failure the old array stays on the alloc list, so the abort still frees it */
+        *args = parser_check_alloc(parser, tracked_realloc(parser->alloc_list, *args, (*arg_count + 1) * sizeof(struct AST_STRUCT *)));
+        ast_t *arg_node = parser_parse_expr(parser);
+        (*args)[*arg_count] = arg_node;
+        (*arg_count)++;
+    }
+    parser_eat(parser, TOKEN_RPAREN); // Eat ')'
+}
+
+/**
  * @brief Parse function call expression: func(arg1, arg2, ...).
  * @param parser Pointer to parser.
  * @param func_name Name of function being called.
@@ -951,25 +1006,9 @@ static ast_t *parser_parse_if_statement(parser_t *parser)
 /* <func_name>(<arg1>, <arg2>, ...) */
 static ast_t *parser_parse_function_call(parser_t *parser, char *func_name)
 {
-    parser_eat(parser, TOKEN_LPAREN); // Eat '('
     ast_t **args = NULL;
     int arg_count = 0;
-
-    /* Parse comma-separated argument expression list */
-    if (parser->current_token->type != TOKEN_RPAREN) {
-        args = tracked_calloc(parser->alloc_list, 1, sizeof(struct AST_STRUCT *));
-        ast_t *arg_node = parser_parse_expr(parser);
-        args[arg_count] = arg_node;
-        arg_count++;
-    }
-    while (parser->current_token->type == TOKEN_COMMA) {
-        parser_eat(parser, TOKEN_COMMA); // Eat ','
-        args = tracked_realloc(parser->alloc_list, args, (arg_count + 1) * sizeof(struct AST_STRUCT *));
-        ast_t *arg_node = parser_parse_expr(parser);
-        args[arg_count] = arg_node;
-        arg_count++;
-    }
-    parser_eat(parser, TOKEN_RPAREN); // Eat ')'
+    parser_parse_args(parser, &args, &arg_count);
 
     /* Construct AST function call node */
     ast_t *func_call_node = ast_init(parser->alloc_list, AST_FUNCTION_CALL, parser->lexer->line_num);
@@ -977,6 +1016,54 @@ static ast_t *parser_parse_function_call(parser_t *parser, char *func_name)
     func_call_node->value.function_call.args = args;
     func_call_node->value.function_call.arg_count = arg_count;
     return func_call_node;
+}
+
+/**
+ * @brief Parse the method calls and attribute accesses that follow an expression: node.m(...).attr...
+ * Each member wraps the expression before it, so a.b().c becomes (a.b()).c.
+ * @param parser Pointer to parser.
+ * @param node Receiver expression already parsed (identifier, function call or array access).
+ * @return node itself when no '.' follows, otherwise the outermost method call or attribute node.
+ */
+/* <node> { . <name>(<arg1>, <arg2>, ...) | . <name> } */
+static ast_t *parser_parse_member_access(parser_t *parser, ast_t *node)
+{
+    while (parser->current_token->type == TOKEN_DOT) {
+        parser_eat(parser, TOKEN_DOT); // Eat '.'
+
+        /* The member name must follow the dot (rejects dev. and dev.5) */
+        if (parser->current_token->type != TOKEN_ID) {
+            ti_log("[Parser Error] Expected member name after '.' at line %d\n", parser->lexer->line_num);
+            ti_log_line(parser->lexer->line);
+            lexer_abort(parser->lexer);
+        }
+        char *name = parser->current_token->value;
+        parser->current_token->value = NULL; // Change the owner to ast instead of token
+        parser_eat(parser, TOKEN_ID);
+
+        /* No '(' after the name: attribute access, read or (as an assignment target) written */
+        if (parser->current_token->type != TOKEN_LPAREN) {
+            ast_t *attr_node = parser_check_alloc(parser, ast_init(parser->alloc_list, AST_ATTRIBUTE, parser->lexer->line_num));
+            attr_node->value.attribute.object = node;
+            attr_node->value.attribute.name = name;
+            node = attr_node;
+            continue;
+        }
+
+        /* Method call: parse the written arguments (self is added at run time) */
+        ast_t **args = NULL;
+        int arg_count = 0;
+        parser_parse_args(parser, &args, &arg_count); // Eat left parenthesis iniside funciton (
+
+        /* Wrap the current expression as the receiver of this call */
+        ast_t *call_node = parser_check_alloc(parser, ast_init(parser->alloc_list, AST_METHOD_CALL, parser->lexer->line_num));
+        call_node->value.method_call.object = node;
+        call_node->value.method_call.method = name;
+        call_node->value.method_call.args = args;
+        call_node->value.method_call.arg_count = arg_count;
+        node = call_node;
+    }
+    return node;
 }
 
 /**
@@ -1178,7 +1265,8 @@ static ast_t *parser_parse_for_statement(parser_t *parser)
     case TOKEN_KW_DICT:
     case TOKEN_KW_LIST:
     case TOKEN_KW_FUNC:
-    case TOKEN_KW_BYTES: {
+    case TOKEN_KW_BYTES:
+    case TOKEN_KW_HANDLE: {
         type_spec_t init_type = parser_parse_type(parser);
         char *init_name = parser_take_identifier(parser);
         init = parser_parse_variable_declaration(parser, init_type, init_name);

@@ -134,7 +134,7 @@ static value_t *builtin_autonics_tk_get_sv(ti_handle_t handle, value_t **argv, i
 /* Register the autonics_tk_* functions */
 void builtin_autonics_register(void)
 {
-    static param_t autonics_addr_params[] = { { VAL_INT, "address", VAL_NULL } };
+    static param_t autonics_addr_params[] = { { VAL_INT, "address", VAL_NULL, NULL } };
 
     register_builtin_function("autonics_tk_set_slave_address", VAL_VOID, autonics_addr_params, 1, builtin_autonics_tk_set_slave_address);
     register_builtin_function("autonics_tk_get_pv", VAL_FLOAT, NULL, 0, builtin_autonics_tk_get_pv);

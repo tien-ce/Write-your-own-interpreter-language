@@ -23,6 +23,7 @@ typedef enum token_type {
     TOKEN_KW_DICT,      // dict
     TOKEN_KW_LIST,      // list
     TOKEN_KW_BYTES,     // bytes
+    TOKEN_KW_HANDLE,    // handle
     TOKEN_KW_FUNC,      // func
     TOKEN_KW_IF,        // if
     TOKEN_KW_ELSE,      // else
@@ -64,6 +65,7 @@ typedef enum token_type {
     TOKEN_LBRACKET,     // [
     TOKEN_RBRACKET,     // ]
     TOKEN_COMMA,        // ,
+    TOKEN_DOT,          // .  (method call: obj.name(...))
     TOKEN_LT,           // <
     TOKEN_LTE,          // <= 
     TOKEN_GT,           // >

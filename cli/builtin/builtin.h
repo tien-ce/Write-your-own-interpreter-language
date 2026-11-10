@@ -55,6 +55,11 @@ void builtin_system_register(void);
  */
 void builtin_bytes_register(void);
 
+/**
+ * @brief Register the handle example device_open/set_baud/read/info/close (builtin_device.c).
+ */
+void builtin_device_register(void);
+
 /* -------------------- CLI Event Simulation -------------------- */
 
 /**

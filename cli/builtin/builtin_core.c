@@ -41,6 +41,16 @@ static value_t *builtin_print(ti_handle_t handle, value_t **argv, int argc)
             /* A function value prints as its name in angle brackets; an empty one ('func f;') as "none" */
             printf("<func %s>", argv[i]->func_name != NULL ? argv[i]->func_name : "none");
             break;
+        case VAL_HANDLE: {
+            /* Same form as to_string: the type name and whether it is still open, never the native object */
+            const ti_handle_type_t *htype = val_handle_type(argv[i]);
+            if (htype == NULL) {
+                printf("<handle none>");
+            } else {
+                printf(val_handle_is_open(argv[i]) ? "<handle %s>" : "<handle %s closed>", htype->name);
+            }
+            break;
+        }
         case VAL_BYTES: {
             /* Binary data has no text form: print it as hex digits */
             const uint8_t *data = val_bytes_data(argv[i]);
@@ -96,7 +106,7 @@ static value_t *builtin_delay(ti_handle_t handle, value_t **argv, int argc)
 /* Register print() and delay() */
 void builtin_core_register(void)
 {
-    static param_t delay_params[] = { { VAL_INT, "ms", VAL_NULL } };
+    static param_t delay_params[] = { { VAL_INT, "ms", VAL_NULL, NULL } };
 
     register_builtin_function("print", VAL_VOID, NULL, -1, builtin_print);
     register_builtin_function("delay", VAL_VOID, delay_params, 1, builtin_delay);

@@ -28,6 +28,21 @@ struct DICT_STRUCT {
 
 typedef struct LIST_STRUCT list_t;
 typedef struct BYTES_STRUCT bytes_t;
+typedef struct HANDLE_STRUCT handle_t;
+
+/* Handle type descriptor (name, destructor): defined in ti_type_value_handle.h */
+typedef struct HANDLE_TYPE_STRUCT ti_handle_type_t;
+
+/**
+ * @brief Reference-counted opaque wrapper around a native C object (config, driver handle, ...).
+ * Scripts can only hold it and pass it to natives; only natives look inside, after checking the type.
+ * Copies share the same handle (refcount), including inside containers: C objects cannot be deep copied.
+ */
+struct HANDLE_STRUCT {
+    void                   *ptr;      /* Native object; NULL once closed by its owner, so stale use is detected */
+    const ti_handle_type_t *type;     /* Type descriptor checked before a native casts ptr (static, not owned; kept after close) */
+    int                     refcount; /* Counter tracking active references to manage memory deallocation */
+};
 
 typedef struct VALUE_STRUCT {
     val_type_t type;
@@ -39,7 +54,8 @@ typedef struct VALUE_STRUCT {
         dict_t *dict_val;
         list_t *list_val;
         bytes_t *bytes_val;
-        char *func_name;           /* VAL_FUNC: name of a script function, resolved at call time */
+        handle_t *handle_val;      /* VAL_HANDLE: opaque native object */
+        char *func_name;          /* VAL_FUNC: name of a script function, resolved at call time */
     };
 } value_t;
 

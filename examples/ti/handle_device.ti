@@ -1,0 +1,80 @@
+/*
+ * Handle example: one native object (a simulated serial device) passed through many functions.
+ * The script never sees the C struct, only a handle of type "device_cfg" (cli/builtin/builtin_device.c).
+ * A device is used three ways, all reaching the same native object:
+ *     device_info(dev)    free function, the handle is the first argument
+ *     dev.info()          method of the handle's type, the handle is passed as self
+ *     dev.baud            attribute, read by the type's get_attr and written by its set_attr
+ * Run:  ./ti.out examples/ti/handle_device.ti
+ */
+
+/* Script functions take a bare 'handle'; the natives check the handle type */
+int read_average(handle dev, int count) {
+    int sum = 0;
+    bool by_function = true;
+    for (int i = 0; i < count; i = i + 1) {
+        /* Alternate both styles: they read the same device */
+        if (by_function) {
+            sum = sum + device_read(dev);
+        } else {
+            sum = sum + dev.read();
+        }
+        by_function = !by_function;
+    }
+    return sum / count;
+}
+
+handle dev = device_open("/dev/ttyUSB0", 9600);
+print("opened " + to_string(dev));
+print("function: " + device_info(dev) + ", method: " + dev.info());
+
+/* Change the baud one way, observe it the other way */
+device_set_baud(dev, 19200);
+print("set by function, seen by method: " + dev.info());
+dev.set_baud(38400);
+print("set by method, seen by function: " + device_info(dev));
+print("average " + to_string(read_average(dev, 4)));
+
+/* Attributes: read and write the native fields directly */
+print("attributes: port " + dev.port + ", baud " + to_string(dev.baud));
+dev.baud = 57600;
+print("set by attribute, seen by method: " + dev.info());
+dev.baud += 57600;
+print("after += : " + to_string(dev.baud));
+if (dev.baud > 100000) {
+    print("attribute in a condition: fast link");
+}
+
+/* Copies share the same device: closing through one closes it for all */
+handle same = dev;
+dict registry = {"main": dev};
+handle from_dict = registry["main"];
+print("same object: " + to_string(same == dev) + " " + to_string(from_dict == dev));
+same.baud = 9600;
+print("set through a copy, seen by the original: " + to_string(dev.baud));
+
+/* The receiver can be any expression: a dict element or a function result */
+print("from dict: " + registry["main"].info() + ", baud " + to_string(registry["main"].baud));
+print("temporary: " + device_open("/dev/ttyACM0", 57600).info());
+print("temporary attribute: " + device_open("/dev/ttyACM1", 4800).port);
+
+/* Each line below stops the script with an error; uncomment one to see its message */
+// dev.port = "/dev/null";      // Cannot set attribute 'port' of handle device_cfg: read-only
+// dev.baud = "fast";           // Cannot set attribute 'baud' of handle device_cfg: type mismatch
+// dev.baud = 0;                // Cannot set attribute 'baud' of handle device_cfg: value out of range
+// print(dev.speed);            // Handle device_cfg has no attribute 'speed'
+// dev.speed = 1;               // Handle device_cfg has no attribute 'speed'
+// dev.missing();               // Handle device_cfg has no method 'missing'
+
+/* A declared handle starts empty */
+handle spare;
+print("spare: " + to_string(spare) + ", empty == empty: " + to_string(spare == spare));
+// print(spare.baud);           // Cannot access attribute 'baud' on an empty handle
+
+same.close();
+print("after close: " + to_string(dev));
+// print(dev.baud);             // Cannot access attribute 'baud': handle device_cfg is closed
+
+/* A second device is released automatically when the script ends (watch the [device] line) */
+handle other = device_open("/dev/ttyS1", 4800);
+print("other " + device_info(other) + " / " + other.info() + " / " + other.port);

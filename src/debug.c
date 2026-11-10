@@ -21,6 +21,7 @@ const char *token_type_to_str(int type)
     case TOKEN_KW_BOOL:   return "TOKEN_KW_BOOL";
     case TOKEN_KW_LIST:   return "TOKEN_KW_LIST";
     case TOKEN_KW_BYTES:  return "TOKEN_KW_BYTES";
+    case TOKEN_KW_HANDLE: return "TOKEN_KW_HANDLE";
     case TOKEN_KW_FUNC:   return "TOKEN_KW_FUNC";
     case TOKEN_KW_IF:     return "TOKEN_KW_IF";
     case TOKEN_KW_ELSE:   return "TOKEN_KW_ELSE";
@@ -149,6 +150,7 @@ const char *val_type_to_str(val_type_t type)
     case VAL_DICT:   return "dict";
     case VAL_LIST:   return "list";
     case VAL_BYTES:  return "bytes";
+    case VAL_HANDLE: return "handle";
     case VAL_FUNC:   return "func";
     case VAL_ANY:    return "any";
     default:         return "?";
@@ -182,6 +184,7 @@ const char *ti_err_to_str(ti_status_t status)
     case TI_ERR_INTERNAL:          return "internal error";
     case TI_ERR_RUNTIME:           return "runtime error";
     case TI_ERR_TIMEOUT:           return "timeout";
+    case TI_ERR_READ_ONLY:         return "read-only";
     default:                       return "unknown error";
     }
 }

@@ -261,6 +261,10 @@ static value_t *binary_equal(ti_runtime_t *rt, value_t *left, value_t *right, in
         /* Function values are equal when they name the same function (or are both empty) */
         value->bool_val = func_names_equal(left->func_name, right->func_name);
         break;
+    case VAL_HANDLE:
+        /* Identity: equal when both share the same native object wrapper, or are both empty ('handle h;') */
+        value->bool_val = (left->handle_val == right->handle_val);
+        break;
     case VAL_BYTES:
         /* Equal length and content */
         value->bool_val = val_bytes_equal(left->bytes_val, right->bytes_val);
@@ -319,6 +323,10 @@ static value_t *binary_not_equal(ti_runtime_t *rt, value_t *left, value_t *right
     case VAL_FUNC:
         /* Negation of equality, NULL-safe for empty function values */
         value->bool_val = !func_names_equal(left->func_name, right->func_name);
+        break;
+    case VAL_HANDLE:
+        /* Negation of identity equality */
+        value->bool_val = (left->handle_val != right->handle_val);
         break;
     case VAL_BYTES:
         /* Different length or content */

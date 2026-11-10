@@ -24,6 +24,8 @@ typedef struct AST_STRUCT {
     AST_UNARY_EXPR,           // -x, !flag
     AST_FUNCTION_CALL,        // mylove("van anh")
     AST_ARRAY_ACCESS,         // arr[0]
+    AST_METHOD_CALL,          // dev.read(), get_dev().info()
+    AST_ATTRIBUTE,            // dev.baud, get_dev().port
 
     /* STATEMENTS */
     AST_COMPOUND,             // Block statement { ... }
@@ -128,6 +130,20 @@ typedef struct AST_STRUCT {
       int arg_count;                // Number of arguments passed
     } function_call;
 
+    /* Method call: object.method(args); the evaluated object is passed as argument 0 (self) */
+    struct {
+      struct AST_STRUCT *object;    // Receiver expression (identifier, call, array access or method call)
+      char *method;                 // Method name looked up in the receiver's type
+      struct AST_STRUCT **args;     // Argument expression AST nodes (self not included)
+      int arg_count;                // Number of arguments written in the call (self not included)
+    } method_call;
+
+    /* Attribute access: object.name, read (expression) or written (assignment target) */
+    struct {
+      struct AST_STRUCT *object;    // Receiver expression: everything parsed left of the '.'
+      char *name;                   // Attribute name passed to the type's get_attr / set_attr
+    } attribute;
+
     struct {
       val_type_t return_type;       // Declared function return data type
       val_type_t return_element_type; // Element type when return_type is VAL_LIST (VAL_NULL otherwise)
@@ -201,8 +217,8 @@ void ast_free(ast_t *ast);
 
 /**
  * @brief Deep-copy an expression AST node (used to reuse an assignment target as an operand).
- * Supports identifiers, int/float/string/bool literals, binary/unary expressions, array accesses
- * and function calls; any other node kind is not cloneable.
+ * Supports identifiers, int/float/string/bool literals, binary/unary expressions, array accesses,
+ * function calls, method calls and attribute accesses; any other node kind is not cloneable.
  * @param list Pointer to head of allocation list (can be NULL if unlinked).
  * @param ast Node to copy.
  * @return Newly allocated copy owning all its children, or NULL if unsupported or out of memory.

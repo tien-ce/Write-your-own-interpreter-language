@@ -204,6 +204,7 @@ static token_t *lexer_collect_id(lexer_t *lexer)
     if (strcmp(value, "list") == 0)   { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_LIST, NULL); }
     if (strcmp(value, "void") == 0)   { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_VOID, NULL); }
     if (strcmp(value, "bytes") == 0)   { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_BYTES, NULL); }
+    if (strcmp(value, "handle") == 0)  { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_HANDLE, NULL); }
     if (strcmp(value, "func") == 0)    { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_FUNC, NULL); }
 
     /* Match control flow keywords */
@@ -415,6 +416,8 @@ token_t *lexer_get_next_token(lexer_t *lexer)
             return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_MINUS, NULL));
         }
         case ',': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_COMMA, NULL));
+        /* A '.' inside a number (3.14) never gets here: number lexing consumes it */
+        case '.': return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_DOT, NULL));
         case '*': {
             /* '*=' versus plain '*' */
             lexer_advance(lexer);

@@ -50,6 +50,7 @@ void ti_init_builtin(void)
     builtin_json_register();
     builtin_system_register();
     builtin_bytes_register();
+    builtin_device_register();
 }
 
 void init_builtin(void)

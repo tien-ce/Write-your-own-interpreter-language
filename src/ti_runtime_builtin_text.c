@@ -2,6 +2,7 @@
 #include "include/ti_type_value_dict.h"
 #include "include/ti_type_value_list.h"
 #include "include/ti_type_value_bytes.h"
+#include "include/ti_type_value_handle.h"
 #include "include/tracked_memory.h"
 #include "include/debug.h"
 #include "chashmap.h"
@@ -268,7 +269,7 @@ static ti_status_t json_append_dict(ti_text_buffer_t *text, const value_t *dict)
  * @param text Text buffer.
  * @param value Value to write.
  * @return TI_OK, TI_ERR_NO_MEMORY, TI_ERR_INVALID_VALUE (NaN/infinity) or TI_ERR_TYPE_MISMATCH
- *         (a function value has no JSON form).
+ *         (a function or handle value has no JSON form).
  */
 static ti_status_t json_append_value(ti_text_buffer_t *text, const value_t *value)
 {
@@ -349,6 +350,15 @@ ti_status_t ti_text_append_value(ti_text_buffer_t *text, const value_t *value)
     case VAL_FUNC:
         /* An empty function value ('func f;') has no name: never pass NULL to %s */
         return text_append(text, "<func %s>", value->func_name != NULL ? value->func_name : "none");
+
+    case VAL_HANDLE: {
+        /* The native object is opaque: show only its type name and whether it is still open */
+        const ti_handle_type_t *htype = val_handle_type(value);
+        if (htype == NULL) {
+            return text_append(text, "<handle none>"); /* empty handle ('handle h;') */
+        }
+        return text_append(text, val_handle_is_open(value) ? "<handle %s>" : "<handle %s closed>", htype->name);
+    }
 
     case VAL_BYTES: {
         /* Binary data has no text form: render it as hex digits */
