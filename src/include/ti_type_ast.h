@@ -35,6 +35,7 @@ typedef struct AST_STRUCT {
     AST_RETURN_STATEMENT,     // return expr;
     AST_BREAK_STATEMENT,      // break;
     AST_CONTINUE_STATEMENT,   // continue;
+    AST_IMPORT_STATEMENT,     // import machine; / import machine as m;
     AST_VARIABLE_DEFINITION,  // int x = 5;
     AST_FUNCTION_DEFINITION,  // int f() { ... }
     AST_PARAM,                // Function parameter: type param_name
@@ -194,6 +195,12 @@ typedef struct AST_STRUCT {
     struct {
       struct AST_STRUCT *value;     // Expression node to return (NULL if void return)
     } return_statement;
+
+    /* Import statement: import <module_name> [as <alias>]; */
+    struct {
+      char *module_name;            // Registered module to bind ("machine")
+      char *alias;                  // Variable name after 'as' (NULL: the variable is named module_name)
+    } import_statement;
 
   } value;
 } ast_t;  // Abstract syntax tree

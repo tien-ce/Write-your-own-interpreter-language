@@ -8,6 +8,7 @@
 #include <stdbool.h>
 #include "../src/TienInterpreter.h"
 #include "builtin/builtin.h"
+#include "module/module.h"
 
 /* -------------------- Constants & State -------------------- */
 
@@ -114,6 +115,7 @@ int main(int argc, char *argv[])
         exit(1);
     }
     ti_init_builtin();
+    ti_init_modules();
     char *contents = read_string_from_file(argv[1]);
 
     /* Child thread runs the script; the main thread services events */

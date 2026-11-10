@@ -171,6 +171,12 @@ void ast_free(ast_t *ast)
         ast_free(ast->value.return_statement.value);
         break;
 
+    case AST_IMPORT_STATEMENT:
+        /* Free module name and optional alias strings */
+        tracked_free(NULL, ast->value.import_statement.module_name);
+        tracked_free(NULL, ast->value.import_statement.alias);
+        break;
+
     case AST_INT_LITERAL:
     case AST_FLOAT_LITERAL:
     case AST_BOOLEAN:

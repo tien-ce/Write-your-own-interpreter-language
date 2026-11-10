@@ -233,6 +233,10 @@ value_t *val_copy(const value_t *val)
         copy->handle_val = val->handle_val;
         handle_retain(copy->handle_val);
         break;
+    case VAL_MODULE:
+        /* The module table is static const and never freed: copying the address is enough */
+        copy->module_val = val->module_val;
+        break;
     case VAL_FUNC:
         if (val->func_name == NULL)
         {

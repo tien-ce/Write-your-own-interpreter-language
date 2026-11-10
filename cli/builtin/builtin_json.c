@@ -94,7 +94,7 @@ static value_t *builtin_get_json(ti_handle_t handle, value_t **argv, int argc)
 /* Register get_json() */
 void builtin_json_register(void)
 {
-    static param_t get_json_params[] = { { VAL_STRING, "json", VAL_NULL, NULL }, { VAL_STRING, "key", VAL_NULL, NULL } };
+    static const param_t get_json_params[] = { { VAL_STRING, "json", VAL_NULL, NULL }, { VAL_STRING, "key", VAL_NULL, NULL } };
 
     register_builtin_function("get_json", VAL_STRING, get_json_params, 2, builtin_get_json);
 }

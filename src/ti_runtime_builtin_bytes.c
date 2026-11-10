@@ -12,8 +12,8 @@ static value_t *builtin_string_to_bytes(ti_handle_t handle, value_t **argv, int 
 
 /* -------------------- Static Variables -------------------- */
 
-static param_t s_bytes_param[]  = { { VAL_BYTES,  "data", VAL_NULL, NULL } };
-static param_t s_string_param[] = { { VAL_STRING, "text", VAL_NULL, NULL } };
+static const param_t s_bytes_param[]  = { { VAL_BYTES,  "data", VAL_NULL, NULL } };
+static const param_t s_string_param[] = { { VAL_STRING, "text", VAL_NULL, NULL } };
 
 static const ti_builtin_def_t s_defs[] = {
     { "bytes_to_string", VAL_STRING, s_bytes_param,  1, builtin_bytes_to_string },

@@ -152,21 +152,23 @@ Function management in `src/ti_runtime_eval_func.c` maintains strict separation 
 - **Built-in Registry (`s_builtin_functions`):** Static array (`static function_t *s_builtin_functions`) storing registered host C functions (`native_fn_t`), populated during startup via `register_builtin_function()`.
 - **Instance-Isolated User Functions (`rt->user_functions`):** Dynamic array residing directly inside the owning `ti_runtime_t` instance, dynamically resized via `tracked_realloc(&rt->alloc_list, ...)` as functions are declared during script execution.
 - **Global Context Root (`rt->global_context`):** Stored directly inside `ti_runtime_t`, eliminating static or thread-local global pointers.
-- **Instance Teardown:** During `ti_runtime_destroy(rt)`, all user functions are deallocated via `function_free(&rt->alloc_list, &rt->user_functions[i])`, followed by releasing the table itself via `tracked_free(&rt->alloc_list, rt->user_functions)`.
+- **Instance Teardown:** Every user function and its `params` array live on `rt->alloc_list`, so `tracked_free_all(&rt->alloc_list)` in `ti_runtime_destroy(rt)` releases them. `function_free` / `params_free` exist but nothing calls them (no part of a function is outside the alloc list).
 
 ### 5.2. Parameter & Function Representation
 ```c
 typedef struct PARAM_STRUCT {
     val_type_t type;          /* Expected parameter type (VAL_INT, VAL_STRING, etc.); VAL_ANY (natives only) accepts any type */
-    char *name;               /* Parameter identifier name (e.g. "a", "count") */
+    const char *name;         /* Never owned: a string literal in a native table, or borrowed from the AST_PARAM node */
     val_type_t element_type;  /* Expected element type when type is VAL_LIST (VAL_NULL accepts any) */
+    const ti_handle_type_t *handle_type; /* Expected handle type when type is VAL_HANDLE (NULL accepts any) */
 } param_t;
 
 typedef struct FUNCTION_STRUCT {
     const char *name;          /* Function identifier in Ti scripts */
     func_type_t type;          /* FUNC_BUILTIN or FUNC_TI */
     val_type_t  return_type;   /* Declared return type (VAL_INT, VAL_VOID, etc.) */
-    param_t    *params;        /* Array of parameter metadata */
+    val_type_t  return_element_type; /* Element type when return_type is VAL_LIST */
+    const param_t *params;     /* Read-only through this pointer */
     int         param_count;   /* Number of declared parameters (-1 for variadic builtins) */
     union {
         native_fn_t native_fn; /* Builtin native C callback */
@@ -175,11 +177,22 @@ typedef struct FUNCTION_STRUCT {
 } function_t;
 ```
 
-- `register_builtin_function`: Registers native C callbacks (`FUNC_BUILTIN`) with full signature metadata into `s_builtin_functions`:
+**Who owns what behind `params`:**
+
+| Function kind | `params` points to | `params[i].name` | Freed by |
+| :--- | :--- | :--- | :--- |
+| `FUNC_BUILTIN` (registered, method, module function) | the native's `static const param_t` table (flash on ESP32) | string literal | never |
+| `FUNC_TI` | array built by `eval_function_definition` on `rt->alloc_list` | borrowed from the `AST_PARAM` node | `tracked_free_all` at runtime destroy |
+
+`params` is `const param_t *` because a builtin's table may sit in read-only memory. Only `function_free` casts `const` away, and only for `FUNC_TI`, whose array is writable heap memory.
+
+A `FUNC_TI` borrows `name`, `def` and the parameter names from the AST. This is safe because the program (AST) outlives the runtime: `ti_run_string` destroys the runtime before freeing the program, and hosts using `ti_compile` / `ti_execute` must keep the program alive until `ti_destroy`.
+
+- `register_builtin_function`: Registers native C callbacks (`FUNC_BUILTIN`) with full signature metadata into the builtin hashmap:
   ```c
-  bool register_builtin_function(const char *name, val_type_t return_type, param_t *params, int param_count, native_fn_t function);
+  bool register_builtin_function(const char *name, val_type_t return_type, const param_t *params, int param_count, native_fn_t function);
   ```
-  Sets `params = NULL` and `param_count = -1` for fully variadic C functions (such as `print`: neither count nor types checked), or explicit `params` and `param_count` for typed native functions (e.g. `delay`, `relay_set_state`). A parameter typed `VAL_ANY` keeps the count enforced but accepts any argument type (e.g. `to_string(any)`). Registration fails if `param_count > 0` and `params` is `NULL`.
+  Sets `params = NULL` and `param_count = -1` for fully variadic C functions (such as `print`: neither count nor types checked), or explicit `params` and `param_count` for typed native functions (e.g. `delay`, `relay_set_state`). A parameter typed `VAL_ANY` keeps the count enforced but accepts any argument type (e.g. `to_string(any)`). Registration fails if `param_count > 0` and `params` is `NULL`. The table is borrowed, never copied.
 
 ### 5.3. Lookup Helpers
 - `builtin_find_function(const char *name)`: Scans `s_builtin_functions` by identifier.
@@ -189,7 +202,7 @@ typedef struct FUNCTION_STRUCT {
 - Takes `ti_runtime_t *rt`, `context_t *ctx`, and `AST_FUNCTION_DEFINITION` node.
 - **Redefinition Check:** Verifies that `name` does not collide with either built-in functions (`builtin_find_function`) or previously defined user functions in `rt` (`user_find_function`). Emits fatal error if a collision occurs.
 - **Allocation:** Expands `rt->user_functions` using `tracked_realloc(&rt->alloc_list, ...)`.
-- **Parameter Cloning:** If `param_count > 0`, allocates parameter metadata array via `tracked_calloc(&rt->alloc_list, ...)` and clones each parameter identifier via `tracked_strdup(&rt->alloc_list, ...)`.
+- **Parameter Table:** If `param_count > 0`, allocates the parameter array via `tracked_calloc(&rt->alloc_list, ...)` (raises `TI_ERR_NO_MEMORY` on failure), copies each type and borrows each name from its `AST_PARAM` node.
 - **Registration:** Populates `name`, `type = FUNC_TI`, `return_type`, `params`, `param_count`, and `def = node`, then increments `rt->user_function_count`. Always returns `NULL`.
 
 ### 5.5. `eval_function_call`

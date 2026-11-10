@@ -1,0 +1,58 @@
+/*
+ * Module example: 'import' a built-in module and use it with handles (cli/module/module_machine.c).
+ *     machine                  the module: a named table of functions and constants
+ *     machine.UART(...)        module function: returns a handle of type "uart" (no self)
+ *     machine.SERIAL_8N1       module constant (int, read-only)
+ *     u.write(...), u.baud     method and attribute of the returned handle
+ * Run:  ./ti.out examples/ti/module_machine.ti
+ */
+
+import machine;
+import machine as m;
+print("module: " + to_string(machine) + ", alias is the same module: " + to_string(m == machine));
+
+/* Constants are plain values once read */
+int frame = machine.SERIAL_8N1;
+print("SERIAL_8N1 = " + to_string(frame) + ", SERIAL_8N2 = " + to_string(m.SERIAL_8N2));
+print("different formats: " + to_string(machine.SERIAL_8N1 != machine.SERIAL_8N2));
+
+/* The module function is the only way to create a UART handle */
+handle u = machine.UART(1, 9600, machine.SERIAL_8N1);
+print("opened " + to_string(u) + ": port " + to_string(u.port) + ", baud " + to_string(u.baud));
+print("frame is 8N1: " + to_string(u.config == machine.SERIAL_8N1));
+
+/* Methods and attributes of the handle */
+u.write("hello");
+u.baud = 115200;
+u.write("faster");
+u.baud += 115200;
+print("baud after += : " + to_string(u.baud));
+
+/* A module imported at top level is visible inside functions; an import inside a function is local */
+void send(handle port, string text) {
+    import machine as local_machine;
+    port.write(text + " (frame " + to_string(port.config == local_machine.SERIAL_8N1) + ")");
+}
+send(u, "from a function");
+
+/* Through the alias, and as a temporary receiver */
+handle second = m.UART(2, 4800, m.SERIAL_8N2);
+second.write("second port");
+m.UART(0, 300, m.SERIAL_8N1).write("temporary port");
+
+/* Each line below stops the script with an error; uncomment one to see its message */
+// import network;                      // Unknown module 'network'
+// import machine;                      // Cannot import 'machine': already defined in this scope
+// machine.SPI(1);                      // Module machine has no function 'SPI'
+// int x = machine.SERIAL_7E1;          // Module machine has no constant 'SERIAL_7E1'
+// machine.SERIAL_8N1 = 5;              // Cannot set 'SERIAL_8N1' of module machine: read-only
+// machine.UART(1, 9600);               // Function 'UART' expects 3 argument(s), but received 2
+// machine.UART(5, 9600, frame);        // UART: port must be 0..2, got 5
+// u.config = machine.SERIAL_8N2;       // Cannot set attribute 'config' of handle uart: read-only
+// u.baud = 0;                          // Cannot set attribute 'baud' of handle uart: value out of range
+
+u.close();
+print("after close: " + to_string(u));
+// u.write("late");                     // uart.write: port is closed
+
+/* 'second' is released automatically when the script ends (watch the [uart] line) */

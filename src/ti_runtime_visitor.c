@@ -34,6 +34,8 @@ value_t *visitor_visit(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         return eval_compound_statement(rt, ctx, node);
     case AST_VARIABLE_DEFINITION:
         return eval_variable_definition(rt, ctx, node);
+    case AST_IMPORT_STATEMENT:
+        return eval_import_statement(rt, ctx, node);
     case AST_ASSIGNMENT:
         return eval_assignment(rt, ctx, node);
     case AST_STRING_LITERAL:

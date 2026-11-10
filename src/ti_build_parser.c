@@ -38,6 +38,7 @@ static ast_t *parser_parse_if_statement(parser_t *parser);
 static ast_t *parser_parse_return_statement(parser_t *parser);
 static ast_t *parser_parse_break_statement(parser_t *parser);
 static ast_t *parser_parse_continue_statement(parser_t *parser);
+static ast_t *parser_parse_import_statement(parser_t *parser);
 static ast_t *parser_parse_expr(parser_t *parser);
 static ast_t *parser_parse_comparison(parser_t *parser);
 static ast_t *parser_parse_bit_or(parser_t *parser);
@@ -321,6 +322,8 @@ static ast_t *parser_parse_statement(parser_t *parser)
         return parser_parse_break_statement(parser);
     case TOKEN_KW_CONTINUE:
         return parser_parse_continue_statement(parser);
+    case TOKEN_KW_IMPORT:
+        return parser_parse_import_statement(parser);
     default:
         ti_log("[Parser Error] Unexpected statement starting with %s ('%s') at line %d\n",
                token_to_str(parser->current_token->type),
@@ -1194,6 +1197,49 @@ static ast_t *parser_parse_continue_statement(parser_t *parser)
     parser_eat(parser, TOKEN_SEMI);         // Eat ';'
 
     return ast_init(parser->alloc_list, AST_CONTINUE_STATEMENT, parser->lexer->line_num);
+}
+
+/**
+ * @brief Parse import statement: import <module> [as <alias>];.
+ * 'as' is not a keyword: it is recognized only here, so scripts may still use it as a name.
+ * @param parser Pointer to parser.
+ * @return AST import statement node.
+ */
+/* import <module> [as <alias>]; */
+static ast_t *parser_parse_import_statement(parser_t *parser)
+{
+    int line = parser->lexer->line_num;
+    parser_eat(parser, TOKEN_KW_IMPORT); // Eat 'import'
+
+    /* The module name must follow 'import' */
+    if (parser->current_token->type != TOKEN_ID) {
+        ti_log("[Parser Error] Expected module name after 'import' at line %d\n", parser->lexer->line_num);
+        ti_log_line(parser->lexer->line);
+        lexer_abort(parser->lexer);
+    }
+    char *module_name = parser->current_token->value;
+    parser->current_token->value = NULL; // Change the owner to ast instead of token
+    parser_eat(parser, TOKEN_ID);
+
+    /* Optional alias: 'as' arrives as an identifier token, followed by the variable name */
+    char *alias = NULL;
+    if (parser->current_token->type == TOKEN_ID && strcmp(parser->current_token->value, "as") == 0) {
+        parser_eat(parser, TOKEN_ID); // Eat 'as'
+        if (parser->current_token->type != TOKEN_ID) {
+            ti_log("[Parser Error] Expected name after 'as' at line %d\n", parser->lexer->line_num);
+            ti_log_line(parser->lexer->line);
+            lexer_abort(parser->lexer); // module_name is on the alloc list: freed by ti_compile
+        }
+        alias = parser->current_token->value;
+        parser->current_token->value = NULL; // Change the owner to ast instead of token
+        parser_eat(parser, TOKEN_ID);
+    }
+    parser_eat(parser, TOKEN_SEMI); // Eat ';'
+
+    ast_t *import_node = parser_check_alloc(parser, ast_init(parser->alloc_list, AST_IMPORT_STATEMENT, line));
+    import_node->value.import_statement.module_name = module_name;
+    import_node->value.import_statement.alias = alias;
+    return import_node;
 }
 
 /**

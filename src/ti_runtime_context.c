@@ -190,17 +190,12 @@ void variable_free(alloc_hdr_t **list, variable_t *var)
     tracked_free(list, var);
 }
 
-/* Free dynamically allocated parameter array and name strings */
+/* Free a FUNC_TI parameter array; the names are borrowed from the AST and are not freed here */
 void params_free(alloc_hdr_t **list, param_t *params, int param_count)
 {
+    (void)param_count;
     if (params == NULL) {
         return;
-    }
-    for (int i = 0; i < param_count; i++) {
-        if (params[i].name != NULL) {
-            tracked_free(list, params[i].name);
-            params[i].name = NULL;
-        }
     }
     tracked_free(list, params);
 }
@@ -211,8 +206,11 @@ void function_free(alloc_hdr_t **list, function_t *func)
     if (func == NULL) {
         return;
     }
+    /* Only a FUNC_TI owns its params: eval_function_definition built them with tracked_calloc, so the
+     * memory is writable and casting const away is safe. A FUNC_BUILTIN points into a static const table
+     * (possibly in flash) and must never reach params_free. */
     if (func->type == FUNC_TI && func->params != NULL) {
-        params_free(list, func->params, func->param_count);
+        params_free(list, (param_t *)func->params, func->param_count);
         func->params = NULL;
     }
 }

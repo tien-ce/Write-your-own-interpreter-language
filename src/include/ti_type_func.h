@@ -34,7 +34,8 @@ typedef value_t *(*native_fn_t)(ti_handle_t handle, value_t **args, int argc);
 
 typedef struct PARAM_STRUCT {
     val_type_t type;          /* Expected parameter type (VAL_INT, VAL_STRING, etc.); VAL_ANY (natives only) accepts any type */
-    char *name;               /* Parameter identifier name (e.g. "a", "count") */
+    const char *name;         /* Parameter identifier name (e.g. "a", "count"), never owned: a string literal
+                                 in a native table, or borrowed from the AST_PARAM node for a FUNC_TI */
     val_type_t element_type;  /* Expected element type when type is VAL_LIST (VAL_NULL accepts any) */
     const ti_handle_type_t *handle_type; /* Expected handle type when type is VAL_HANDLE (NULL accepts any type); not owned */
 } param_t;
@@ -43,7 +44,7 @@ typedef struct PARAM_STRUCT {
 
 /**
  * @brief Build one param_t entry of a native parameter table; unused fields get their "accept any" value.
- * Usage: static param_t params[] = { PARAM("ms", VAL_INT), PARAM_HANDLE("cfg", &s_modbus_cfg_type) };
+ * Usage: static const param_t params[] = { PARAM("ms", VAL_INT), PARAM_HANDLE("cfg", &s_modbus_cfg_type) };
  * @param name Parameter name (string literal).
  * @param type Parameter type (VAL_INT, VAL_STRING, VAL_ANY, ...).
  */
@@ -63,12 +64,15 @@ typedef struct PARAM_STRUCT {
  */
 #define PARAM_HANDLE(name, htype)     { VAL_HANDLE, (name), VAL_NULL, (htype) }
 
+/* A FUNC_TI borrows name, def and its param names from the AST, which outlives the runtime
+ * (ti_run_string destroys the runtime before freeing the program); it owns only the params array. */
 typedef struct FUNCTION_STRUCT {
     const char *name;          /* Function identifier in Ti scripts */
     func_type_t type;          /* FUNC_BUILTIN or FUNC_TI */
     val_type_t  return_type;   /* Declared return type (VAL_INT, VAL_VOID, etc.) */
     val_type_t  return_element_type; /* Element type when return_type is VAL_LIST (VAL_NULL otherwise) */
-    param_t    *params;        /* Array of parameter metadata */
+    const param_t *params;     /* Read-only through this pointer: a builtin points into a static const table,
+                                  a FUNC_TI owns a heap array (only function_free casts const away to free it) */
     int         param_count;   /* Number of declared parameters (-1 for variadic builtins) */
     union {
         native_fn_t native_fn; /* Builtin native C callback */
@@ -82,13 +86,14 @@ typedef struct FUNCTION_STRUCT {
  * @brief Register a native C function into the interpreter global functions table.
  * @param name Function name in Ti scripts.
  * @param return_type Declared return value type.
- * @param params Array of parameter metadata (NULL only when param_count is 0 or -1). A parameter of
- *               type VAL_ANY accepts a value of any type, so the argument count stays checked.
+ * @param params Array of parameter metadata (NULL only when param_count is 0 or -1), normally a static const
+ *               table; it is borrowed, never copied or freed. A parameter of type VAL_ANY accepts a value of
+ *               any type, so the argument count stays checked.
  * @param param_count Number of parameters (-1 for fully variadic: neither count nor types are checked).
  * @param function Native C callback function.
  * @return true on success, false if name exists, the parameter table is inconsistent or out of memory.
  */
-bool register_builtin_function(const char *name, val_type_t return_type, param_t *params, int param_count, native_fn_t function);
+bool register_builtin_function(const char *name, val_type_t return_type, const param_t *params, int param_count, native_fn_t function);
 
 /**
  * @brief One row of a built-in table: the same five values register_builtin_function takes.
@@ -96,7 +101,7 @@ bool register_builtin_function(const char *name, val_type_t return_type, param_t
 typedef struct {
     const char  *name;         /* Identifier scripts call */
     val_type_t   return_type;  /* Declared return type */
-    param_t     *params;       /* Parameter table (NULL when param_count is 0 or -1) */
+    const param_t *params;     /* Parameter table, normally static const (NULL when param_count is 0 or -1) */
     int          param_count;  /* Fixed count, or -1 for variadic */
     native_fn_t  function;     /* Native implementation */
 } ti_builtin_def_t;
@@ -134,10 +139,10 @@ value_t *run_function(ti_runtime_t *rt, context_t *ctx, function_t *func, value_
 value_t *run_ti_function(ti_runtime_t *rt, context_t *ctx, function_t *func, value_t **argv, int argc, ast_t *node);
 
 /**
- * @brief Free dynamically allocated parameter array and name strings.
+ * @brief Free the parameter array of a FUNC_TI (the names are borrowed from the AST and stay).
  * @param list Pointer to head of allocation list (or NULL).
  * @param params Parameter array pointer.
- * @param param_count Number of parameters.
+ * @param param_count Number of parameters (unused: no per-parameter memory is owned).
  */
 void params_free(alloc_hdr_t **list, param_t *params, int param_count);
 

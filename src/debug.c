@@ -151,6 +151,7 @@ const char *val_type_to_str(val_type_t type)
     case VAL_LIST:   return "list";
     case VAL_BYTES:  return "bytes";
     case VAL_HANDLE: return "handle";
+    case VAL_MODULE: return "module";
     case VAL_FUNC:   return "func";
     case VAL_ANY:    return "any";
     default:         return "?";

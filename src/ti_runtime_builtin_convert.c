@@ -30,7 +30,7 @@ static value_t *builtin_to_string(ti_handle_t handle, value_t **argv, int argc);
 /* -------------------- Static Variables -------------------- */
 
 /* One argument of any type: VAL_ANY keeps the type open while the runtime still checks the count */
-static param_t s_any_param[] = { { VAL_ANY, "value", VAL_NULL, NULL } };
+static const param_t s_any_param[] = { { VAL_ANY, "value", VAL_NULL, NULL } };
 
 /* to_int stays variadic (-1) only because of the optional base: to_int(value) or to_int(text, base) */
 static const ti_builtin_def_t s_defs[] = {

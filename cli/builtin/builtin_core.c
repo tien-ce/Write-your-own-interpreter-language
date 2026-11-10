@@ -51,6 +51,10 @@ static value_t *builtin_print(ti_handle_t handle, value_t **argv, int argc)
             }
             break;
         }
+        case VAL_MODULE:
+            /* Same form as to_string: only the module name */
+            printf("<module %s>", argv[i]->module_val->name);
+            break;
         case VAL_BYTES: {
             /* Binary data has no text form: print it as hex digits */
             const uint8_t *data = val_bytes_data(argv[i]);
@@ -106,7 +110,7 @@ static value_t *builtin_delay(ti_handle_t handle, value_t **argv, int argc)
 /* Register print() and delay() */
 void builtin_core_register(void)
 {
-    static param_t delay_params[] = { { VAL_INT, "ms", VAL_NULL, NULL } };
+    static const param_t delay_params[] = { { VAL_INT, "ms", VAL_NULL, NULL } };
 
     register_builtin_function("print", VAL_VOID, NULL, -1, builtin_print);
     register_builtin_function("delay", VAL_VOID, delay_params, 1, builtin_delay);

@@ -5,6 +5,7 @@
 #include "include/tracked_memory.h"
 #include "include/debug.h"
 #include "TienInterpreter.h"
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -171,6 +172,64 @@ out:
 }
 
 /**
+ * @brief Evaluate an import statement: bind a variable to a registered module.
+ * @param rt Pointer to active runtime instance.
+ * @param ctx Pointer to context (the variable is defined in this scope).
+ * @param node Import statement AST node.
+ * @return TI_VAL_OK on success, NULL on failure.
+ */
+value_t *eval_import_statement(ti_runtime_t *rt, context_t *ctx, ast_t *node)
+{
+    value_t *result = NULL;
+    value_t *value = NULL;
+    const char *module_name = node->value.import_statement.module_name;
+
+    /* The variable is named after the alias ('import machine as m;') or the module itself */
+    const char *bind_name = node->value.import_statement.alias != NULL ? node->value.import_statement.alias : module_name;
+
+    /* Duplicate the variable name on the runtime memory list (the context takes it) */
+    char *variable_name = tracked_strdup(&rt->alloc_list, bind_name);
+    if (variable_name == NULL) {
+        ti_raise(rt, TI_ERR_NO_MEMORY, node->line, "Cannot allocate variable name");
+        return NULL;
+    }
+
+    /* Only modules registered by the host can be imported */
+    const ti_module_t *module = ti_module_find(module_name);
+    if (module == NULL) {
+        ti_raise(rt, TI_ERR_UNDEFINED, node->line, "Unknown module '%s'", module_name);
+        goto out;
+    }
+
+    /* The value only holds the address of the static module table */
+    value = val_init(VAL_MODULE);
+    if (value == NULL) {
+        ti_raise(rt, TI_ERR_NO_MEMORY, node->line, "Cannot import '%s': out of memory", module_name);
+        goto out;
+    }
+    value->module_val = module;
+
+    /* Register the binding into the current scope, like a variable definition */
+    ti_status_t status = context_add_variable(&rt->alloc_list, ctx, variable_name, value);
+    if (status != TI_OK) {
+        ti_raise(rt, status, node->line, "Cannot import '%s': %s",
+                 variable_name, status == TI_ERR_RUNTIME ? "already defined in this scope" : ti_err_to_str(status));
+        goto out;
+    }
+
+    /* The context now owns the name and the value: do not free them below */
+    variable_name = NULL;
+    value = NULL;
+    result = TI_VAL_OK;
+
+out:
+    /* Single cleanup point for whatever the context did not take */
+    val_free(value);
+    tracked_free(&rt->alloc_list, variable_name);
+    return result;
+}
+
+/**
  * @brief Evaluate an assignment statement node.
  * @param rt Pointer to active runtime instance.
  * @param ctx Pointer to context.
@@ -290,6 +349,13 @@ value_t *eval_assignment(ti_runtime_t *rt, context_t *ctx, ast_t *node)
          * handle alive during set_attr and is freed at out */
         key_val = visitor_visit(rt, ctx, target_node->value.attribute.object);
         if (key_val == NULL) {
+            goto out;
+        }
+
+        /* Module constants are fixed by the native */
+        if (key_val->type == VAL_MODULE) {
+            ti_raise(rt, TI_ERR_READ_ONLY, node->line, "Cannot set '%s' of module %s: read-only",
+                     attr_name, key_val->module_val->name);
             goto out;
         }
 
@@ -479,3 +545,4 @@ out:
     val_free(key_val);
     return result_val;
 }
+

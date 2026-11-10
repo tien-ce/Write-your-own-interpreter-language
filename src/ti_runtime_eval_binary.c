@@ -265,6 +265,10 @@ static value_t *binary_equal(ti_runtime_t *rt, value_t *left, value_t *right, in
         /* Identity: equal when both share the same native object wrapper, or are both empty ('handle h;') */
         value->bool_val = (left->handle_val == right->handle_val);
         break;
+    case VAL_MODULE:
+        /* Identity: one static table per module, so the same module has the same address */
+        value->bool_val = (left->module_val == right->module_val);
+        break;
     case VAL_BYTES:
         /* Equal length and content */
         value->bool_val = val_bytes_equal(left->bytes_val, right->bytes_val);
@@ -327,6 +331,10 @@ static value_t *binary_not_equal(ti_runtime_t *rt, value_t *left, value_t *right
     case VAL_HANDLE:
         /* Negation of identity equality */
         value->bool_val = (left->handle_val != right->handle_val);
+        break;
+    case VAL_MODULE:
+        /* Negation of identity equality */
+        value->bool_val = (left->module_val != right->module_val);
         break;
     case VAL_BYTES:
         /* Different length or content */

@@ -57,7 +57,7 @@ typedef value_t *(*native_fn_t)(ti_handle_t handle, value_t **args, int argc);
 ```c
 bool register_builtin_function(const char *name, 
                                val_type_t return_type, 
-                               param_t *params, 
+                               const param_t *params, 
                                int param_count, 
                                native_fn_t function);
 ```
@@ -78,7 +78,7 @@ Defined in `src/include/ti_type_func.h`:
 A file that owns several built-ins lists them in a `ti_builtin_def_t` table (same five values as `register_builtin_function`, one row each) and registers them in one call:
 
 ```c
-static param_t s_bytes_param[] = { PARAM("data", VAL_BYTES) };
+static const param_t s_bytes_param[] = { PARAM("data", VAL_BYTES) };
 
 static const ti_builtin_def_t s_defs[] = {
     { "bytes_to_string", VAL_STRING, s_bytes_param, 1, builtin_bytes_to_string },
@@ -90,7 +90,7 @@ void my_topic_register(void)
     ti_register_builtin_table(s_defs, (int)(sizeof(s_defs) / sizeof(s_defs[0])));
 }
 ```
-`ti_register_builtin_table` returns `false` if any row failed (for example a duplicate name) but still registers the other rows. Parameter tables must outlive the call, so keep them `static`.
+`ti_register_builtin_table` returns `false` if any row failed (for example a duplicate name) but still registers the other rows. Parameter tables are borrowed, never copied: they must outlive the call, so keep them `static const` (see 3.3).
 
 **Where the core built-ins live** (flat files in `src/`, one per topic, each with one `ti_runtime_builtin_<topic>_register()` that `ti_register_core_builtins()` calls):
 
@@ -102,6 +102,17 @@ void my_topic_register(void)
 | `ti_runtime_builtin_text.c/.h` | Internal text/JSON formatter shared by the topic files (not public API) |
 
 To add a core topic: create `ti_runtime_builtin_<topic>.c` with its own table, declare `ti_runtime_builtin_<topic>_register()` in `include/ti_runtime_builtin.h`, and call it from `ti_register_core_builtins()`. Core built-ins must work on every host, so anything that needs the OS or hardware belongs in the host layer instead (for the CLI: `cli/builtin/`).
+
+### 3.3 Parameter Tables Are `const`
+`params` is `const param_t *` everywhere (`register_builtin_function`, `ti_builtin_def_t.params`, `function_t.params`), and `param_t.name` is `const char *`. Declare every table `static const`:
+
+```c
+static const param_t s_params[] = { PARAM("port", VAL_INT), PARAM_HANDLE("self", &s_uart_type) };
+```
+
+* **Why:** a `static const` table goes to read-only memory (flash on ESP32, `.rodata` on Linux) instead of RAM, and the interpreter never writes to it: it only reads the types and names. Method tables and module tables (4.6) are already `static const`, so a whole native type or module can live in flash.
+* **C++ (ESP32 sketches):** `PARAM("name", ...)` stores a string literal; with `const char *name` this compiles in C++ too.
+* **Migration from v2.2.0 and earlier:** `static param_t` tables still compile (non-`const` converts to `const`), but code that writes to `func->params[i]` or assigns `params[i].name` to a `char *` must be changed.
 
 ---
 
@@ -133,7 +144,7 @@ static value_t *native_relay_set(ti_handle_t handle, value_t **args, int argc)
 /* 2. Register into interpreter table */
 void register_relay_functions(void)
 {
-    static param_t relay_params[] = {
+    static const param_t relay_params[] = {
         PARAM("id",    VAL_INT),
         PARAM("state", VAL_BOOL)
     };
@@ -193,7 +204,7 @@ static value_t *native_log_value(ti_handle_t handle, value_t **args, int argc)
 
 void register_log_value(void)
 {
-    static param_t params[] = {
+    static const param_t params[] = {
         PARAM("label", VAL_STRING),
         PARAM("value", VAL_ANY),
     };
@@ -310,8 +321,8 @@ static ti_status_t device_set_attr(void *ptr, const char *name, const value_t *v
 }
 
 /* Parameter tables: params[0] of a method is self, so a free function's table is reused */
-static param_t s_open_params[] = { PARAM("port", VAL_STRING), PARAM("baud", VAL_INT) };
-static param_t s_dev_params[]  = { PARAM_HANDLE("dev", &s_device_type) };
+static const param_t s_open_params[] = { PARAM("port", VAL_STRING), PARAM("baud", VAL_INT) };
+static const param_t s_dev_params[]  = { PARAM_HANDLE("dev", &s_device_type) };
 
 static const ti_builtin_def_t s_device_methods[] = {
     { "read",  VAL_INT,  s_dev_params, 1, device_read },
@@ -370,6 +381,104 @@ Full working version: `cli/builtin/builtin_device.c`, script: `examples/ti/handl
 * **The descriptor must outlive every handle**: make it `static const` and never free it.
 * **`destroy` runs on the script's context** (end of scope, overwritten variable, `close`), or inside `ti_destroy` for handles still held by globals. Keep it short and never call TI functions from it.
 * **Reference counts are not atomic.** Like every `value_t`, never keep a handle value in another thread. A driver thread may keep the raw `ptr` only if it manages that object's lifetime itself.
+
+### 4.6 Pattern 5: Modules (`import machine;`)
+A **module** groups native functions and constants under one name, like MicroPython's `machine`. Scripts only see it after `import`, and nothing is copied into the builtin table: the whole module stays in the native's `static const` tables. API: `src/include/ti_type_module.h`.
+
+```c
+import machine;                                         // bind the module to the name 'machine'
+handle u = machine.UART(1, 9600, machine.SERIAL_8N1);   // module function + module constant
+u.write("hello");                                       // the returned handle has its own methods
+```
+
+#### 4.6.1 Where everything lives
+| Piece | Memory | Size |
+| :--- | :--- | :--- |
+| `ti_module_t` descriptor, its function table (`ti_builtin_def_t[]`), constant table (`ti_module_const_t[]`), parameter tables, handle types | `static const` in the native's file (flash on ESP32) | grows with the module |
+| Registry `s_modules[TI_MAX_MODULES]` (`src/ti_type_module.c`) | RAM | one pointer per module (`TI_MAX_MODULES`, default 16) |
+| Script variable `machine` after `import` | a `VAL_MODULE` value in the scope: holds only the descriptor's address | one `value_t` |
+| Reading `machine.SERIAL_8N1` | a new value copied from the constant (`val_copy`), owned by the script | one `value_t` |
+| Calling `machine.UART(...)` | a temporary `function_t` on the C stack that points to the row | none on the heap |
+
+Compare with `register_builtin_function`: every registered builtin is copied into a heap `function_t` plus a hashmap entry (RAM), and is visible to every script. A module function costs no RAM until it is called.
+
+#### 4.6.2 Defining a module
+```c
+#define MACHINE_SERIAL_8N1 0x800001c
+#define MACHINE_SERIAL_8N2 0x800003c
+
+static const ti_handle_type_t s_uart_type;   /* returned by machine.UART, see 4.5 */
+static value_t *machine_uart_new(ti_handle_t handle, value_t **argv, int argc);
+
+static const param_t s_uart_new_params[] = {
+    PARAM("port", VAL_INT), PARAM("baud", VAL_INT), PARAM("config", VAL_INT)
+};
+
+/* machine.UART(port, baud, config): no self, arguments start at argv[0] */
+static const ti_builtin_def_t s_machine_funcs[] = {
+    { "UART", VAL_HANDLE, s_uart_new_params, 3, machine_uart_new },
+};
+
+/* Constants are value_t written with a static initializer (no val_new_*: it allocates) */
+static const ti_module_const_t s_machine_consts[] = {
+    { "SERIAL_8N1", { .type = VAL_INT, .int_val = MACHINE_SERIAL_8N1 } },
+    { "SERIAL_8N2", { .type = VAL_INT, .int_val = MACHINE_SERIAL_8N2 } },
+};
+
+static const ti_module_t s_machine_module = {
+    .name        = "machine",
+    .funcs       = s_machine_funcs,
+    .func_count  = (int)(sizeof(s_machine_funcs) / sizeof(s_machine_funcs[0])),
+    .consts      = s_machine_consts,
+    .const_count = (int)(sizeof(s_machine_consts) / sizeof(s_machine_consts[0])),
+};
+
+/* Call once at startup, before any runtime is created */
+void module_machine_register(void)
+{
+    ti_register_module(&s_machine_module);
+}
+```
+Full working version: `cli/module/module_machine.c` (registered by `ti_init_modules()` in `cli/module/module.c`), script: `examples/ti/module_machine.ti`.
+
+Constant initializers per type:
+
+| Type | Initializer |
+| :--- | :--- |
+| `int` | `{ .type = VAL_INT, .int_val = 7 }` |
+| `float` | `{ .type = VAL_FLOAT, .float_val = 0.5f }` |
+| `bool` | `{ .type = VAL_BOOL, .bool_val = true }` |
+| `string` | `{ .type = VAL_STRING, .string_val = (char *)"1.0" }`: the cast only satisfies the field type. The literal is never written or freed: a script read gets its own copy. |
+
+Only scalar and string constants are supported: a list, dict or handle needs heap memory and cannot be a static initializer.
+
+#### 4.6.3 C API
+| Function | Use |
+| :--- | :--- |
+| `ti_register_module(&module)` | Make a module importable. `false` for `NULL`, a `NULL` or empty name, a duplicate name, or a full registry. Only the address is kept: the descriptor must be `static const`. |
+| `ti_module_find(name)` | The registered module, or `NULL`. |
+| `ti_module_find_func(module, name)` | The function row, or `NULL`. |
+| `ti_module_find_const(module, name)` | The constant row, or `NULL`. |
+
+#### 4.6.4 How the script side runs
+* **`import name;`** finds the module in the registry and declares a variable `name` (type `module`) in the **current scope**: top-level imports are visible in every function, an import inside a function or block is local to it. `import name as alias;` uses `alias` as the variable name.
+* **`module.f(args)`** finds `f` in the function table and runs it exactly like a builtin (count and types checked), but **without self**: argument 1 is `argv[0]`.
+* **`module.NAME`** finds the constant and returns a copy. Changing that copy never changes the module.
+* **Module values:** `==` / `!=` compare the descriptor (`m == machine` after `import machine as m;`), `to_string` / `print` give `<module machine>`. A module cannot be stored in a typed variable (`int x = machine;` is a type error).
+
+| Script | Error |
+| :--- | :--- |
+| `import network;` | `TI_ERR_UNDEFINED`: `Unknown module 'network'` |
+| `import machine;` twice in one scope | `Cannot import 'machine': already defined in this scope` |
+| `machine.SPI(1);` | `TI_ERR_UNDEFINED`: `Module machine has no function 'SPI'` |
+| `machine.SERIAL_7E1` | `TI_ERR_UNDEFINED`: `Module machine has no constant 'SERIAL_7E1'` |
+| `machine.SERIAL_8N1 = 5;` (or `+=`) | `TI_ERR_READ_ONLY`: `Cannot set 'SERIAL_8N1' of module machine: read-only` |
+| `machine.UART(1, 9600);` | `Function 'UART' expects 3 argument(s), but received 2` |
+
+#### 4.6.5 Rules
+* **Register before creating runtimes**, from one thread. The registry is not locked: it is read by every runtime and must not change while scripts run.
+* **Module or builtin?** Use a module for a hardware or protocol API that only some scripts need (`machine`, `modbus`, `network`). Keep `register_builtin_function` for functions every script uses (`print`, `delay`).
+* **Natives of a module raise errors like any native** (4.4). Values are the native's job: the runtime only checked the types.
 
 ---
 

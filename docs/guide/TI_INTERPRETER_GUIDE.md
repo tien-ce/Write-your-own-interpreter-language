@@ -45,6 +45,13 @@ bool is_active = true;
   dev.close();
   ```
   Details: [Types & Values](TYPES_AND_VALUES.md), section 2.7; writing such natives: [Functions & Native C Extension API](FUNCTIONS_AND_NATIVE_API.md), section 4.5.
+* **Modules (`import`)**: a named group of native functions and constants provided by the host. `import` binds it in the current scope.
+  ```c
+  import machine;                                        // or: import machine as m;
+  handle u = machine.UART(1, 9600, machine.SERIAL_8N1);  // module function, module constant
+  u.write("hello");
+  ```
+  Details: [Types & Values](TYPES_AND_VALUES.md), section 2.8; writing a module: [Functions & Native C Extension API](FUNCTIONS_AND_NATIVE_API.md), section 4.6.
 
 ### 1.3 Bitwise Operators (`int` only)
 

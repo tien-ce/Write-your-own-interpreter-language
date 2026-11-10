@@ -14,6 +14,7 @@ extern "C" {
 #include "include/ti_type_value_bytes.h"
 #include "include/ti_type_value_handle.h"
 #include "include/ti_type_func.h"
+#include "include/ti_type_module.h"
 #include "include/ti_build_program.h"
 
 
@@ -26,6 +27,11 @@ extern "C" {
 /* Maximum number of events queued per runtime before posting is rejected */
 #ifndef TI_MAX_PENDING_EVENTS
 #define TI_MAX_PENDING_EVENTS 32
+#endif
+
+/* Maximum number of registered built-in modules (one pointer of RAM each) */
+#ifndef TI_MAX_MODULES
+#define TI_MAX_MODULES 16
 #endif
 
 /* -------------------- Platform & Callback Types -------------------- */
@@ -109,7 +115,8 @@ ti_status_t ti_destroy(ti_handle_t handle);
  * Owner thread only (never two at once on one runtime). The runtime outlives the run: its
  * globals and functions stay available to later ti_execute and ti_call until ti_destroy.
  * @param handle Runtime handle.
- * @param prog Pointer to compiled program.
+ * @param prog Pointer to compiled program. Keep it alive until ti_destroy: functions it defines
+ *             borrow their name, parameters and body from its AST.
  * @return TI_OK on completion, TI_ERR_INTERRUPTED if stopped, TI_ERR_STALE_HANDLE or TI_ERR_INVALID_ARG.
  */
 ti_status_t ti_execute(ti_handle_t handle, ti_program_t *prog);

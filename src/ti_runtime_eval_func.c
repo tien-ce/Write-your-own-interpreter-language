@@ -53,12 +53,12 @@ static function_t *user_find_function(ti_runtime_t *rt, const char *name)
  * @brief Register a native C function into the interpreter global functions table.
  * @param name Function name in Ti scripts.
  * @param return_type Declared return value type.
- * @param params Array of parameter metadata (or NULL).
+ * @param params Array of parameter metadata (or NULL); borrowed, normally a static const table.
  * @param param_count Number of parameters (-1 for variadic).
  * @param function Native C callback function.
  * @return true on success, false if name exists or out of memory.
  */
-bool register_builtin_function(const char *name, val_type_t return_type, param_t *params, int param_count, native_fn_t function) 
+bool register_builtin_function(const char *name, val_type_t return_type, const param_t *params, int param_count, native_fn_t function)
 {
     /* Lazy initialize the hashmap if it doesn't exist */
     if (s_builtin_map == NULL) {
@@ -276,16 +276,20 @@ value_t *eval_function_definition(ti_runtime_t *rt, context_t *ctx, ast_t *node)
     }
     rt->user_functions = temp;
 
-    /* Copy and track parameter metadata (types and names) */
+    /* Build the parameter table: types are copied, names are borrowed from the AST like name and def */
     int param_count = node->value.function_definition.param_count;
     param_t *params = NULL;
     if (param_count > 0) {
         params = tracked_calloc(&rt->alloc_list, param_count, sizeof(param_t));
+        if (params == NULL) {
+            ti_raise(rt, TI_ERR_NO_MEMORY, node->line, "Cannot allocate parameters of function '%s'", name);
+            return NULL;
+        }
         for (int i = 0; i < param_count; i++) {
             ast_t *param_node = node->value.function_definition.params[i];
             params[i].type = param_node->value.param.param_type;
             params[i].element_type = param_node->value.param.element_type;
-            params[i].name = tracked_strdup(&rt->alloc_list, param_node->value.param.param_name);
+            params[i].name = param_node->value.param.param_name;
         }
     }
 
@@ -465,23 +469,35 @@ value_t *eval_method_call(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         goto out;
     }
 
-    /* Step 2: only handles have methods, and an empty handle ('handle h;') has no type to look in */
-    if (argv[0]->type != VAL_HANDLE) {
-        ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line, "Cannot call method '%s' on %s",
-                 method_name, val_type_to_str(argv[0]->type));
-        goto out;
-    }
-    const ti_handle_type_t *htype = val_handle_type(argv[0]);
-    if (htype == NULL) {
-        ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line, "Cannot call method '%s' on an empty handle", method_name);
-        goto out;
-    }
-
-    /* Step 3: find the method in the type's table */
-    const ti_builtin_def_t *method = handle_type_find_method(htype, method_name);
-    if (method == NULL) {
-        ti_raise(rt, TI_ERR_UNDEFINED, node->line, "Handle %s has no method '%s'", htype->name, method_name);
-        goto out;
+    /* Steps 2-3: find the function in the receiver's table: a module's functions or a handle type's methods */
+    const ti_builtin_def_t *method = NULL;
+    bool with_self = true; /* handle methods receive the receiver as argument 0 (self) */
+    if (argv[0]->type == VAL_MODULE) {
+        /* A module is not an object: its functions receive only the written arguments */
+        method = ti_module_find_func(argv[0]->module_val, method_name);
+        if (method == NULL) {
+            ti_raise(rt, TI_ERR_UNDEFINED, node->line, "Module %s has no function '%s'",
+                     argv[0]->module_val->name, method_name);
+            goto out;
+        }
+        with_self = false;
+    } else {
+        /* Only handles have methods, and an empty handle ('handle h;') has no type to look in */
+        if (argv[0]->type != VAL_HANDLE) {
+            ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line, "Cannot call method '%s' on %s",
+                     method_name, val_type_to_str(argv[0]->type));
+            goto out;
+        }
+        const ti_handle_type_t *htype = val_handle_type(argv[0]);
+        if (htype == NULL) {
+            ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line, "Cannot call method '%s' on an empty handle", method_name);
+            goto out;
+        }
+        method = handle_type_find_method(htype, method_name);
+        if (method == NULL) {
+            ti_raise(rt, TI_ERR_UNDEFINED, node->line, "Handle %s has no method '%s'", htype->name, method_name);
+            goto out;
+        }
     }
 
     /* Step 4: evaluate the written arguments after self; NULL means the argument already failed */
@@ -492,8 +508,8 @@ value_t *eval_method_call(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         }
     }
 
-    /* Step 5: run the method like any native function: run_function checks count and types
-     * against the method's params, which include self at index 0 */
+    /* Step 5: run it like any native function: run_function checks count and types against its params
+     * (a method's params include self at index 0; a module function's start at the first written argument) */
     function_t func = {
         .name        = method->name,
         .type        = FUNC_BUILTIN,
@@ -503,7 +519,12 @@ value_t *eval_method_call(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         .param_count = method->param_count,
         .native_fn   = method->function,
     };
-    result = run_function(rt, ctx, &func, argv, argc, node);
+    /* A module function skips argv[0] (the module); it is still freed below with the others */
+    if (with_self) {
+        result = run_function(rt, ctx, &func, argv, argc, node);
+    } else {
+        result = run_function(rt, ctx, &func, argv + 1, written_argc, node);
+    }
 
 out:
     /* Single cleanup point: free self and the evaluated arguments (unset slots are NULL) */
@@ -533,6 +554,21 @@ value_t *eval_attribute(ti_runtime_t *rt, context_t *ctx, ast_t *node)
     value_t *object = visitor_visit(rt, ctx, node->value.attribute.object);
     if (object == NULL) {
         return NULL;
+    }
+
+    /* Module constant: return a copy, so the script never holds the static value itself */
+    if (object->type == VAL_MODULE) {
+        const ti_module_const_t *constant = ti_module_find_const(object->module_val, name);
+        if (constant == NULL) {
+            ti_raise(rt, TI_ERR_UNDEFINED, node->line, "Module %s has no constant '%s'", object->module_val->name, name);
+            goto out;
+        }
+        result = val_copy(&constant->value);
+        if (result == NULL) {
+            ti_raise(rt, TI_ERR_NO_MEMORY, node->line, "Cannot read constant '%s' of module %s: out of memory",
+                     name, object->module_val->name);
+        }
+        goto out;
     }
 
     /* Step 2: only handles have attributes, and an empty handle ('handle h;') has no type */

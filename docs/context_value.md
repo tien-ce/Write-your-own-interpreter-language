@@ -133,8 +133,8 @@ To ensure strict memory lifecycle control and prevent heap leaks across nested s
 | :--- | :--- | :--- |
 | `val_free(value_t *value)` | `value_t *` | Calls `val_free_internal(value)` to release dynamic payloads (e.g. `string_val` via `ti_raw_free`), then deallocates the `value_t` container itself via `ti_raw_free`. Tolerates `NULL`. |
 | `variable_free(alloc_hdr_t **list, variable_t *var)` | `variable_t *` | Deallocates variable payload via `val_free(var->value)`, deallocates heap-allocated identifier string `(void *)var->name` via `tracked_free`, and releases the `variable_t` struct. Tolerates `NULL`. |
-| `params_free(alloc_hdr_t **list, param_t *params, int param_count)` | `param_t *` | Traverses parameter metadata array from `0` to `param_count - 1`, frees heap-allocated parameter identifier strings `params[i].name` via `tracked_free`, and releases the `params` contiguous array buffer via `tracked_free`. Tolerates `NULL`. |
-| `function_free(alloc_hdr_t **list, function_t *func)` | `function_t *` | For user-defined functions (`FUNC_TI`), cleans up owned parameter metadata via `params_free(list, func->params, func->param_count)`, then releases the `function_t` struct via `tracked_free`. Tolerates `NULL`. |
+| `params_free(alloc_hdr_t **list, param_t *params, int param_count)` | `param_t *` | Releases the `params` array of a `FUNC_TI` via `tracked_free`. The names are borrowed from the AST and are not freed; `param_count` is unused. Tolerates `NULL`. |
+| `function_free(alloc_hdr_t **list, function_t *func)` | `function_t *` | For `FUNC_TI` only, frees the owned `params` array via `params_free(list, (param_t *)func->params, ...)` (the cast drops `const`: that array is writable heap memory). Does not free `func` itself (it is an element of `rt->user_functions`). Tolerates `NULL`. Currently not called. |
 | `context_free_internal(alloc_hdr_t **list, context_t *ctx)` | `context_t *` | Cleans up local scope bindings: iterates over `ctx->variables`, calling `variable_free` on each entry, and frees `ctx->variables` table. Frees unconsumed `ctx->return_value` via `val_free`. Does not free `ctx` or `ctx->parent`. |
 | `context_free(alloc_hdr_t **list, context_t *ctx)` | `context_t *` | Invokes `context_free_internal(list, ctx)` to release all scoped bindings, then releases the `context_t` allocation itself via `tracked_free(list, ctx)`. |
 
@@ -144,5 +144,5 @@ To ensure strict memory lifecycle control and prevent heap leaks across nested s
   - Frees the `ctx->variables` table via `tracked_free(list, ...)`, resets pointer to `NULL`, and resets count to `0`.
 - **Return Value Safety:** If `ctx->return_value != NULL` (e.g. unconsumed return payload due to an error, loop break, or premature termination), safely deallocates `ctx->return_value` via `val_free(ctx->return_value)` and clears pointer to `NULL`.
 - **Note:** Does **not** modify or free `ctx->parent`, as the parent context belongs to the enclosing caller.
-- **Instance-Isolated Function Teardown:** `context_t` does not hold function tables. Script functions reside inside `ti_runtime_t->user_functions` and are reclaimed via `function_free(&rt->alloc_list, &rt->user_functions[i])` during `ti_runtime_destroy(rt)`.
+- **Instance-Isolated Function Teardown:** `context_t` does not hold function tables. Script functions reside inside `ti_runtime_t->user_functions`; the table and every `params` array are on `rt->alloc_list` and are reclaimed by `tracked_free_all` during `ti_runtime_destroy(rt)`.
 

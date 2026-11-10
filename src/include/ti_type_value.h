@@ -16,6 +16,15 @@ extern "C" {
 struct CHASHMAP_STRUCT;
 
 typedef struct DICT_STRUCT dict_t;
+typedef struct LIST_STRUCT list_t;
+typedef struct BYTES_STRUCT bytes_t;
+typedef struct HANDLE_STRUCT handle_t;
+
+/* Handle type descriptor (name, destructor): defined in ti_type_value_handle.h */
+typedef struct HANDLE_TYPE_STRUCT ti_handle_type_t;
+
+/* Built-in module descriptor (functions, constants): defined in ti_type_module.h */
+typedef struct MODULE_STRUCT ti_module_t;
 
 /**
  * @brief Encapsulates the state and structure of a hash table based dictionary.
@@ -25,13 +34,6 @@ struct DICT_STRUCT {
     struct CHASHMAP_STRUCT *map; /* Pointer to the core generic hashmap */
     int refcount;                /* Counter tracking active references to manage memory deallocation */
 };
-
-typedef struct LIST_STRUCT list_t;
-typedef struct BYTES_STRUCT bytes_t;
-typedef struct HANDLE_STRUCT handle_t;
-
-/* Handle type descriptor (name, destructor): defined in ti_type_value_handle.h */
-typedef struct HANDLE_TYPE_STRUCT ti_handle_type_t;
 
 /**
  * @brief Reference-counted opaque wrapper around a native C object (config, driver handle, ...).
@@ -55,6 +57,7 @@ typedef struct VALUE_STRUCT {
         list_t *list_val;
         bytes_t *bytes_val;
         handle_t *handle_val;      /* VAL_HANDLE: opaque native object */
+        const ti_module_t *module_val; /* VAL_MODULE: static const module table (not owned, never freed) */
         char *func_name;          /* VAL_FUNC: name of a script function, resolved at call time */
     };
 } value_t;

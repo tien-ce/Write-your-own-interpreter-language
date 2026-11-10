@@ -50,8 +50,8 @@ static value_t *builtin_max(ti_handle_t handle, value_t **argv, int argc);
 /* -------------------- Static Variables -------------------- */
 
 /* Numbers may be int or float, so the type is open (VAL_ANY) while the argument count stays checked */
-static param_t s_one_number[] = { { VAL_ANY, "x", VAL_NULL, NULL } };
-static param_t s_two_numbers[] = { { VAL_ANY, "x", VAL_NULL, NULL }, { VAL_ANY, "y", VAL_NULL, NULL } };
+static const param_t s_one_number[] = { { VAL_ANY, "x", VAL_NULL, NULL } };
+static const param_t s_two_numbers[] = { { VAL_ANY, "x", VAL_NULL, NULL }, { VAL_ANY, "y", VAL_NULL, NULL } };
 
 /* abs, min and max return the type of their arguments, so their declared return type is VAL_ANY */
 static const ti_builtin_def_t s_defs[] = {

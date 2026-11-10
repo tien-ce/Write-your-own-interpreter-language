@@ -3,6 +3,7 @@
 #include "include/ti_type_value_list.h"
 #include "include/ti_type_value_bytes.h"
 #include "include/ti_type_value_handle.h"
+#include "include/ti_type_module.h"
 #include "include/tracked_memory.h"
 #include "include/debug.h"
 #include "chashmap.h"
@@ -269,7 +270,7 @@ static ti_status_t json_append_dict(ti_text_buffer_t *text, const value_t *dict)
  * @param text Text buffer.
  * @param value Value to write.
  * @return TI_OK, TI_ERR_NO_MEMORY, TI_ERR_INVALID_VALUE (NaN/infinity) or TI_ERR_TYPE_MISMATCH
- *         (a function or handle value has no JSON form).
+ *         (a function, handle or module value has no JSON form).
  */
 static ti_status_t json_append_value(ti_text_buffer_t *text, const value_t *value)
 {
@@ -359,6 +360,10 @@ ti_status_t ti_text_append_value(ti_text_buffer_t *text, const value_t *value)
         }
         return text_append(text, val_handle_is_open(value) ? "<handle %s>" : "<handle %s closed>", htype->name);
     }
+
+    case VAL_MODULE:
+        /* Show only the module name, like a function value */
+        return text_append(text, "<module %s>", value->module_val->name);
 
     case VAL_BYTES: {
         /* Binary data has no text form: render it as hex digits */

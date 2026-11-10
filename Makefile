@@ -8,7 +8,7 @@ LOG_FILE = memory_check.txt
 TEST_FILE = examples/ti/new_dict.ti 
 
 HEADERS = $(wildcard src/include/*.h src/*.h)
-SOURCES = $(wildcard src/*.c cli/*.c cli/builtin/*.c lib/chashmap/src/*.c)
+SOURCES = $(wildcard src/*.c cli/*.c cli/builtin/*.c cli/module/*.c lib/chashmap/src/*.c)
 OBJECTS = $(SOURCES:.c=.o)
 
 EXEC = ti.out

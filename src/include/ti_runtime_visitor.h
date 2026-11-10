@@ -122,6 +122,15 @@ value_t *eval_continue_statement(context_t *ctx, ast_t *node);
 value_t *eval_variable_definition(ti_runtime_t *rt, context_t *ctx, ast_t *node);
 
 /**
+ * @brief Evaluate an import statement (import <module> [as <alias>];) and bind the module in the scope.
+ * @param rt Pointer to active runtime instance.
+ * @param ctx Pointer to active execution context scope.
+ * @param node Import statement AST node.
+ * @return TI_VAL_OK on success, NULL on failure (unknown module, name already defined, out of memory).
+ */
+value_t *eval_import_statement(ti_runtime_t *rt, context_t *ctx, ast_t *node);
+
+/**
  * @brief Evaluate an assignment statement node.
  * @param rt Pointer to active runtime instance.
  * @param ctx Pointer to active execution context scope.

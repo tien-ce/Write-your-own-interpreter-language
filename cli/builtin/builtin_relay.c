@@ -47,7 +47,7 @@ static value_t *builtin_relay_set_state(ti_handle_t handle, value_t **argv, int 
 /* Register the relay_* functions */
 void builtin_relay_register(void)
 {
-    static param_t relay_set_params[] = { { VAL_INT, "id", VAL_NULL, NULL }, { VAL_INT, "state", VAL_NULL, NULL } };
+    static const param_t relay_set_params[] = { { VAL_INT, "id", VAL_NULL, NULL }, { VAL_INT, "state", VAL_NULL, NULL } };
 
     register_builtin_function("relay_get_state", VAL_INT, NULL, 0, builtin_relay_get_state);
     register_builtin_function("relay_set_state", VAL_VOID, relay_set_params, 2, builtin_relay_set_state);

@@ -40,7 +40,7 @@ static value_t *builtin_nvs_read(ti_handle_t handle, value_t **argv, int argc)
 /* Register nvs_read() */
 void builtin_storage_register(void)
 {
-    static param_t nvs_read_params[] = { { VAL_STRING, "key", VAL_NULL, NULL }, { VAL_INT, "default_val", VAL_NULL, NULL } };
+    static const param_t nvs_read_params[] = { { VAL_STRING, "key", VAL_NULL, NULL }, { VAL_INT, "default_val", VAL_NULL, NULL } };
 
     register_builtin_function("nvs_read", VAL_INT, nvs_read_params, 2, builtin_nvs_read);
 }

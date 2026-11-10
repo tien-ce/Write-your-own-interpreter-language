@@ -19,6 +19,7 @@ Defined in `src/include/ti_type.h`:
 * `VAL_LIST`: Homogeneous, reference-counted array of elements (`list_t *`).
 * `VAL_DICT`: String-keyed hash map (`dict_t *`).
 * `VAL_HANDLE`: Opaque, reference-counted wrapper around a native C object (`handle_t *`). Scripts hold it and use the methods and attributes of its type; see 2.7.
+* `VAL_MODULE`: A module bound by `import` (`const ti_module_t *module_val`, the address of the native's static descriptor; copying or freeing it does nothing else). See 2.8.
 * `VAL_ANY`: **Not a value type.** A wildcard used only in the parameter table of a native C function (`param_t.type`) meaning "any type is accepted here". No `value_t` ever carries it (`val_init(VAL_ANY)` returns `NULL`), scripts cannot declare it, and `val_type_to_str` prints it as `any`. See [Functions & Native C Extension API](FUNCTIONS_AND_NATIVE_API.md), section 4.3.
 
 ---
@@ -148,7 +149,7 @@ print(to_string(grid));          // [[1,2],[3,4]]
 | `bool` | `true` / `false` |
 | `string` | quoted and escaped: `"he said \"hi\""`, `"line\nnext"` (control characters as `\n`, `\t`, `\uXXXX`) |
 | `bytes` | quoted hex string: `"4142"` |
-| `handle`, `func` | no JSON form: `to_string` of the container raises `TI_ERR_TYPE_MISMATCH` |
+| `handle`, `module`, `func` | no JSON form: `to_string` of the container raises `TI_ERR_TYPE_MISMATCH` |
 | `list` | array: `[...]` |
 | `dict` | object: `{...}`, **keys sorted** alphabetically, so the same dict always gives the same text |
 | empty list / dict | `[]` / `{}` |
@@ -185,6 +186,26 @@ Rules:
 | open handle | `<handle device_cfg>` |
 | closed handle | `<handle device_cfg closed>` |
 | empty handle (`handle h;`) | `<handle none>` |
+
+### 2.8 Modules (`import`)
+A module is a named group of native functions and constants provided by the host (for example `machine` in the CLI). `import` makes it visible as a variable:
+```c
+import machine;                        // variable 'machine' of type module
+import machine as m;                   // same module under another name
+handle u = m.UART(1, 9600, m.SERIAL_8N1);
+int frame = machine.SERIAL_8N1;        // a constant: a plain value once read
+print(machine);                        // <module machine>
+```
+Full file: [`examples/ti/module_machine.ti`](../../examples/ti/module_machine.ti).
+
+Rules:
+* **Scope:** `import` declares a variable in the current scope. A top-level import is visible inside functions; an import inside a function or block is local to it. Importing the same name twice in one scope is an error.
+* **Functions:** `module.f(args)` calls a native of the module; count and types are checked like any built-in. There is no self.
+* **Constants:** `module.NAME` gives a copy. Constants are read-only: `machine.SERIAL_8N1 = 5;` raises `TI_ERR_READ_ONLY`.
+* **What a script can do with a module:** call its functions, read its constants, store it in a dict, `==` / `!=` (same module), `to_string` / `print`. There is no `module` type keyword, so it cannot be declared as a typed variable (`int x = machine;` is a type error), and it has no JSON form.
+* **Unknown names** raise `TI_ERR_UNDEFINED`: `Unknown module 'x'`, `Module machine has no function 'x'`, `Module machine has no constant 'x'`.
+
+Writing a module in C: [Functions & Native C Extension API](FUNCTIONS_AND_NATIVE_API.md), section 4.6.
 
 ---
 

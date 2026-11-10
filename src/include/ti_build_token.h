@@ -32,6 +32,7 @@ typedef enum token_type {
     TOKEN_KW_RETURN,    // return
     TOKEN_KW_BREAK,     // break
     TOKEN_KW_CONTINUE,  // continue
+    TOKEN_KW_IMPORT,    // import
 
     /* OPERATORS & DELIMITERS */
     TOKEN_EQUALS,       // =

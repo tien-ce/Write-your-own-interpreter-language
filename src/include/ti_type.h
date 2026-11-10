@@ -24,6 +24,7 @@ typedef enum {
     VAL_LIST,    // Homogeneous list type (list int, list string, ...)
     VAL_BYTES,   // Raw byte buffer (binary payloads, protocol frames)
     VAL_HANDLE,  // Opaque native object (config, driver handle): scripts only hold and pass it
+    VAL_MODULE,  // Built-in module bound by 'import' (points to a static const ti_module_t, never freed)
     VAL_ANY,     // Parameter wildcard for native functions only: accepts a value of any type.
                  // Never the type of a real value, a variable, a return value or a script parameter.
 } val_type_t;

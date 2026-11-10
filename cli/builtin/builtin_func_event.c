@@ -79,7 +79,7 @@ static value_t *builtin_register_event(ti_handle_t handle, value_t **argv, int a
 /* Register register_event() */
 void builtin_event_register(void)
 {
-    static param_t register_event_params[] = { { VAL_FUNC, "func_name", VAL_NULL, NULL } };
+    static const param_t register_event_params[] = { { VAL_FUNC, "func_name", VAL_NULL, NULL } };
 
     register_builtin_function("register_event", VAL_VOID, register_event_params, 1, builtin_register_event);
 }

@@ -82,7 +82,7 @@ static value_t *builtin_register_callback(ti_handle_t handle, value_t **argv, in
 /* Register register_callback() */
 void builtin_callback_register(void)
 {
-    static param_t register_callback_params[] = { { VAL_FUNC, "func_name", VAL_NULL, NULL } };
+    static const param_t register_callback_params[] = { { VAL_FUNC, "func_name", VAL_NULL, NULL } };
 
     register_builtin_function("register_callback", VAL_VOID, register_callback_params, 1, builtin_register_callback);
 }

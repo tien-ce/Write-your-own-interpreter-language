@@ -36,9 +36,9 @@ static ti_status_t device_set_attr(void *ptr, const char *name, const value_t *v
 static const ti_handle_type_t s_device_type;
 
 /* Parameter tables shared by the device_* functions and the device methods (params[0] is self) */
-static param_t s_open_params[] = { PARAM("port", VAL_STRING), PARAM("baud", VAL_INT) };
-static param_t s_dev_params[]  = { PARAM_HANDLE("dev", &s_device_type) };
-static param_t s_baud_params[] = { PARAM_HANDLE("dev", &s_device_type), PARAM("baud", VAL_INT) };
+static const param_t s_open_params[] = { PARAM("port", VAL_STRING), PARAM("baud", VAL_INT) };
+static const param_t s_dev_params[]  = { PARAM_HANDLE("dev", &s_device_type) };
+static const param_t s_baud_params[] = { PARAM_HANDLE("dev", &s_device_type), PARAM("baud", VAL_INT) };
 
 /* Methods called as dev.name(...): the same natives as the device_* functions */
 static const ti_builtin_def_t s_device_methods[] = {

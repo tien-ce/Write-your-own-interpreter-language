@@ -215,6 +215,7 @@ static token_t *lexer_collect_id(lexer_t *lexer)
     if (strcmp(value, "return") == 0)   { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_RETURN, NULL); }
     if (strcmp(value, "break") == 0)    { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_BREAK, NULL); }
     if (strcmp(value, "continue") == 0) { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_CONTINUE, NULL); }
+    if (strcmp(value, "import") == 0)   { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_IMPORT, NULL); }
 
     /* Match boolean literals */
     if (strcmp(value, "true") == 0) {
