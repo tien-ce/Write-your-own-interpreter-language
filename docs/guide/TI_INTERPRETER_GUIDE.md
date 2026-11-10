@@ -36,6 +36,15 @@ bool is_active = true;
   print(to_string(payload));   // {"count":1,"stations":[{"name":"tien"}]}
   ```
   Details: [Types & Values](TYPES_AND_VALUES.md), sections 2.4 to 2.6.
+* **Native objects (`handle`)**: an opaque C object (driver config, socket) returned by a native. Use it with functions, methods (`dev.read()`) and attributes (`dev.baud`) of its type. Copies share the same object; `handle h;` starts empty.
+  ```c
+  handle dev = device_open("/dev/ttyUSB0", 9600);
+  dev.baud = 115200;            // attribute write
+  int sample = dev.read();      // method call, dev is self
+  print(dev);                   // <handle device_cfg>
+  dev.close();
+  ```
+  Details: [Types & Values](TYPES_AND_VALUES.md), section 2.7; writing such natives: [Functions & Native C Extension API](FUNCTIONS_AND_NATIVE_API.md), section 4.5.
 
 ### 1.3 Bitwise Operators (`int` only)
 

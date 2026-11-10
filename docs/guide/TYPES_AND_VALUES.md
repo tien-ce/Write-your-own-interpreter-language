@@ -18,6 +18,7 @@ Defined in `src/include/ti_type.h`:
 * `VAL_NULL`: Null sentinel, indicates no payload or uninitialized value.
 * `VAL_LIST`: Homogeneous, reference-counted array of elements (`list_t *`).
 * `VAL_DICT`: String-keyed hash map (`dict_t *`).
+* `VAL_HANDLE`: Opaque, reference-counted wrapper around a native C object (`handle_t *`). Scripts hold it and use the methods and attributes of its type; see 2.7.
 * `VAL_ANY`: **Not a value type.** A wildcard used only in the parameter table of a native C function (`param_t.type`) meaning "any type is accepted here". No `value_t` ever carries it (`val_init(VAL_ANY)` returns `NULL`), scripts cannot declare it, and `val_type_to_str` prints it as `any`. See [Functions & Native C Extension API](FUNCTIONS_AND_NATIVE_API.md), section 4.3.
 
 ---
@@ -147,6 +148,7 @@ print(to_string(grid));          // [[1,2],[3,4]]
 | `bool` | `true` / `false` |
 | `string` | quoted and escaped: `"he said \"hi\""`, `"line\nnext"` (control characters as `\n`, `\t`, `\uXXXX`) |
 | `bytes` | quoted hex string: `"4142"` |
+| `handle`, `func` | no JSON form: `to_string` of the container raises `TI_ERR_TYPE_MISMATCH` |
 | `list` | array: `[...]` |
 | `dict` | object: `{...}`, **keys sorted** alphabetically, so the same dict always gives the same text |
 | empty list / dict | `[]` / `{}` |
@@ -155,6 +157,34 @@ Notes:
 * The output is compact (no spaces or newlines), ready to publish over MQTT or HTTP.
 * A float that is NaN or infinity has no JSON form and raises an error; the math built-ins never produce one.
 * Because inserting copies (2.5), build the object **after** the values are final, or set the field again: changing `a` after `stations` was built does not change `payload`.
+
+### 2.7 Native Objects (`handle`)
+A `handle` holds a C object that has no TI type: a driver configuration, a socket, a sensor context. Natives create it; the script stores it and uses it through functions, **methods** and **attributes** that the handle's type provides:
+```c
+handle dev = device_open("/dev/ttyUSB0", 9600);   // native returns a handle of type "device_cfg"
+device_set_baud(dev, 115200);                       // function style: the handle is an argument
+int sample = dev.read();                            // method style: the handle is self
+dev.baud = 57600;                                   // attribute write (the type's set_attr)
+print(dev.port + " @ " + to_string(dev.baud));      // attribute read (the type's get_attr)
+dev.baud += 100;                                    // read, add, write back
+dev.close();
+```
+Full file: [`examples/ti/handle_device.ti`](../../examples/ti/handle_device.ti) (natives in `cli/builtin/builtin_device.c`).
+
+Rules:
+* **Type:** every handle has a type (`device_cfg`), defined by the native as one C descriptor. A native parameter declared with a type accepts only that type, so a UART config can never reach a Modbus function (`TI_ERR_TYPE_MISMATCH`, checked before the native runs). A script function takes a bare `handle` and accepts any type.
+* **Methods:** `obj.name(args)` runs the method of the handle's type with `obj` as the first argument (self). Error messages count self: `dev.set_baud()` says `expects 2 argument(s), but received 1`. Any expression can be the receiver: `device_open("/dev/ttyS1", 4800).info()`.
+* **Attributes:** `obj.name` and `obj.name = value` are answered by the type. An unknown name is `TI_ERR_UNDEFINED`, a fixed one (`dev.port = ...`) is `TI_ERR_READ_ONLY`, and the type checks the value (`dev.baud = "x"` is `TI_ERR_TYPE_MISMATCH`). `+=`, `-=`, ... work on attributes.
+* **Always shared:** declaring from another variable, passing an argument, and even putting it in a list or dict share the **same** C object (a C object cannot be deep copied). A handle holds no TI values, so it can never create a reference cycle.
+* **Lifetime:** the native object is destroyed when the last copy is released (end of scope, overwritten variable, freed container), or earlier when a native closes it (`dev.close()`). After a close every copy reads as closed: methods report an error and attributes raise `Cannot access attribute 'x': handle device_cfg is closed`, instead of crashing.
+* **Empty handle:** `handle h;` starts empty (no object, no type). It cannot be passed to a typed parameter and has no methods or attributes. Assign a real one later: `h = device_open(...);`.
+* **What a script can do with it:** assign, pass, store in a dict, call methods, use attributes, `==` / `!=` (same C object, or both empty), `to_string` / `print`. No arithmetic, no subscript, no JSON.
+
+| Value | `to_string` / `print` |
+| :--- | :--- |
+| open handle | `<handle device_cfg>` |
+| closed handle | `<handle device_cfg closed>` |
+| empty handle (`handle h;`) | `<handle none>` |
 
 ---
 
@@ -193,6 +223,7 @@ Always use the dedicated constructors in `src/include/ti_type_value.h`:
 | `null` | `val_new_null()` | Allocates `VAL_NULL` |
 | `dict` | `val_new_dict()` | Allocates empty `VAL_DICT` with refcount = 1 |
 | `list` | `val_new_list(val_type_t elem_type)` | Allocates empty `VAL_LIST` of specified element type |
+| `handle` | `val_new_handle(void *ptr, const ti_handle_type_t *type)` | Wraps a native object (`src/include/ti_type_value_handle.h`); see [Functions & Native C Extension API](FUNCTIONS_AND_NATIVE_API.md), section 4.5 |
 
 ---
 
@@ -258,6 +289,7 @@ return dict_val; // Return dictionary to script
    - On success, the container retains the value.
    - On failure (e.g. type mismatch or out of memory), the function automatically calls `val_free(val)` to prevent memory leaks.
    - If `val` is a list or dict, the container stores a **deep copy** of it (up to `TI_MAX_CONTAINER_DEPTH` levels) and frees `val`. A tree that is too deep fails with `TI_ERR_LIMIT_EXCEEDED`. This is what keeps containers free of reference cycles (see 2.5).
+   - A handle is never copied: the container shares it (refcount), like every other copy of a handle.
    - `val_dict_set_raw` and `val_list_push_raw` store `val` as it is, without the copy. They exist for `val_deep_copy`, which already built a fresh tree; natives should use the normal functions.
    - **Rule:** Do NOT call `val_free(val)` after passing it into `val_dict_set` or `val_list_push`.
 

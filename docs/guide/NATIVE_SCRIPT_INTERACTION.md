@@ -129,6 +129,7 @@ if (slave < 1 || slave > MODBUS_MAX_SLAVE) {
 | A dict key you require is missing | `TI_ERR_KEY_NOT_FOUND` |
 | Hardware or I/O failure (bus timeout, device NACK, HTTP failure) | `TI_ERR_RUNTIME` |
 | A configured limit was reached | `TI_ERR_LIMIT_EXCEEDED` |
+| A value can be read but not written (handle attribute fixed at open, returned by `set_attr`) | `TI_ERR_READ_ONLY` |
 
 ### 4.3 What the script sees
 

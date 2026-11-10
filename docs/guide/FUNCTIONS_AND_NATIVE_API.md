@@ -64,7 +64,13 @@ bool register_builtin_function(const char *name,
 Defined in `src/include/ti_type_func.h`:
 * `name`: Identifier used by scripts to invoke the function.
 * `return_type`: Expected return value type (`VAL_INT`, `VAL_VOID`, `VAL_DICT`, etc.).
-* `params`: Array of `param_t` (`{ type, name, element_type }`) specifying parameter names and expected types. Use `VAL_ANY` as a parameter's `type` to accept a value of **any** type there (see 4.3).
+* `params`: Array of `param_t` (`{ type, name, element_type, handle_type }`) specifying parameter names and expected types. Build each entry with a macro from `src/include/ti_type_func.h`; the fields a macro does not take get their "accept any" value:
+
+  | Macro | Accepts |
+  | :--- | :--- |
+  | `PARAM("ms", VAL_INT)` | a value of that type (`VAL_ANY` accepts any type, see 4.3) |
+  | `PARAM_LIST("names", VAL_STRING)` | a list whose elements have that type (`VAL_NULL`: any list) |
+  | `PARAM_HANDLE("dev", &s_device_type)` | a handle of that type descriptor (`NULL`: any handle), see 4.5 |
 * `param_count`: Number of elements in `params`; the runtime rejects calls with a different argument count. Pass `-1` to declare a **fully variadic** function (neither count nor types are checked). `params` may be `NULL` only when `param_count` is `0` or `-1`; otherwise registration fails.
 * `function`: Function pointer matching `native_fn_t`.
 
@@ -72,7 +78,7 @@ Defined in `src/include/ti_type_func.h`:
 A file that owns several built-ins lists them in a `ti_builtin_def_t` table (same five values as `register_builtin_function`, one row each) and registers them in one call:
 
 ```c
-static param_t s_bytes_param[] = { { VAL_BYTES, "data", VAL_NULL } };
+static param_t s_bytes_param[] = { PARAM("data", VAL_BYTES) };
 
 static const ti_builtin_def_t s_defs[] = {
     { "bytes_to_string", VAL_STRING, s_bytes_param, 1, builtin_bytes_to_string },
@@ -128,8 +134,8 @@ static value_t *native_relay_set(ti_handle_t handle, value_t **args, int argc)
 void register_relay_functions(void)
 {
     static param_t relay_params[] = {
-        { VAL_INT,  "id" },
-        { VAL_BOOL, "state" }
+        PARAM("id",    VAL_INT),
+        PARAM("state", VAL_BOOL)
     };
 
     register_builtin_function("relay_set", VAL_VOID, relay_params, 2, native_relay_set);
@@ -188,8 +194,8 @@ static value_t *native_log_value(ti_handle_t handle, value_t **args, int argc)
 void register_log_value(void)
 {
     static param_t params[] = {
-        { VAL_STRING, "label", VAL_NULL },
-        { VAL_ANY,    "value", VAL_NULL },
+        PARAM("label", VAL_STRING),
+        PARAM("value", VAL_ANY),
     };
     register_builtin_function("log_value", VAL_VOID, params, 2, native_log_value);
 }
@@ -215,6 +221,155 @@ if (args[1]->type != VAL_INT && args[1]->type != VAL_STRING) {
 ```
 
 The error ends the script and is reported at the line of the call. Choosing the error kind, when to raise instead of returning a value, and the full contract are in [Native C and TI Scripts: How They Interact](NATIVE_SCRIPT_INTERACTION.md), section 4.
+
+### 4.5 Pattern 4: Native Objects Passed Through Many Calls (`VAL_HANDLE`)
+When a C object has no TI type (a driver config, a socket, a context struct), wrap it in a **handle** instead of flattening it into ints and strings. The script keeps one variable and uses it with functions (`device_read(dev)`), methods (`dev.read()`) and attributes (`dev.baud`). API: `src/include/ti_type_value_handle.h`.
+
+#### 4.5.1 The type descriptor
+Each C type gets **one** `static const ti_handle_type_t`. Its **address** is the type identity: two descriptors with the same name are still different types.
+
+| Field | Meaning |
+| :--- | :--- |
+| `name` | Shown by `print`, `to_string` and error messages (`<handle device_cfg>`). Must not be empty. |
+| `destroy` | `void (*)(void *ptr)`: called once, when the last copy is released or when a native closes the handle. `NULL` if the native keeps ownership (e.g. a static object). |
+| `methods`, `method_count` | Table of `ti_builtin_def_t` rows called as `obj.name(...)`. `params[0]` is the receiver (self). `NULL` / `0`: no methods. |
+| `get_attr` | `ti_status_t (*)(void *ptr, const char *name, value_t **out)`: reads `obj.name`. `NULL`: no readable attributes (a read reports "has no attribute"). |
+| `set_attr` | `ti_status_t (*)(void *ptr, const char *name, const value_t *value)`: writes `obj.name = value`. `NULL`: no writable attributes (a write reports "has no attribute"). |
+
+#### 4.5.2 Example
+```c
+static const ti_handle_type_t s_device_type;   /* forward: the tables below point to it */
+
+/* Called once, when the last copy is released or when a native closes the handle */
+static void device_destroy(void *ptr) { free(ptr); }
+
+/* handle device_open(string port, int baud) */
+static value_t *device_open(ti_handle_t handle, value_t **argv, int argc)
+{
+    device_cfg_t *cfg = calloc(1, sizeof(device_cfg_t));
+    if (cfg == NULL) {
+        ti_raise_error(handle, TI_ERR_NO_MEMORY, "device_open: out of memory");
+        return NULL;
+    }
+    /* ... fill cfg from argv ... */
+
+    value_t *result = val_new_handle(cfg, &s_device_type);
+    if (result == NULL) {
+        free(cfg);                       /* on failure cfg still belongs to the native */
+        ti_raise_error(handle, TI_ERR_NO_MEMORY, "device_open: out of memory");
+    }
+    return result;
+}
+
+/* int device_read(handle dev), also dev.read(): the runtime already checked the type */
+static value_t *device_read(ti_handle_t handle, value_t **argv, int argc)
+{
+    device_cfg_t *cfg = val_handle_get(argv[0], &s_device_type);
+    if (cfg == NULL) {                   /* only possible if the device was closed */
+        ti_raise_error(handle, TI_ERR_INVALID_VALUE, "device_read: device is closed");
+        return NULL;
+    }
+    return val_new_int(read_sample(cfg));
+}
+
+/* void device_close(handle dev), also dev.close(): destroy now; every copy reads as closed */
+static value_t *device_close(ti_handle_t handle, value_t **argv, int argc)
+{
+    if (val_handle_close(argv[0], &s_device_type) != TI_OK) {
+        ti_raise_error(handle, TI_ERR_INVALID_VALUE, "device_close: already closed");
+        return NULL;
+    }
+    return val_new_void();
+}
+
+/* dev.baud (int), dev.port (string): never raises, returns a status */
+static ti_status_t device_get_attr(void *ptr, const char *name, value_t **out)
+{
+    device_cfg_t *cfg = ptr;
+    if (strcmp(name, "baud") == 0) {
+        *out = val_new_int(cfg->baud);
+    } else if (strcmp(name, "port") == 0) {
+        *out = val_new_string(cfg->port);
+    } else {
+        return TI_ERR_UNDEFINED;         /* the interpreter reports "has no attribute" */
+    }
+    return (*out != NULL) ? TI_OK : TI_ERR_NO_MEMORY;
+}
+
+/* dev.baud = int; dev.port is read-only */
+static ti_status_t device_set_attr(void *ptr, const char *name, const value_t *value)
+{
+    device_cfg_t *cfg = ptr;
+    if (strcmp(name, "baud") == 0) {
+        if (value->type != VAL_INT)  return TI_ERR_TYPE_MISMATCH;   /* the native checks the type */
+        if (value->int_val <= 0)     return TI_ERR_VALUE_OUT_OF_RANGE;
+        cfg->baud = value->int_val;
+        return TI_OK;
+    }
+    return (strcmp(name, "port") == 0) ? TI_ERR_READ_ONLY : TI_ERR_UNDEFINED;
+}
+
+/* Parameter tables: params[0] of a method is self, so a free function's table is reused */
+static param_t s_open_params[] = { PARAM("port", VAL_STRING), PARAM("baud", VAL_INT) };
+static param_t s_dev_params[]  = { PARAM_HANDLE("dev", &s_device_type) };
+
+static const ti_builtin_def_t s_device_methods[] = {
+    { "read",  VAL_INT,  s_dev_params, 1, device_read },
+    { "close", VAL_VOID, s_dev_params, 1, device_close },
+};
+
+static const ti_handle_type_t s_device_type = {
+    .name         = "device_cfg",
+    .destroy      = device_destroy,
+    .methods      = s_device_methods,
+    .method_count = 2,
+    .get_attr     = device_get_attr,
+    .set_attr     = device_set_attr,
+};
+
+void device_register(void)
+{
+    register_builtin_function("device_open",  VAL_HANDLE, s_open_params, 2, device_open);
+    register_builtin_function("device_read",  VAL_INT,    s_dev_params,  1, device_read);
+    register_builtin_function("device_close", VAL_VOID,   s_dev_params,  1, device_close);
+}
+```
+Full working version: `cli/builtin/builtin_device.c`, script: `examples/ti/handle_device.ti`.
+
+#### 4.5.3 C API
+| Function | Use |
+| :--- | :--- |
+| `val_new_handle(ptr, &type)` | Return a new handle. On success the value owns `ptr`; on `NULL` it is still yours. |
+| `val_handle_get(value, &type)` | Get `ptr` back. `NULL` if not a handle, wrong type, empty, or closed. The type is mandatory. |
+| `val_handle_close(value, &type)` | Destroy the object now. `TI_ERR_TYPE_MISMATCH` for a wrong type, `TI_ERR_INVALID_VALUE` if already closed. |
+| `val_handle_type(value)`, `val_handle_is_open(value)` | For logging and checks (`val_handle_type(v)->name`). A closed handle keeps its type. |
+| `handle_type_find_method(&type, name)` | The method row the interpreter runs for `obj.name(...)`. |
+
+#### 4.5.4 How a method call runs
+`dev.read()` looks up `"read"` in `s_device_type.methods`, puts `dev` in `argv[0]` and runs the row exactly like a native function call. So:
+* Count and type errors count self: `dev.set_baud()` reports `expects 2 argument(s), but received 1`, and the first written argument is parameter 2.
+* `self` is type-checked like any `PARAM_HANDLE`: the native only has to handle "closed".
+* The receiver can be any expression: `device_open("/dev/ttyS1", 4800).info()`, `devices["a"].read()`.
+* A missing method raises `TI_ERR_UNDEFINED` (`Handle device_cfg has no method 'x'`); a method on a non-handle or on an empty handle raises `TI_ERR_TYPE_MISMATCH`.
+
+#### 4.5.5 How an attribute access runs
+`get_attr` and `set_attr` are **layer 1** functions: they return a status and never call `ti_raise_error`. The interpreter turns the status into the error the script sees:
+
+| Status returned | Script error |
+| :--- | :--- |
+| `TI_ERR_UNDEFINED` (or `get_attr` / `set_attr` is `NULL`) | `Handle device_cfg has no attribute 'x'` |
+| `TI_ERR_READ_ONLY` | `Cannot set attribute 'port' of handle device_cfg: read-only` |
+| any other status | `Cannot get/set attribute 'baud' of handle device_cfg: <status text>` |
+
+* A closed or empty handle is rejected **before** `get_attr` / `set_attr` run, so `ptr` is never `NULL` there.
+* `get_attr` returns a **new** value in `*out` (owned by the interpreter). `set_attr` receives a **borrowed** value: copy what you keep. Its type is not checked by the interpreter, so check it.
+* `dev.baud += 1` is rewritten as `dev.baud = dev.baud + 1`: one `get_attr`, then one `set_attr`. The receiver expression is evaluated twice (`devices[f()].baud += 1` calls `f()` twice).
+
+#### 4.5.6 Rules
+* **Declare the type in the parameter table** (`PARAM_HANDLE`): the runtime then rejects a wrong type or an empty handle before the native runs, so `val_handle_get` returning `NULL` only means "closed".
+* **The descriptor must outlive every handle**: make it `static const` and never free it.
+* **`destroy` runs on the script's context** (end of scope, overwritten variable, `close`), or inside `ti_destroy` for handles still held by globals. Keep it short and never call TI functions from it.
+* **Reference counts are not atomic.** Like every `value_t`, never keep a handle value in another thread. A driver thread may keep the raw `ptr` only if it manages that object's lifetime itself.
 
 ---
 
