@@ -1,7 +1,7 @@
 /*
  * Modules: the C registry API (register, find module / function / constant) and the script side
  * (import, import ... as, module.f(args), module.CONST, read-only constants, scope of an import,
- * a module function that returns a handle, == / to_string on modules, every error message).
+ * a module function that returns a handle, == on modules, to_string refusing a module, every error message).
  * The test module's tables are all static const, parameter tables included.
  *
  * Build and run (from the repository root); AddressSanitizer reports any leak at exit:
@@ -160,14 +160,14 @@ static void test_c_api(void)
     }
     static const ti_module_t s_one_too_many = { .name = "one_too_many" };
     CHECK(!ti_register_module(&s_one_too_many));
-    CHECK(ti_module_find("one_too_many") == NULL);
+    CHECK(ti_module_native_find("one_too_many") == NULL);
 
     /* Module lookup returns the registered address itself */
-    CHECK(ti_module_find("tmod") == &s_tmod);
-    CHECK(ti_module_find("empty") == &s_empty_mod);
-    CHECK(ti_module_find("filler0") == &s_fillers[0]);
-    CHECK(ti_module_find("missing") == NULL);
-    CHECK(ti_module_find(NULL) == NULL);
+    CHECK(ti_module_native_find("tmod") == &s_tmod);
+    CHECK(ti_module_native_find("empty") == &s_empty_mod);
+    CHECK(ti_module_native_find("filler0") == &s_fillers[0]);
+    CHECK(ti_module_native_find("missing") == NULL);
+    CHECK(ti_module_native_find(NULL) == NULL);
 
     /* Function lookup returns the row inside the module's table */
     CHECK(ti_module_find_func(&s_tmod, "add") == &s_tmod_funcs[0]);
@@ -225,7 +225,7 @@ static void test_scripts(void)
     run("alias", "import tmod as t; t.mark(t.add(1, 1) == 2);", 1, 0, NULL);
     run("alias == module", "import tmod; import tmod as t; t.mark(t == tmod);", 1, 0, NULL);
     run("!= other module", "import tmod; import empty; tmod.mark(tmod != empty);", 1, 0, NULL);
-    run("to_string", "import tmod; tmod.mark(to_string(tmod) == \"<module tmod>\");", 1, 0, NULL);
+    run("to_string", "import tmod; to_string(tmod);", -1, 0, "to_string cannot convert module");
     run("module in variable", "import tmod; int v = tmod.add(tmod.N, 1); tmod.mark(v == 8);", 1, 0, NULL);
     run("empty module import", "import empty; import tmod; tmod.mark(true);", 1, 0, NULL);
 
@@ -253,8 +253,8 @@ static void test_scripts(void)
     run("unknown module", "import nope;", -1, 0, "Unknown module 'nope'");
     run("import twice", "import tmod; import tmod;", -1, 0, "Cannot import 'tmod': already defined in this scope");
     run("alias clashes var", "int t = 1; import tmod as t;", -1, 0, "Cannot import 't': already defined in this scope");
-    run("missing name", "import ;", -1, 0, "Expected module name after 'import'");
-    run("missing alias", "import tmod as ;", -1, 0, "Expected name after 'as'");
+    run("missing name", "import ;", -1, 0, "Expected token ID, but received ';'");
+    run("missing alias", "import tmod as ;", -1, 0, "Expected token ID, but received ';'");
 
     /* Errors: functions and constants */
     run("no function", "import tmod; tmod.nope();", -1, 0, "Module tmod has no function 'nope'");

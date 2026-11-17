@@ -22,13 +22,13 @@ static void on_log(const char *fmt, va_list a)
 }
 
 /**
- * @brief Copy a script into a malloc'd buffer, as ti_run_string_take requires.
+ * @brief Copy a script into a ti_raw_malloc'd buffer, as ti_run_string_take requires.
  * @param src Script text.
- * @return The copy (the caller hands it to ti_run_string_take, which frees it).
+ * @return The copy (the caller hands it to ti_run_string_take, which frees it with ti_raw_free).
  */
 static char *dup_source(const char *src)
 {
-    char *buf = malloc(strlen(src) + 1);
+    char *buf = ti_raw_malloc(strlen(src) + 1);
     if (buf == NULL) {
         exit(2);
     }
@@ -59,7 +59,7 @@ int main(void)
             }
 
             /* Owned source: freed by the runner on every path */
-            status = ti_run_string_take(dup_source(cases[i].script));
+            status = ti_run_string_take(dup_source(cases[i].script), "case.ti");
             if (status != cases[i].want) {
                 printf("FAIL: %-24s ti_run_string_take returned status %d\n", cases[i].name, (int)status);
                 failed++;
@@ -68,7 +68,7 @@ int main(void)
     }
 
     /* NULL source is rejected without touching anything */
-    if (ti_run_string(NULL) != TI_ERR_INVALID_ARG || ti_run_string_take(NULL) != TI_ERR_INVALID_ARG) {
+    if (ti_run_string(NULL) != TI_ERR_INVALID_ARG || ti_run_string_take(NULL, NULL) != TI_ERR_INVALID_ARG) {
         printf("FAIL: NULL source\n");
         failed++;
     }
