@@ -63,10 +63,10 @@ void ti_log(const char *fmt, ...)
 
 /* -------------------- Public Two-Phase Pipeline Functions -------------------- */
 
-/* Compile without a source path; a build error (already logged) just returns NULL */
-ti_program_t *ti_compile(const char *source_code)
+/* Compile and record the source path; a build error (already logged) just returns NULL */
+ti_program_t *ti_compile(const char *source_code, const char *path)
 {
-    return ti_program_compile(source_code, NULL, NULL);
+    return ti_program_compile(source_code, path, NULL);
 }
 
 /* Create a new runtime instance */
@@ -99,11 +99,12 @@ ti_status_t ti_execute(ti_handle_t handle, ti_program_t *prog)
 }
 
 /* Compile, run on a fresh runtime, then free the program: nothing is left allocated on any path */
-ti_status_t ti_run_string(const char *source_code)
+ti_status_t ti_run_string(const char *source_code, const char *path)
 {
-    /* Phase 1: compile (a NULL source, a syntax error or out of memory comes back as the status) */
+    /* Phase 1: compile (a NULL source, a syntax error or out of memory comes back as the status);
+     * the program keeps its own copy of the path, read by the module loader on import */
     ti_status_t status = TI_OK;
-    ti_program_t *prog = ti_program_compile(source_code, NULL, &status);
+    ti_program_t *prog = ti_program_compile(source_code, path, &status);
     if (!prog) {
         return status;
     }

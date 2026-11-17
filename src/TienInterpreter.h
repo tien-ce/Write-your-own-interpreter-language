@@ -97,10 +97,12 @@ void ti_init_builtin(void);
 
 /**
  * @brief Compile a Ti language source code string into an immutable AST program.
- * @param source_code Null-terminated source code string.
+ * @param source_code Null-terminated source code string (only read: the caller keeps it).
+ * @param path Path of the script (copied; may be NULL). Errors name the file with it, and when the program
+ *             runs as the main script the module loader receives it as main_path for every 'import'.
  * @return Newly allocated ti_program_t, or NULL on a syntax error (already logged), NULL source or out of memory.
  */
-ti_program_t *ti_compile(const char *source_code);
+ti_program_t *ti_compile(const char *source_code, const char *path);
 
 /**
  * @brief Free a compiled program and all its build-time memory (AST included).
@@ -143,19 +145,19 @@ ti_status_t ti_execute(ti_handle_t handle, ti_program_t *prog);
 
 /**
  * @brief High-level helper to compile and execute a Ti script in one step (nothing is left allocated).
- * @param source_code Null-terminated Ti language source code string.
+ * @param source_code Null-terminated Ti language source code string (only read: the caller keeps it).
+ * @param path Path of the script (copied; may be NULL), as in ti_compile.
  * @return TI_OK, TI_ERR_SYNTAX (build error, logged), TI_ERR_NO_MEMORY (or no free runtime slot),
  *         TI_ERR_INVALID_ARG (NULL source), or what ti_execute returns.
  */
-ti_status_t ti_run_string(const char *source_code);
+ti_status_t ti_run_string(const char *source_code, const char *path);
 
 /**
  * @brief Compile and run a script like ti_run_string, taking ownership of the source buffer.
  * The buffer is freed with ti_raw_free right after compiling (before the script runs), in every case,
  * so the source text and the running script never occupy memory at the same time.
  * @param source_code Source text allocated with ti_raw_malloc (never a literal or a flash string); freed here.
- * @param path Path of the script (copied; may be NULL). The module loader receives it as main_path
- *             for every 'import', in the main script and in its modules.
+ * @param path Path of the script (copied; may be NULL), as in ti_compile.
  * @return Same as ti_run_string.
  */
 ti_status_t ti_run_string_take(char *source_code, const char *path);

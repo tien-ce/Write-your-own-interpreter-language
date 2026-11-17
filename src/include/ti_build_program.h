@@ -12,7 +12,7 @@ extern "C" {
 typedef struct TI_PROGRAM_STRUCT {
     ast_t       *root_ast;    /* Root AST node of the compiled program */
     alloc_hdr_t *alloc_list;  /* Dedicated allocation list tracking all build-time memory */
-    char        *path;        /* Source path (owned copy on alloc_list), NULL if unknown (e.g. ti_run_string) */
+    char        *path;        /* Source path (owned copy on alloc_list), NULL if the host passed none */
 } ti_program_t;
 
 ti_program_t *ti_program_create(void);
@@ -20,8 +20,8 @@ void          ti_program_free(ti_program_t *prog);
 
 /**
  * @brief Compile source text into a program and record its path.
- * ti_compile is this with no path; ti_run_string_take passes the main script's path and script modules
- * the path their loader returned. Build errors name the file through it ("at <path>:<line>").
+ * ti_compile and ti_run_string* pass the host's path of the main script, script modules the path their
+ * loader returned. Build errors name the file through it ("at <path>:<line>").
  * @param source_code Null-terminated source code string (only read: the caller keeps it).
  * @param path Source path copied into prog->path; NULL if unknown.
  * @param status Optional out (may be NULL): TI_OK, TI_ERR_SYNTAX (build error, already logged),
