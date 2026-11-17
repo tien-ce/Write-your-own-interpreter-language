@@ -186,6 +186,7 @@ const char *ti_err_to_str(ti_status_t status)
     case TI_ERR_RUNTIME:           return "runtime error";
     case TI_ERR_TIMEOUT:           return "timeout";
     case TI_ERR_READ_ONLY:         return "read-only";
+    case TI_ERR_SYNTAX:            return "syntax error";
     default:                       return "unknown error";
     }
 }

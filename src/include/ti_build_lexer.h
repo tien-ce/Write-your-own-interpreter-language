@@ -43,8 +43,8 @@ token_t *lexer_get_next_token(lexer_t *lexer);
 
 /**
  * @brief Abort the build after an error has been logged. Does not return.
- * Jumps back to the setjmp in ti_compile(), which frees the program and then calls ti_fatal().
- * lexer->err_jmp must be set by the code that created the lexer (only ti_compile does).
+ * Jumps back to the setjmp in ti_program_compile(), which frees the program and reports the build error.
+ * lexer->err_jmp must be set by the code that created the lexer (only ti_program_compile does).
  * @param lexer Pointer to active lexer instance.
  */
 void lexer_abort(lexer_t *lexer);

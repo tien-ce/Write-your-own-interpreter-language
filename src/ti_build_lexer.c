@@ -332,7 +332,7 @@ lexer_t *lexer_init(alloc_hdr_t **list, char *str)
 /* Abort the build after an error has been logged */
 void lexer_abort(lexer_t *lexer)
 {
-    /* Unwind to the setjmp in ti_compile; it frees the program and then calls ti_fatal */
+    /* Unwind to the setjmp in ti_program_compile; it frees the program and reports the build error */
     longjmp(*lexer->err_jmp, 1);
 }
 

@@ -80,6 +80,7 @@ typedef enum {
     TI_ERR_RUNTIME,             // Generic script runtime error
     TI_ERR_TIMEOUT,             // Timed out waiting for the runtime execution lock
     TI_ERR_READ_ONLY,           // Target can be read but not written (e.g. a read-only handle attribute)
+    TI_ERR_SYNTAX,              // Source text does not compile (the build error is already logged)
 } ti_status_t;
 
 #ifdef __cplusplus

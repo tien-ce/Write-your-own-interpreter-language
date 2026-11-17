@@ -1,5 +1,7 @@
 #include "include/ti_runtime.h"
 #include "include/ti_runtime_registry.h"
+#include "include/ti_build_program.h"
+#include "include/ti_runtime_visitor.h"
 #include "include/tracked_memory.h"
 #include "TienInterpreter.h"
 #include <stdarg.h>
@@ -241,4 +243,50 @@ void ti_runtime_report_error(ti_runtime_t *rt)
     } else {
         ti_log("[Runtime Error] %s\n", rt->error.message);
     }
+}
+
+/* Run a compiled program in the global scope of a runtime; a raised error is logged and returned */
+ti_status_t ti_runtime_execute(ti_handle_t handle, ti_program_t *prog)
+{
+    if (!prog || !prog->root_ast) {
+        return TI_ERR_INVALID_ARG;
+    }
+
+    /*
+     * Resolve only: no pin is needed because create, execute and destroy run on the owner thread
+     * one after another, so destroy can never run while this function uses rt.
+     */
+    ti_runtime_t *rt = ti_registry_lock(handle);
+    if (rt == NULL) {
+        return TI_ERR_STALE_HANDLE;
+    }
+    ti_registry_unlock();
+
+    /* Hold the execution lock for the whole run: ti_call callers get in only at safe points */
+    ti_runtime_exec_lock(rt, TI_PORT_WAIT_FOREVER);
+
+    /* Walk and evaluate the AST graph from root */
+    visitor_visit(rt, rt->global_context, prog->root_ast);
+
+    /* Validate control flow invariants at script completion (only if nothing failed earlier) */
+    if (rt->status == TI_RT_OK) {
+        if (rt->global_context->flow_state == FLOW_BREAK) {
+            ti_raise(rt, TI_ERR_RUNTIME, 0, "'break' statement not within a loop");
+        } else if (rt->global_context->flow_state == FLOW_CONTINUE) {
+            ti_raise(rt, TI_ERR_RUNTIME, 0, "'continue' statement not within a loop");
+        } else if (rt->global_context->flow_state == FLOW_RETURN) {
+            /* Consume return signal at top-level script boundary */
+            rt->global_context->flow_state = FLOW_NORMAL;
+        }
+    }
+
+    /* Decide the outcome while the runtime is still locked: an interruption, or the raised error kind */
+    ti_status_t status = ti_runtime_is_interrupted(rt) ? TI_ERR_INTERRUPTED : TI_OK;
+    if (rt->status == TI_RT_ERROR) {
+        ti_runtime_report_error(rt);
+        status = rt->error.kind;
+    }
+
+    ti_runtime_exec_unlock(rt);
+    return status;
 }

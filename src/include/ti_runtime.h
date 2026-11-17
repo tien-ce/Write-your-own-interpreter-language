@@ -9,6 +9,10 @@
 #include <stdbool.h>
 #include <stdarg.h>
 
+/* Forward declaration: a program is only passed through here (defined in ti_build_program.h) */
+struct TI_PROGRAM_STRUCT;
+typedef struct TI_PROGRAM_STRUCT ti_program_t;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -164,6 +168,15 @@ void ti_raise(ti_runtime_t *rt, ti_status_t kind, int line, const char *fmt, ...
  * @param rt Pointer to runtime instance (ignored if NULL or not in error state).
  */
 void ti_runtime_report_error(ti_runtime_t *rt);
+
+/**
+ * @brief Run a compiled program in the global scope of a runtime (the runtime is not destroyed here).
+ * A raised runtime error is logged (ti_runtime_report_error) and returned as the status.
+ * @param handle Runtime handle (owner thread only).
+ * @param prog Compiled program to run.
+ * @return TI_OK, TI_ERR_INTERRUPTED if stopped, the raised error kind, TI_ERR_STALE_HANDLE or TI_ERR_INVALID_ARG.
+ */
+ti_status_t ti_runtime_execute(ti_handle_t handle, ti_program_t *prog);
 
 /* -------------------- Event Queue Functions -------------------- */
 

@@ -15,7 +15,6 @@ extern "C" {
 #include "include/ti_type_value_handle.h"
 #include "include/ti_type_func.h"
 #include "include/ti_type_module.h"
-#include "include/ti_build_program.h"
 
 
 /* -------------------- Runtime Configuration -------------------- */
@@ -41,11 +40,6 @@ extern "C" {
  */
 typedef void (*ti_log_callback_t)(const char *fmt, va_list args);
 
-/**
- * @brief Callback type for fatal unrecoverable interpreter error.
- */
-typedef void (*ti_fatal_callback_t)(void);
-
 /* -------------------- Platform & Logging API -------------------- */
 
 /**
@@ -61,23 +55,18 @@ void ti_log(const char *fmt, ...);
 void ti_log_line(char *line);
 
 /**
- * @brief Handles an unrecoverable fatal interpreter error (halts/exits).
- */
-void ti_fatal(void);
-
-/**
  * @brief Register custom logging callback (e.g. stdout for Desktop, Serial for Arduino).
  * @param func Pointer to callback function.
  */
 void ti_register_log(ti_log_callback_t func);
 
-/**
- * @brief Register custom fatal error callback (e.g. exit(1) for Desktop, halt for Arduino).
- * @param func Pointer to callback function.
- */
-void ti_register_fatal(ti_fatal_callback_t func);
-
 /* -------------------- Public Interpreter API -------------------- */
+
+/**
+ * @brief Compiled program (opaque): hosts only hold the pointer and hand it back to the library.
+ * Its fields are private to the library (defined in include/ti_build_program.h).
+ */
+typedef struct TI_PROGRAM_STRUCT ti_program_t;
 
 /**
  * @brief Initialize built-in interpreter functions (e.g. print).
@@ -87,9 +76,16 @@ void ti_init_builtin(void);
 /**
  * @brief Compile a Ti language source code string into an immutable AST program.
  * @param source_code Null-terminated source code string.
- * @return Newly allocated ti_program_t, or NULL on syntax error.
+ * @return Newly allocated ti_program_t, or NULL on a syntax error (already logged), NULL source or out of memory.
  */
 ti_program_t *ti_compile(const char *source_code);
+
+/**
+ * @brief Free a compiled program and all its build-time memory (AST included).
+ * Call only when no ti_execute is running it (its functions borrow the AST during the run).
+ * @param prog Program from ti_compile (NULL does nothing).
+ */
+void ti_program_free(ti_program_t *prog);
 
 /**
  * @brief Create a new runtime instance.
@@ -101,31 +97,44 @@ ti_program_t *ti_compile(const char *source_code);
 ti_handle_t ti_create(void);
 
 /**
- * @brief Destroy a runtime, discard its pending events and invalidate its handle.
- * Owner thread only, after ti_execute() has returned. Every later call with this handle
- * (from any thread) fails with TI_ERR_STALE_HANDLE; a ti_call already waiting for the runtime
- * returns TI_ERR_STALE_HANDLE without running.
+ * @brief Destroy a runtime that will not be executed (ti_execute already destroys the runtime it runs).
+ * Owner thread only. Every later call with this handle (from any thread) fails with
+ * TI_ERR_STALE_HANDLE; a ti_call already waiting for the runtime returns TI_ERR_STALE_HANDLE without running.
  * @param handle Runtime handle.
  * @return TI_OK, or TI_ERR_STALE_HANDLE if the handle is stale or invalid.
  */
 ti_status_t ti_destroy(ti_handle_t handle);
 
 /**
- * @brief Execute a compiled program on the specified runtime.
- * Owner thread only (never two at once on one runtime). The runtime outlives the run: its
- * globals and functions stay available to later ti_execute and ti_call until ti_destroy.
- * @param handle Runtime handle.
- * @param prog Pointer to compiled program. Keep it alive until ti_destroy: functions it defines
- *             borrow their name, parameters and body from its AST.
- * @return TI_OK on completion, TI_ERR_INTERRUPTED if stopped, TI_ERR_STALE_HANDLE or TI_ERR_INVALID_ARG.
+ * @brief Execute a compiled program on the specified runtime, then destroy that runtime.
+ * Owner thread only. The handle is always consumed (also on error or invalid prog): once this
+ * returns, every call with it fails with TI_ERR_STALE_HANDLE, and handle destructors have run.
+ * A runtime error stops the script, is logged and is returned; it never ends the host program.
+ * To run the program again, create a new runtime.
+ * @param handle Runtime handle from ti_create.
+ * @param prog Pointer to compiled program. Keep it alive until this returns: functions it defines
+ *             borrow their name, parameters and body from its AST. It may be executed again.
+ * @return TI_OK on completion, TI_ERR_INTERRUPTED if stopped, the raised error kind (e.g. TI_ERR_UNDEFINED),
+ *         TI_ERR_STALE_HANDLE or TI_ERR_INVALID_ARG.
  */
 ti_status_t ti_execute(ti_handle_t handle, ti_program_t *prog);
 
 /**
- * @brief High-level helper to compile and execute a Ti script in one step.
+ * @brief High-level helper to compile and execute a Ti script in one step (nothing is left allocated).
  * @param source_code Null-terminated Ti language source code string.
+ * @return TI_OK, TI_ERR_SYNTAX (build error, logged), TI_ERR_NO_MEMORY (or no free runtime slot),
+ *         TI_ERR_INVALID_ARG (NULL source), or what ti_execute returns.
  */
-void ti_run_string(const char *source_code);
+ti_status_t ti_run_string(const char *source_code);
+
+/**
+ * @brief Compile and run a script like ti_run_string, taking ownership of the source buffer.
+ * The buffer is freed with free() right after compiling (before the script runs), in every case,
+ * so the source text and the running script never occupy memory at the same time.
+ * @param source_code Source text allocated with malloc (never a literal or a flash string); freed here.
+ * @return Same as ti_run_string.
+ */
+ti_status_t ti_run_string_take(char *source_code);
 
 /**
  * @brief Request execution cancellation to immediately halt running script.

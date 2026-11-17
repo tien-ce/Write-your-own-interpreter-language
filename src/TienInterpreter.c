@@ -14,19 +14,10 @@
 
 /* -------------------- Static Callback Storage -------------------- */
 
-/* Platform-registered callbacks for diagnostics and fatal error handling */
-static ti_fatal_callback_t s_fatal_cb = NULL;
+/* Platform-registered callback for diagnostics */
 static ti_log_callback_t s_log_cb = NULL;
 
 /* -------------------- Platform & Logging Functions -------------------- */
-
-/**
- * @brief Register custom fatal error callback (e.g. exit(1) for Desktop, halt for Arduino).
- */
-void ti_register_fatal(ti_fatal_callback_t func)
-{
-    s_fatal_cb = func;
-}
 
 /**
  * @brief Register custom logging callback (e.g. stdout for Desktop, Serial for Arduino).
@@ -62,96 +53,12 @@ void ti_log(const char *fmt, ...)
     va_end(args);
 }
 
-/**
- * @brief Handles an unrecoverable fatal interpreter error.
- * Invokes the host platform's fatal callback if registered, or falls back to exit(1).
- */
-void ti_fatal(void)
-{
-    if (s_fatal_cb != NULL) {
-        s_fatal_cb();
-    }
-    /* Fallback exit if callback returns or was not registered by host */
-    exit(1);
-}
-
 /* -------------------- Public Two-Phase Pipeline Functions -------------------- */
 
-/**
- * @brief Phase 1 (Build-Time): Compile source text into an immutable AST program.
- *
- * Execution Logic:
- * - Validates source text input.
- * - Allocates a fresh `ti_program_t` container with its own isolated `alloc_list`.
- * - Duplicates source string into the program's allocation list so the lexer can
- *    index characters without mutating caller-owned memory.
- * - Initializes the lexical scanner (`lexer_init`) and recursive descent parser
- *    (`parser_init`), binding all transient token and AST node allocations directly
- *    to `prog->alloc_list`.
- * - Executes syntactic analysis via `parser_parse()`, constructing the AST tree.
- * - Deallocates transient frontend objects (`parser`, `lexer`, `contents`) to reclaim
- *    intermediate heap buffers, while leaving the resulting AST nodes intact on `prog->alloc_list`.
- * - Validates compilation success: If parsing encountered fatal syntax errors and produced
- *    no root AST, tears down the program container via `ti_program_free` and returns NULL.
- */
+/* Compile without a source path; a build error (already logged) just returns NULL */
 ti_program_t *ti_compile(const char *source_code)
 {
-    if (!source_code) {
-        return NULL;
-    }
-
-    /* Allocate compiled program container */
-    ti_program_t *prog = ti_program_create();
-    if (!prog) {
-        return NULL;
-    }
-
-    /* Create mutable source buffer tracked on program's build-time memory list */
-    char *contents = tracked_strdup(&prog->alloc_list, source_code);
-    if (!contents) {
-        ti_program_free(prog);
-        return NULL;
-    }
-
-    /* Initialize frontend lexer and parser bound to program's memory list */
-    lexer_t *lexer = lexer_init(&prog->alloc_list, contents);
-    parser_t *parser = parser_init(&prog->alloc_list, lexer);
-
-    if (!lexer || !parser) {
-        ti_program_free(prog);
-        return NULL;
-    }
-
-    /* Build errors jump back here (lexer_abort) instead of calling ti_fatal mid-parse */
-    jmp_buf err_jmp;
-    lexer->err_jmp = &err_jmp;
-    bool build_failed = false;
-
-    if (setjmp(err_jmp) == 0) {
-        /* Construct the Abstract Syntax Tree (AST) */
-        prog->root_ast = parser_parse(parser);
-    } else {
-        /* A build error was already logged: nothing to run, free everything below */
-        build_failed = true;
-        prog->root_ast = NULL;
-    }
-
-    /* Reclaim transient frontend state machines (AST nodes remain on alloc_list) */
-    tracked_free(&prog->alloc_list, parser);
-    tracked_free(&prog->alloc_list, lexer);
-    tracked_free(&prog->alloc_list, contents);
-
-    /* Verify compilation outcome */
-    if (prog->root_ast == NULL) {
-        /* Release all build memory first: the fatal handler may never return */
-        ti_program_free(prog);
-        if (build_failed) {
-            ti_fatal();
-        }
-        return NULL;
-    }
-
-    return prog;
+    return ti_program_compile(source_code, NULL, NULL);
 }
 
 /* Create a new runtime instance */
@@ -171,131 +78,66 @@ ti_status_t ti_destroy(ti_handle_t handle)
     return ti_runtime_destroy(handle);
 }
 
-/**
- * @brief Phase 2 (Run-Time): Execute a compiled AST program on a runtime instance.
- *
- * Execution Logic:
- * - Validates preconditions: Ensures the compiled program AST exists and the handle
- *    resolves to a live runtime instance.
- * - Dispatches recursive tree evaluation from the root node (`prog->root_ast`) using
- *    the runtime's root variable scope (`rt->global_context`).
- * - Evaluates statement blocks, assignments, loops, and function invocations. All dynamic
- *    values (`value_t`) and local variable scopes (`context_t`) created during evaluation
- *    are tracked on `rt->alloc_list`.
- * - Inspects post-execution control flow state:
- *    - `FLOW_BREAK`: If unconsumed break escaped to top-level, raises runtime error
- *      ("break statement not within a loop").
- *    - `FLOW_CONTINUE`: If unconsumed continue escaped to top-level, raises runtime error
- *      ("continue statement not within a loop").
- *    - `FLOW_RETURN`: If top-level script returned a value, normalizes flow_state back to
- *      `FLOW_NORMAL` so subsequent executions on this runtime remain clean.
- */
-static ti_status_t ti_execute_no_fatal(ti_handle_t handle, ti_program_t *prog, bool *fatal_out)
-{
-    *fatal_out = false;
-    if (!prog || !prog->root_ast) {
-        return TI_ERR_INVALID_ARG;
-    }
-
-    /*
-     * Resolve only: no pin is needed because create, execute and destroy run on the owner thread
-     * one after another, so destroy can never run while this function uses rt.
-     */
-    ti_runtime_t *rt = ti_registry_lock(handle);
-    if (rt == NULL) {
-        return TI_ERR_STALE_HANDLE;
-    }
-    ti_registry_unlock();
-
-    /* Hold the execution lock for the whole run: ti_call callers get in only at safe points */
-    ti_runtime_exec_lock(rt, TI_PORT_WAIT_FOREVER);
-
-    /* Walk and evaluate the AST graph from root */
-    visitor_visit(rt, rt->global_context, prog->root_ast);
-
-    /* Validate control flow invariants at script completion (only if nothing failed earlier) */
-    if (rt->status == TI_RT_OK) {
-        if (rt->global_context->flow_state == FLOW_BREAK) {
-            ti_raise(rt, TI_ERR_RUNTIME, 0, "'break' statement not within a loop");
-        } else if (rt->global_context->flow_state == FLOW_CONTINUE) {
-            ti_raise(rt, TI_ERR_RUNTIME, 0, "'continue' statement not within a loop");
-        } else if (rt->global_context->flow_state == FLOW_RETURN) {
-            /* Consume return signal at top-level script boundary */
-            rt->global_context->flow_state = FLOW_NORMAL;
-        }
-    }
-
-    /* Decide the outcome while the runtime is still locked */
-    ti_status_t status = ti_runtime_is_interrupted(rt) ? TI_ERR_INTERRUPTED : TI_OK;
-    bool fatal = (rt->status == TI_RT_ERROR);
-    if (fatal) {
-        ti_runtime_report_error(rt);
-        status = rt->error.kind;
-    }
-
-    /* Release before any fatal: the fatal handler may block or never return, which must not wedge ti_call */
-    ti_runtime_exec_unlock(rt);
-
-    /* The caller decides when to raise the fatal, after its own cleanup */
-    *fatal_out = fatal;
-    return status;
-}
-
+/* Run a program, then destroy its runtime; a raised error comes back as the status */
 ti_status_t ti_execute(ti_handle_t handle, ti_program_t *prog)
 {
-    /* Run, then turn a raised runtime error into a fatal (host decides how to stop) */
-    bool fatal = false;
-    ti_status_t status = ti_execute_no_fatal(handle, prog, &fatal);
-    if (fatal) {
-        ti_fatal();
-    }
+    /* Run: a raised runtime error is already logged and returned as the status */
+    ti_status_t status = ti_runtime_execute(handle, prog);
+
+    /* The handle is always consumed, also when prog was invalid (handle destructors release their hardware);
+     * a stale handle just fails here */
+    (void)ti_runtime_destroy(handle);
     return status;
 }
 
-/**
- * @brief High-level helper: Compile and execute a Ti script from raw text in one step.
- *
- * Execution Logic:
- * - Compiles source text via `ti_compile()` into an immutable `ti_program_t`.
- * - Creates a dedicated, isolated execution runtime via `ti_create()`.
- * - Executes the compiled program on the runtime instance via `ti_execute()`.
- * - Performs deterministic cleanup:
- *    - Destroys the runtime instance (`ti_destroy`), invalidating its handle and reclaiming
- *      all runtime variables, local context scopes, pending events and dynamic value allocations.
- *    - Frees the compiled program (`ti_program_free`), reclaiming all AST nodes and tokens.
- * - Guarantees zero residual heap allocations on script completion.
- */
-void ti_run_string(const char *source_code)
+/* Compile, run on a fresh runtime, then free the program: nothing is left allocated on any path */
+ti_status_t ti_run_string(const char *source_code)
 {
-    if (!source_code) {
-        return;
-    }
-
-    /* Phase 1: Compile source text to AST */
-    ti_program_t *prog = ti_compile(source_code);
+    /* Phase 1: compile (a NULL source, a syntax error or out of memory comes back as the status) */
+    ti_status_t status = TI_OK;
+    ti_program_t *prog = ti_program_compile(source_code, NULL, &status);
     if (!prog) {
-        return; /* Syntax error occurred and was logged; abort execution */
+        return status;
     }
 
-    /* Phase 2: Create execution runtime */
+    /* Phase 2: create the execution runtime (fails on out of memory or no free runtime slot) */
     ti_handle_t handle = ti_create();
     if (handle == TI_INVALID_HANDLE) {
         ti_program_free(prog);
-        return;
+        return TI_ERR_NO_MEMORY;
     }
 
-    /* Execute script (a runtime error is reported as a fatal only after teardown) */
-    bool fatal = false;
-    ti_execute_no_fatal(handle, prog, &fatal);
-
-    /* Phase 3: Deterministic teardown of both execution environments */
-    ti_destroy(handle);
+    /* Phase 3: run (ti_execute also destroys the runtime), then free the program */
+    status = ti_execute(handle, prog);
     ti_program_free(prog);
+    return status;
+}
 
-    /* Everything is released, so a fatal handler that never returns leaks nothing */
-    if (fatal) {
-        ti_fatal();
+/* Compile and run a script, freeing the host's source buffer right after compiling */
+ti_status_t ti_run_string_take(char *source_code)
+{
+    /* Phase 1: compile (a NULL source, a syntax error or out of memory comes back as the status) */
+    ti_status_t status = TI_OK;
+    ti_program_t *prog = ti_program_compile(source_code, NULL, &status);
+
+    /* The program keeps no pointer into the source (the compiler works on its own copy): release it now */
+    free(source_code);
+
+    if (!prog) {
+        return status;
     }
+
+    /* Phase 2: create the execution runtime (fails on out of memory or no free runtime slot) */
+    ti_handle_t handle = ti_create();
+    if (handle == TI_INVALID_HANDLE) {
+        ti_program_free(prog);
+        return TI_ERR_NO_MEMORY;
+    }
+
+    /* Phase 3: run (ti_execute also destroys the runtime), then free the program */
+    status = ti_execute(handle, prog);
+    ti_program_free(prog);
+    return status;
 }
 
 /**
