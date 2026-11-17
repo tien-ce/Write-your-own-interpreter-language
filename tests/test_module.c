@@ -10,7 +10,6 @@
  *   /tmp/test_module
  */
 #include "TienInterpreter.h"
-#include <setjmp.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,7 +21,6 @@ static int g_fails;
 static int g_destroyed;   /* Number of native objects destroyed */
 static int g_result;      /* Value reported by mark (-1 = not reported) */
 static char g_log[4096];  /* Everything the interpreter logged during one script */
-static jmp_buf g_env;
 
 /* -------------------- Host Callbacks -------------------- */
 
@@ -31,12 +29,6 @@ static void on_log(const char *fmt, va_list args)
 {
     size_t used = strlen(g_log);
     vsnprintf(g_log + used, sizeof(g_log) - used, fmt, args);
-}
-
-/* Fatal handler that never returns (build errors) */
-static void on_fatal(void)
-{
-    longjmp(g_env, 1);
 }
 
 /* -------------------- Test Natives -------------------- */
@@ -216,9 +208,7 @@ static void run(const char *name, const char *src, int want_result, int want_des
     g_destroyed = 0;
     g_result = -1;
     g_log[0] = '\0';
-    if (setjmp(g_env) == 0) {
-        ti_run_string(src);
-    }
+    (void)ti_run_string(src);
 
     bool log_ok = (want_log != NULL) ? strstr(g_log, want_log) != NULL : g_log[0] == '\0';
     if (g_result != want_result || g_destroyed != want_destroyed || !log_ok) {
@@ -281,20 +271,17 @@ static void test_scripts(void)
     run("module not imported", "tmod.add(1, 2);", -1, 0, "Undefined variable 'tmod'");
 }
 
-/* The "missing semicolon" case must log something: checked separately since run() takes NULL as empty */
+/* The "missing semicolon" case must log something and report a syntax error (run() takes NULL as empty) */
 static void test_build_error_logged(void)
 {
     g_log[0] = '\0';
-    if (setjmp(g_env) == 0) {
-        ti_run_string("import tmod");
-    }
+    CHECK(ti_run_string("import tmod") == TI_ERR_SYNTAX);
     CHECK(g_log[0] != '\0');
 }
 
 int main(void)
 {
     ti_register_log(on_log);
-    ti_register_fatal(on_fatal);
 
     test_c_api();
     test_scripts();
