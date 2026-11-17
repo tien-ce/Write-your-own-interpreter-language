@@ -326,13 +326,13 @@ void module_machine_register(void) { ti_register_module(&s_machine_module); }
 * Module natives raise errors like any native (4.4).
 
 ### 4.7 Script Modules: the Module Loader
-A script module is another `.ti` file imported by name (`import sensors.calibration;`). The library never touches a filesystem: the host registers one **module loader** callback that turns a module name into source text and a path. Without a loader, `import` finds only native modules (4.6). Script usage: [Types & Values](TYPES_AND_VALUES.md), section 2.8.
+A script module is another `.ti` file imported by name (`import ../lib/calibration;`). The library never touches a filesystem and gives the name no meaning: the host registers one **module loader** callback that turns a module name into source text and a path. Without a loader, `import` finds only native modules (4.6). Script usage: [Types & Values](TYPES_AND_VALUES.md), section 2.8.
 
 **Reference code:** `cli_module_loader` in `cli/main.c`; tests: `tests/test_script_module.c`; example project: `examples/ti/project_1/`.
 
 #### 4.7.1 API (`src/TienInterpreter.h`)
 ```c
-typedef ti_status_t (*ti_module_loader_t)(const char *main_path, const char *name,
+typedef ti_status_t (*ti_module_loader_t)(const char *importer_path, const char *name,
                                           char **text_out, char **path_out);
 void        ti_register_module_loader(ti_module_loader_t loader);   /* NULL: no script modules */
 
@@ -344,10 +344,10 @@ ti_status_t   ti_run_string_take(char *source_code, const char *path);
 
 | Parameter | Meaning |
 | :--- | :--- |
-| `main_path` | Path of the **main script**: the `path` given to `ti_compile` / `ti_run_string` / `ti_run_string_take` (`NULL` when the host passed none). The program keeps a copy, and `ti_execute` hands it to every import, also to an import inside a module. |
-| `name` | Module name as written after `import`, parts joined by `.`: `"config"`, `"sensors.calibration"`. |
+| `importer_path` | Path of the **file that has the `import`**: for the main script the `path` given to `ti_compile` / `ti_run_string` / `ti_run_string_take`, for a module the path this loader returned for it. `NULL` when the host gave none. Taken from the running namespace (`rt->ns->prog->path`). |
+| `name` | Module name exactly as written after `import`: `"config"`, `"sensors/temperature"`, `"../lib/calibration"`, `"./util/counter"`. Its syntax is fixed by the parser (`('./' \| '../')* ID ('/' ID)*`), its meaning is the loader's. |
 | `text_out` | Receives the source text, null-terminated, allocated with `ti_raw_malloc`. |
-| `path_out` | Receives the path of the module's file, allocated with `ti_raw_malloc`. **Required:** it is the module's identity (4.7.2). |
+| `path_out` | Receives the path of the module's file, allocated with `ti_raw_malloc`. **Required:** it is the module's identity (4.7.2), and it becomes `importer_path` for the imports written inside that module. |
 
 | Loader returns | Script sees |
 | :--- | :--- |
@@ -358,51 +358,65 @@ ti_status_t   ti_run_string_take(char *source_code, const char *path);
 
 **Ownership:** on `TI_OK` the library owns both buffers and frees them with `ti_raw_free` (after compiling, or at once when the module is already loaded). On any other status the library reads neither out parameter: free what you allocated and leave them alone.
 
-All three copy `path`; pass the path the loader should resolve names from. `ti_run_string_take` also takes the main script's source like a loader buffer (`ti_raw_malloc`, freed by the library); `ti_compile` and `ti_run_string` only read the source. The path belongs to the program, not the runtime: `ti_create` and `ti_execute` take none.
+All three compile functions copy `path`. `ti_run_string_take` also takes the main script's source like a loader buffer (`ti_raw_malloc`, freed by the library); `ti_compile` and `ti_run_string` only read the source. The path belongs to the program, not the runtime: `ti_create` and `ti_execute` take none.
 
 #### 4.7.2 The path is the module's identity
 The runtime keeps one instance per module file. On every import of a name that no native module has:
 1. The loader is called and returns text and path.
-2. If a module was already loaded from that path, it is reused (its top level does not run again) and the text is freed unread.
+2. If a module was already loaded from that path (`strcmp` with each module's `ns->prog->path`), it is reused (its top level does not run again) and the text is freed unread.
 3. Otherwise the text is compiled, the module gets its own namespace, and its top level runs once.
 
 So:
-* **Return the same string for the same file.** `project/sensors/cal.ti` and `project/./sensors/cal.ti` are two modules to the library. Build paths one way only.
-* Two names that lead to one file are one module (`==` is true, one set of variables).
+* **Return one spelling per file.** `project/sensors/cal.ti` and `project/lib/../sensors/cal.ti` are two modules to the library. A host with a real filesystem should return a canonical path (`realpath` on POSIX).
+* Then any two names that lead to one file are one module (`==` is true, one set of variables), whatever the host's naming scheme.
 * The loader runs (and reads the file) **every time an `import` statement runs**, also when the module is already loaded. Import at top level, not inside a function called in a loop.
 
-#### 4.7.3 Example: module names from the project root
-This loader is for hosts where **every module name is a path from the project root**, the directory of the main script. Each `.` is a directory level, and the same file has the same name everywhere: main and `sensors/temperature.ti` both write `import sensors.calibration;`.
+#### 4.7.3 Example: names relative to the importing file (the CLI)
+The CLI reads a module name as a path relative to the file that has the `import`, plus `.ti`: in `project/sensors/temperature.ti`, `import calibration;` is `project/sensors/calibration.ti` and `import ../lib/math;` is `project/lib/math.ti`. It returns `realpath`, so main's `import sensors/calibration;` and temperature's `import calibration;` are one module.
 
 ```c
-/* 'import sensors.calibration;' with main at project/main.ti -> project/sensors/calibration.ti */
-static ti_status_t cli_module_loader(const char *main_path, const char *name, char **text_out, char **path_out)
+static ti_status_t cli_module_loader(const char *importer_path, const char *name, char **text_out, char **path_out)
 {
-    /* Step 1: the root is the main script's directory, '/' included ("" when there is none) */
+    /* Step 1: the directory part of the importer's path, '/' included ("" when there is none) */
     size_t dir_len = 0;
-    const char *slash = (main_path != NULL) ? strrchr(main_path, '/') : NULL;
+    const char *slash = (importer_path != NULL) ? strrchr(importer_path, '/') : NULL;
     if (slash != NULL) {
-        dir_len = (size_t)(slash - main_path) + 1;
+        dir_len = (size_t)(slash - importer_path) + 1;
     }
 
-    /* Step 2: "<root><name with '.' as '/'>.ti" in a ti_raw_malloc buffer */
+    /* Step 2: "<dir><name>.ti" as written, e.g. "project/sensors/../lib/math.ti" */
     size_t name_len = strlen(name);
-    char *path = ti_raw_malloc(dir_len + name_len + sizeof(".ti"));
-    if (path == NULL) {
+    char *joined = malloc(dir_len + name_len + sizeof(".ti"));
+    if (joined == NULL) {
         return TI_ERR_NO_MEMORY;
     }
     if (dir_len > 0) {
-        memcpy(path, main_path, dir_len);
+        memcpy(joined, importer_path, dir_len);
     }
-    for (size_t i = 0; i < name_len; i++) {
-        path[dir_len + i] = (name[i] == '.') ? '/' : name[i];
-    }
-    memcpy(path + dir_len + name_len, ".ti", sizeof(".ti"));
+    memcpy(joined + dir_len, name, name_len);
+    memcpy(joined + dir_len + name_len, ".ti", sizeof(".ti"));
 
-    /* Step 3: read the file into a ti_raw_malloc buffer; on failure hand nothing over */
+    /* Step 3: one spelling per file (fails with ENOENT when the file does not exist) */
+    char *canonical = realpath(joined, NULL);
+    int error = errno;
+    free(joined);
+    if (canonical == NULL) {
+        return (error == ENOENT || error == ENOTDIR) ? TI_ERR_UNDEFINED : TI_ERR_RUNTIME;
+    }
+
+    /* Step 4: the library frees the path with ti_raw_free: copy it into a ti_raw_malloc buffer */
+    char *path = ti_raw_malloc(strlen(canonical) + 1);
+    if (path == NULL) {
+        free(canonical);
+        return TI_ERR_NO_MEMORY;
+    }
+    strcpy(path, canonical);
+    free(canonical);
+
+    /* Step 5: read the file into a ti_raw_malloc buffer; on failure hand nothing over */
     char *text = read_string_from_file(path);
     if (text == NULL) {
-        int error = errno;
+        error = errno;
         ti_raw_free(path);
         return (error == ENOENT) ? TI_ERR_UNDEFINED : (error == ENOMEM) ? TI_ERR_NO_MEMORY : TI_ERR_RUNTIME;
     }
@@ -415,19 +429,24 @@ static ti_status_t cli_module_loader(const char *main_path, const char *name, ch
 int main(int argc, char *argv[])
 {
     ti_register_module_loader(cli_module_loader);
-    ti_run_string_take(read_string_from_file(argv[1]), argv[1]);   /* argv[1] is main_path */
+    ti_run_string_take(read_string_from_file(argv[1]), argv[1]);   /* argv[1]: importer_path of main's imports */
 }
 ```
 
-**Hosts with one fixed root** (for example an ESP32 with modules on SPIFFS, where there is no working directory) use the same scheme with an absolute root instead of the main script's directory: ignore `main_path` and build `"/spiffs/" + name + ".ti"`. The returned path is absolute, so it is the same for every import of that file.
+#### 4.7.4 Other naming schemes
+The loader decides what a name means; the library only needs one path per file back. Examples:
 
-#### 4.7.4 Names relative to the importing file
-The loader above resolves every name from one root. A host that wants each file to import **relative to its own directory** (`sensors/temperature.ti` writing `import calibration;` for `sensors/calibration.ti`) cannot do it with this callback: it receives the main script's path, never the path of the file that runs the import. Such a host needs a **different callback** (one that also receives the importing file's path) and a **different import form**, because the same name would then mean different files in different directories (Python marks these with a leading dot: `from . import calibration`). This library version provides neither: use names from the project root.
+| Host | Loader |
+| :--- | :--- |
+| Names from one fixed root (an ESP32 with modules on SPIFFS, no working directory) | Ignore `importer_path`; build `"/spiffs/" + name + ".ti"`. The path is absolute, so it is the same for every import of that file. |
+| Names from the main script's directory (a project root) | Remember the path you passed to `ti_compile` / `ti_run_string*` and resolve from its directory; ignore `importer_path`. |
+| A search list (like Python's `sys.path`) | Try each directory in order; return the first file found. |
+| Modules that are not files (built into flash, fetched over a link) | Return any unique string as the path, for example `"flash:sensors/temperature"`. It is shown in error messages. |
 
 #### 4.7.5 Rules
 * Register the loader at startup, before any runtime is created: it is not locked.
 * The loader runs on the script's thread while the script holds its runtime's execution lock. Keep it short, and do not call TI API functions from it.
-* Allocate both buffers with `ti_raw_malloc` (never `malloc`, a literal or a flash string).
+* Allocate both returned buffers with `ti_raw_malloc` (never `malloc`, a literal or a flash string).
 
 ---
 

@@ -51,7 +51,7 @@ bool is_active = true;
   handle u = machine.UART(1, 9600, machine.SERIAL_8N1);  // module function, module constant
   u.write("hello");
 
-  import sensors.temperature;                            // CLI: sensors/temperature.ti next to main
+  import sensors/temperature;                            // CLI: sensors/temperature.ti next to this file
   int t = temperature.read(21);                          // runs in the module, with its own variables
   ```
   Details: [Types & Values](TYPES_AND_VALUES.md), section 2.8; writing a native module: [Functions & Native C Extension API](FUNCTIONS_AND_NATIVE_API.md), section 4.6; writing a module loader: section 4.7.

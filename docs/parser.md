@@ -55,7 +55,7 @@ The parser uses an **LL(1)** recursive descent strategy with selective **LL(2)**
   }
   ```
 - **Error Behavior:** Any syntax deviation logs the error with its file and line (`at <path>:<line>`, or `at line <line>` when the source has no path), then the offending line from `parser->lexer->line`, then calls `lexer_abort()`. It does not return: it jumps back to `ti_program_compile()`, which frees the whole program and returns `NULL` with `TI_ERR_SYNTAX`. The host program keeps running.
-- **Import names:** `import` uses `parser_eat` for every part of a module name (`ID (. ID)*`), so any other token there is reported by this same message.
+- **Import names:** `import` reads a module name as `('./' | '../')* ID ('/' ID)*` with `parser_eat` for every token (`TOKEN_DOT`, `TOKEN_SLASH`, `TOKEN_ID`), so any other token there is reported by this same message. The tokens are joined back into one string (`"../lib/a"`); without `as`, the alias is the last `ID`.
 - **Memory Invariant:** Frees both the eaten `token_t` struct and any associated heap-allocated `value` payload (`tracked_free(old_token->value)`), preventing memory accumulation during parsing.
 
 ### `parser_peek(parser_t *parser)` (Tricky / Hard Logic)

@@ -201,31 +201,31 @@ When both exist for a name, the native module wins.
 ```c
 import machine;                        // native module, variable 'machine'
 import machine as m;                   // same module under another name
-import config;                         // script module config.ti, variable 'config'
-import sensors.temperature;            // sensors/temperature.ti, variable 'temperature' (the last part)
-import util.counter as c;              // util/counter.ti, variable 'c'
+import config;                         // script module, variable 'config'
+import sensors/temperature;            // variable 'temperature' (the last part)
+import ../shared/math as m2;           // variable 'm2'
 ```
-* The module name is identifiers joined by `.`. Any other token is a syntax error: no strings (`import "lib/a"`), no `/`, no empty part (`import lib.;`, `import lib..a;`), no number (`import lib.2;`).
-* Without `as`, the variable is named after the **last** part (`sensors.temperature` binds `temperature`).
-* What a name means as a file is the host's choice (the loader, 2.8.3). In the CLI, each `.` is a directory level and names are relative to the main script's directory.
+* The module name is a path written without quotes and without the file extension: `('./' | '../')* name ('/' name)*`. `./` and `../` may only come first; every `name` is an identifier.
+* Any other token is a syntax error: no strings (`import "lib/a"`), no `.` inside a name (`import lib.a;`), no empty part (`import lib/;`), no `...` or `..` without `/`, no `..` in the middle (`import lib/../a;`), no number (`import lib/2;`). Spaces between the tokens are allowed by the lexer (`lib / a` is `lib/a`); `//` starts a comment.
+* Without `as`, the variable is named after the **last** part (`../shared/math` binds `math`).
+* The library gives the name no meaning: the host's loader (2.8.3) turns it into a file. The CLI reads it as a path relative to the **file that has the `import`** (main or a module), plus `.ti`.
 
 #### 2.8.2 Using a module
 ```c
 import machine;
 handle u = machine.UART(1, 9600, machine.SERIAL_8N1);   // native function, native constant
 
-import util.counter as c;
+import util/counter as c;
 c.increase();                          // runs inside util/counter.ti: it changes that file's 'count'
 int n = c.count;                       // reads a top-level variable of the module: a copy
 ```
-Full files: [`examples/ti/module_machine.ti`](../../examples/ti/module_machine.ti) (native), [`examples/ti/project_1/main.ti`](../../examples/ti/project_1/main.ti) (script modules).
+Full example: [`examples/ti/project_1/main.ti`](../../examples/ti/project_1/main.ti) (script modules); a native module: `cli/module/module_machine.c`.
 
 Rules:
 * **Scope:** `import` declares a variable in the current scope. A top-level import is visible inside functions; an import inside a function or block is local to it. Importing the same name twice in one scope is an error.
 * **Functions:** `m.f(args)` has no self; count and types are checked like any call. A script module's function runs in its own module: it sees the module's variables and calls the module's other functions, never main's (main and a module may both define `count` or `helper()` without clashing).
 * **Constants and variables:** `m.NAME` gives a copy. Changing the copy never changes the module. A member cannot be assigned from outside: `machine.SERIAL_8N1 = 5;` and `c.count = 5;` raise `TI_ERR_READ_ONLY`. A script module changes its own variables through its functions (`c.increase()`).
-* **One module per runtime:** the first import loads it; every later import, anywhere in the main script or in another module, gives the **same** module (`==` is true). A script module's top level runs once, on its first import.
-* **A module is its file:** two names that the loader maps to one file are one module. In the CLI, `sensors/temperature.ti` writes `import sensors.calibration;` and main writes `import sensors.calibration as ca;`: both get the same module, with one set of variables.
+* **One module per file per runtime:** the first import of a file loads it; every later import of that file, anywhere in the main script or in another module and under any name, gives the **same** module (`==` is true). A script module's top level runs once, on its first import. Identity is the path the loader returns: in the CLI, `sensors/temperature.ti` writes `import calibration;` and main writes `import sensors/calibration as ca;`, and both get the same module with one set of variables.
 * **Modules can import modules.** A circular import (`a` imports `b`, `b` imports `a`) does not loop: the second import gets the module that is still running its top level, so variables defined after that point are not there yet.
 * **What a script can do with a module:** call its functions, read its members, store it in a variable or a dict, `==` / `!=` (same module). There is no `module` type keyword, so it cannot be declared as a typed variable (`int x = machine;` is a type error). It has no text form: `to_string(machine)` raises `TI_ERR_TYPE_MISMATCH`, and it has no JSON form.
 
@@ -233,16 +233,16 @@ Errors:
 
 | Error | Example message |
 | :--- | :--- |
-| No module with that name | `Unknown module 'util.missing'` |
+| No module with that name | `Unknown module 'util/missing'` |
 | The loader failed for another reason | `Cannot load module 'x': <reason>` |
-| The module's file does not compile | `Cannot import module 'lib.count': syntax error` (after the parser's own message, which names the module's file and line) |
+| The module's file does not compile | `Cannot import module 'lib/count': syntax error` (after the parser's own message, which names the module's file and line) |
 | An error in the module's top level | That error, with the module's file and line |
-| Unknown member | `Module machine has no function 'x'`, `Module machine has no constant 'x'`, `Module util.counter has no variable 'x'` |
+| Unknown member | `Module machine has no function 'x'`, `Module machine has no constant 'x'`, `Module util/counter has no variable 'x'` |
 
-A runtime error names the file whose code raised it: `[Runtime Error] Division by zero error at project/sensors/calibration.ti:4` (only the line when the script has no path).
+A runtime error names the file whose code raised it: `[Runtime Error] Division by zero error at /home/me/project/sensors/calibration.ti:4` (the CLI's loader returns absolute paths; only the line when the script has no path).
 
 #### 2.8.3 Where script modules come from
-The library does not read files. The host registers a **module loader** callback that turns a module name into source text and a path; without one, only native modules exist. The host also passes the main script's path when it compiles it (`ti_compile(source, path)`, `ti_run_string(source, path)` or `ti_run_string_take(source, path)`). Writing a loader: [Functions & Native C Extension API](FUNCTIONS_AND_NATIVE_API.md), section 4.7.
+The library does not read files. The host registers a **module loader** callback that turns a module name into source text and a path; without one, only native modules exist. The loader gets the path of the file that has the `import`; for the main script that is the path the host gave when compiling it (`ti_compile(source, path)`, `ti_run_string(source, path)` or `ti_run_string_take(source, path)`). Writing a loader: [Functions & Native C Extension API](FUNCTIONS_AND_NATIVE_API.md), section 4.7.
 
 Writing a native module in C: [Functions & Native C Extension API](FUNCTIONS_AND_NATIVE_API.md), section 4.6.
 
