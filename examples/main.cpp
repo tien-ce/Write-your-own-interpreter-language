@@ -111,7 +111,7 @@ void setup()
         "print(\"Blink loop finished!\\n\");\n";
 
     // 4. Run the script
-    ti_run_string(script);
+    ti_run_string(script, NULL);
 }
 
 void loop()
