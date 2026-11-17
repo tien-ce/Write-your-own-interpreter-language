@@ -48,9 +48,9 @@ ti_runtime_eval_binary.c  ti_runtime_eval_control.c  ti_runtime_eval_func.c  ti_
 
 ### 2.2. Complex Operator Functions
 
-#### `binary_add(value_t *left, value_t *right, int line)`
+#### `binary_add(ti_runtime_t *rt, value_t *left, value_t *right, int line)`
 - **Polymorphism:** Supports integers, floats, and string concatenation.
-- **Diagnostics:** Emits `[Runtime Error] ... at line %d` before calling `ti_fatal()` on invalid operands.
+- **Diagnostics:** Raises `TI_ERR_TYPE_MISMATCH` with `ti_raise(rt, ..., line, ...)` on invalid operands and returns `NULL`; the caller frees both operands.
 - **String Concatenation Logic:**
   ```c
   int length = strlen(s_left) + strlen(s_right) + 1;
@@ -60,10 +60,10 @@ ti_runtime_eval_binary.c  ti_runtime_eval_control.c  ti_runtime_eval_func.c  ti_
   ```
   Allocates exact memory for the concatenated string on the tracked heap.
 
-#### `binary_div(value_t *left, value_t *right, int line)` (Division by Zero Prevention)
+#### `binary_div(ti_runtime_t *rt, value_t *left, value_t *right, int line)` (Division by Zero Prevention)
 - **Zero Divisor Check:**
-  - Integer: `if (right->int_val == 0)` &rarr; logs `[Runtime Error] Division by zero error at line %d` and halts via `ti_fatal()`.
-  - Float: `if (right->float_val == 0.0f)` &rarr; logs `[Runtime Error] Division by zero error at line %d` and halts via `ti_fatal()`.
+  - Integer: `if (right->int_val == 0)` &rarr; raises `TI_ERR_DIV_ZERO` (`Division by zero error`) and returns `NULL`.
+  - Float: `if (right->float_val == 0.0f)` &rarr; raises `TI_ERR_DIV_ZERO` (`Division by zero error`) and returns `NULL`.
   Guarantees that script errors never trigger an unhandled CPU `SIGFPE` exception.
 
 #### `binary_logical_and` & `binary_logical_or`
@@ -146,13 +146,13 @@ ti_runtime_eval_binary.c  ti_runtime_eval_control.c  ti_runtime_eval_func.c  ti_
 
 ## 5. Functions & Function Registry (`src/ti_runtime_eval_func.c`, `src/include/ti_type_func.h`)
 
-### 5.1. Host Registry & Instance-Isolated User Function Storage
+### 5.1. Host Registry & Namespace Function Storage
 Function management in `src/ti_runtime_eval_func.c` maintains strict separation between host native C bindings and user script functions:
 
-- **Built-in Registry (`s_builtin_functions`):** Static array (`static function_t *s_builtin_functions`) storing registered host C functions (`native_fn_t`), populated during startup via `register_builtin_function()`.
-- **Instance-Isolated User Functions (`rt->user_functions`):** Dynamic array residing directly inside the owning `ti_runtime_t` instance, dynamically resized via `tracked_realloc(&rt->alloc_list, ...)` as functions are declared during script execution.
-- **Global Context Root (`rt->global_context`):** Stored directly inside `ti_runtime_t`, eliminating static or thread-local global pointers.
-- **Instance Teardown:** Every user function and its `params` array live on `rt->alloc_list`, so `tracked_free_all(&rt->alloc_list)` in `ti_runtime_destroy(rt)` releases them. `function_free` / `params_free` exist but nothing calls them (no part of a function is outside the alloc list).
+- **Built-in Registry (`s_builtin_functions`):** Hash map storing registered host C functions (`native_fn_t`), populated during startup via `register_builtin_function()`.
+- **Namespaces (`ti_namespace_t`, `src/include/ti_runtime_namespace.h`):** Every AST that runs has its own namespace: `globals` (its top-level variables), `functions` (its `FUNC_TI` functions, an array on `rt->alloc_list` resized by `tracked_realloc`) and `prog` (the program it runs). The main script uses `rt->main_ns`; each script module has its own namespace, created on its first `import`.
+- **Running namespace (`rt->ns`):** The namespace whose code is being visited. Plain function names (definitions and calls) resolve in `rt->ns`; plain variable names resolve through the `ctx` chain, whose root is that namespace's `globals`. Only `ti_namespace_run` (a top level) and `run_ti_function` (a call) switch `rt->ns`, and both restore it on every path.
+- **Teardown:** `ti_runtime_destroy` frees each script module's namespace (`ti_namespace_free`: variables, globals scope, each function's `params`, the function array) and its program, then the main globals, then everything left on `rt->alloc_list` with `tracked_free_all`.
 
 ### 5.2. Parameter & Function Representation
 ```c
@@ -170,6 +170,7 @@ typedef struct FUNCTION_STRUCT {
     val_type_t  return_element_type; /* Element type when return_type is VAL_LIST */
     const param_t *params;     /* Read-only through this pointer */
     int         param_count;   /* Number of declared parameters (-1 for variadic builtins) */
+    ti_namespace_t *ns;        /* FUNC_TI: namespace it was defined in (its home); NULL for builtins */
     union {
         native_fn_t native_fn; /* Builtin native C callback */
         ast_t      *def;       /* Interpreter TI AST function definition */
@@ -182,11 +183,11 @@ typedef struct FUNCTION_STRUCT {
 | Function kind | `params` points to | `params[i].name` | Freed by |
 | :--- | :--- | :--- | :--- |
 | `FUNC_BUILTIN` (registered, method, module function) | the native's `static const param_t` table (flash on ESP32) | string literal | never |
-| `FUNC_TI` | array built by `eval_function_definition` on `rt->alloc_list` | borrowed from the `AST_PARAM` node | `tracked_free_all` at runtime destroy |
+| `FUNC_TI` | array built by `eval_function_definition` on `rt->alloc_list` | borrowed from the `AST_PARAM` node | `ti_namespace_free` (module) or `tracked_free_all` (main) at runtime destroy |
 
 `params` is `const param_t *` because a builtin's table may sit in read-only memory. Only `function_free` casts `const` away, and only for `FUNC_TI`, whose array is writable heap memory.
 
-A `FUNC_TI` borrows `name`, `def` and the parameter names from the AST. This is safe because the program (AST) outlives the runtime: `ti_run_string` destroys the runtime before freeing the program, and hosts using `ti_compile` / `ti_execute` must keep the program alive until `ti_destroy`.
+A `FUNC_TI` borrows `name`, `def` and the parameter names from the AST. This is safe because every program outlives the functions it defines: `ti_execute` destroys the runtime before the host (or `ti_run_string*`) frees the main program, and a script module's program is freed by `ti_runtime_destroy` only after its namespace.
 
 - `register_builtin_function`: Registers native C callbacks (`FUNC_BUILTIN`) with full signature metadata into the builtin hashmap:
   ```c
@@ -195,26 +196,29 @@ A `FUNC_TI` borrows `name`, `def` and the parameter names from the AST. This is 
   Sets `params = NULL` and `param_count = -1` for fully variadic C functions (such as `print`: neither count nor types checked), or explicit `params` and `param_count` for typed native functions (e.g. `delay`, `relay_set_state`). A parameter typed `VAL_ANY` keeps the count enforced but accepts any argument type (e.g. `to_string(any)`). Registration fails if `param_count > 0` and `params` is `NULL`. The table is borrowed, never copied.
 
 ### 5.3. Lookup Helpers
-- `builtin_find_function(const char *name)`: Scans `s_builtin_functions` by identifier.
-- `user_find_function(ti_runtime_t *rt, const char *name)`: Scans `rt->user_functions` by identifier.
+- `builtin_find_function(const char *name)`: Looks up the builtin hash map.
+- `user_find_function(ti_runtime_t *rt, const char *name)`: Scans `rt->ns->functions`, the running namespace only (main and each module have their own function names).
+- `ti_namespace_find_function(ns, name)` / `ti_namespace_find_variable(ns, name)`: Look up a given namespace; used for `module.f()` and `module.x` on a script module.
 
 ### 5.4. `eval_function_definition`
 - Takes `ti_runtime_t *rt`, `context_t *ctx`, and `AST_FUNCTION_DEFINITION` node.
-- **Redefinition Check:** Verifies that `name` does not collide with either built-in functions (`builtin_find_function`) or previously defined user functions in `rt` (`user_find_function`). Emits fatal error if a collision occurs.
-- **Allocation:** Expands `rt->user_functions` using `tracked_realloc(&rt->alloc_list, ...)`.
+- **Redefinition Check:** If `name` is a builtin or already defined in the running namespace, raises `TI_ERR_RUNTIME` (`Redefinition of function '%s'`).
+- **Allocation:** Expands `rt->ns->functions` using `tracked_realloc(&rt->alloc_list, ...)` (raises `TI_ERR_NO_MEMORY` on failure). The array may move, so a `function_t *` into it is valid only until the next definition in that namespace.
 - **Parameter Table:** If `param_count > 0`, allocates the parameter array via `tracked_calloc(&rt->alloc_list, ...)` (raises `TI_ERR_NO_MEMORY` on failure), copies each type and borrows each name from its `AST_PARAM` node.
-- **Registration:** Populates `name`, `type = FUNC_TI`, `return_type`, `params`, `param_count`, and `def = node`, then increments `rt->user_function_count`. Always returns `NULL`.
+- **Registration:** Populates `name`, `type = FUNC_TI`, `return_type`, `return_element_type`, `params`, `param_count`, `def = node` and `ns = rt->ns` (its home), then increments `rt->ns->function_count`. Returns `TI_VAL_OK`.
 
 ### 5.5. `eval_function_call`
-1. Evaluates all argument expressions sequentially in the caller's context via `visitor_visit(rt, ctx, args[i])`.
-2. Collects evaluated argument values into `value_t **argv` allocated via `tracked_calloc(&rt->alloc_list, ...)`.
-3. **Symbol Resolution Hierarchy:**
-   - First queries user-defined script functions via `user_find_function(rt, func_name)`.
-   - If not found, falls back to native functions via `builtin_find_function(func_name)`.
-   - If neither matches, logs `[Runtime Error] Call to undefined function '%s' at line %d`, halts via `ti_fatal()`, and frees `argv`.
-4. Delegates call execution to `run_function(rt, ctx, func, argv, argc, node)`.
-5. Cleans up evaluated arguments via `val_free(&rt->alloc_list, argv[i])` and deallocates `argv` via `tracked_free(&rt->alloc_list, argv)`.
-6. Returns the resulting `value_t *`.
+1. Evaluates all argument expressions sequentially in the caller's context via `visitor_visit(rt, ctx, args[i])`, into `value_t **argv` allocated via `tracked_calloc(&rt->alloc_list, ...)`. A `NULL` argument means it already raised: stop.
+2. **Symbol Resolution Hierarchy:**
+   - First the running namespace's script functions via `user_find_function(rt, func_name)`.
+   - Then native functions via `builtin_find_function(func_name)`.
+   - Then a variable holding a function value (`func f = g;`), resolved by its stored name.
+   - If nothing matches, raises `TI_ERR_UNDEFINED` (`Call to undefined function '%s'`).
+3. Delegates call execution to `run_function(rt, ctx, func, argv, argc, node)`.
+4. Single cleanup point: frees every evaluated argument with `val_free` and `argv` with `tracked_free(&rt->alloc_list, argv)`.
+5. Returns the resulting `value_t *` (or `NULL` after an error).
+
+`eval_method_call` (`obj.f(args)`) resolves `f` from the receiver instead: a handle type's methods (receiver passed as self), a native module's table, or a script module's namespace (`ti_namespace_find_function`). Every kind ends in the same single `run_function` call.
 
 ### 5.6. `run_function` (Gatekeeper: Type & Count Validation)
 - Signature:
@@ -222,10 +226,10 @@ A `FUNC_TI` borrows `name`, `def` and the parameter names from the AST. This is 
   value_t *run_function(ti_runtime_t *rt, context_t *ctx, function_t *func, value_t **argv, int argc, ast_t *node);
   ```
 - **Execution Flow:**
-  1. **Count Check:** If `func->param_count >= 0`, verifies `argc == func->param_count`. Emits fatal error if mismatched.
-  2. **Type Check:** Loops through `0` to `func->param_count - 1`. A parameter whose `type` is `VAL_ANY` is skipped (any argument type is accepted); otherwise asserts `argv[i]->type == func->params[i].type`. Raises `TI_ERR_TYPE_MISMATCH` with parameter name, expected type, and actual type at `node->line` if mismatched. Only native signatures can contain `VAL_ANY` (scripts cannot declare it), so this skip never affects script functions.
+  1. **Count Check:** If `func->param_count >= 0` and `argc != func->param_count`, raises `TI_ERR_INVALID_ARG` (`Function '%s' expects %d argument(s), but received %d`).
+  2. **Type Check:** Loops through `0` to `func->param_count - 1`. A parameter whose `type` is `VAL_ANY` is skipped (any argument type is accepted); otherwise asserts `argv[i]->type == func->params[i].type`, the list element type and the handle type. Raises `TI_ERR_TYPE_MISMATCH` with parameter name, expected type, and actual type at `node->line` if mismatched. Only native signatures can contain `VAL_ANY` (scripts cannot declare it), so this skip never affects script functions.
   3. **Dispatch:**
-     - `FUNC_BUILTIN`: Calls `func->native_fn(argv, argc)`.
+     - `FUNC_BUILTIN`: Calls `func->native_fn(rt->handle, argv, argc)`. A native that raised without a line gets the call's line.
      - `FUNC_TI`: Calls `run_ti_function(rt, ctx, func, argv, argc, node)`.
 
 ### 5.7. `run_ti_function` (User-Defined Function Call Execution)
@@ -234,29 +238,21 @@ A `FUNC_TI` borrows `name`, `def` and the parameter names from the AST. This is 
   value_t *run_ti_function(ti_runtime_t *rt, context_t *ctx, function_t *func, value_t **argv, int argc, ast_t *node);
   ```
 - **Step-by-Step Execution Mechanics:**
-  1. **Recursion Depth Limit Check:**
-     ```c
-     if (rt != NULL && rt->call_depth >= rt->max_call_depth) {
-         ti_log("[Runtime Error]: Call stack overflow / maximum call depth exceeded (%d) at line %d\n",
-                rt->max_call_depth, node ? node->line : 0);
-         ti_fatal();
-         return NULL;
-     }
-     ```
-  2. **Call Depth Tracking:** Increments `rt->call_depth++` upon entry and decrements `rt->call_depth--` prior to function return.
-  3. **Stack Frame Creation:** Allocates an isolated execution scope `context_t *func_ctx = context_init(&rt->alloc_list)`.
-  4. **Lexical Binding:** Binds `func_ctx->parent = rt ? rt->global_context : NULL` to ensure functions resolve symbols against the global scope rather than dynamically inheriting local variables from the caller frame.
-  5. **Argument-to-Parameter Binding:** Iterates from `0` to `argc - 1`, creating deep clones of arguments via `val_copy(&rt->alloc_list, argv[i])` and registering them under each parameter's identifier via `context_add_variable(&rt->alloc_list, func_ctx, ...)`.
-  6. **Compound Body Execution:** Invokes `visitor_visit(rt, func_ctx, body)` on `func->def->value.function_definition.body`.
-  7. **Control Flow Signal Validation:**
-     - Inspects `func_ctx->flow_state`. If unhandled `FLOW_BREAK` or `FLOW_CONTINUE` flags remain at the function boundary, reports a runtime error (`'break'/'continue' statement not within a loop inside function '%s' at line %d`) and terminates execution via `ti_fatal()`.
-  8. **Return Value Extraction & Consumption:**
+  1. **Unwind Check:** Returns `NULL` at once if the runtime is cancelled or already in error.
+  2. **Recursion Depth Limit Check:** If `rt->call_depth >= rt->max_call_depth`, raises `TI_ERR_LIMIT_EXCEEDED` (`Maximum recursion depth exceeded (%d)`).
+  3. **Call Depth Tracking:** Increments `rt->call_depth` upon entry; `function_frame_release` restores it on every exit path.
+  4. **Stack Frame Creation:** Allocates an isolated execution scope `context_t *func_ctx = context_init(&rt->alloc_list)`.
+  5. **Lexical Binding:** Binds `func_ctx->parent = func->ns->globals`, the globals of the namespace the function was **defined** in, never the caller's frame. A module function therefore sees its module's variables even when main calls it.
+  6. **Argument-to-Parameter Binding:** Iterates from `0` to `argc - 1`, creating deep clones of arguments via `val_copy(argv[i])` and registering them under each parameter's identifier via `context_add_variable(&rt->alloc_list, func_ctx, ...)`.
+  7. **Namespace Switch & Body Execution:** Saves `rt->ns`, sets `rt->ns = func->ns` (so calls and definitions in the body resolve in its home namespace), and invokes `visitor_visit(rt, func_ctx, body)` on `func->def->value.function_definition.body`.
+  8. **Control Flow Signal Validation:** If an unhandled `FLOW_BREAK` or `FLOW_CONTINUE` remains at the function boundary, raises `TI_ERR_RUNTIME` (`'break'/'continue' statement not within a loop inside function '%s'`).
+  9. **Return Value Extraction & Consumption:**
      - If `func_ctx->flow_state == FLOW_RETURN`: extracts `func_ctx->return_value`, transfers ownership by setting `func_ctx->return_value = NULL`, and clears `func_ctx->flow_state = FLOW_NORMAL`.
      - If execution reached the end of the body without an explicit `return`:
-       - If `func->return_type != VAL_VOID`: reports a runtime error (`Non-void function '%s' reached end of body without returning a value at line %d`) and halts via `ti_fatal()`.
-       - If `func->return_type == VAL_VOID`: generates a default void return payload via `val_new_void(&rt->alloc_list)`.
-  9. **Return Type Enforcement:** Verifies `ret_val->type == func->return_type`. If mismatched, reports a runtime type error and halts via `ti_fatal()`.
-  10. **Stack Frame Deallocation:** Reclaims the function's call frame via `context_free(&rt->alloc_list, func_ctx)` and returns `ret_val`.
+       - If `func->return_type != VAL_VOID`: raises `TI_ERR_RUNTIME` (`Non-void function '%s' reached end of body without returning a value`).
+       - If `func->return_type == VAL_VOID`: generates a default void return payload via `val_new_void()`.
+  10. **Return Type Enforcement:** Verifies `ret_val->type == func->return_type` (and the list element type). If mismatched, raises `TI_ERR_TYPE_MISMATCH`.
+  11. **Single Cleanup Point:** Restores the caller's `rt->ns`, frees an unreturned value, and releases the frame via `function_frame_release(rt, func_ctx)`. Returns the result, or `NULL` after an error.
 
 ---
 

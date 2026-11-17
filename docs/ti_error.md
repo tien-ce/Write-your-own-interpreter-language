@@ -6,7 +6,7 @@
 
 ## 1. Architectural Overview & Design Principles
 
-The `TienInterpreter` utilizes a **structured error propagation model** with deterministic stack unwinding. Instead of terminating execution immediately on error via `ti_fatal()` / `exit()` within expression evaluators, runtime errors are captured, recorded on the runtime instance, and propagated up the Abstract Syntax Tree (AST) call stack.
+The `TienInterpreter` utilizes a **structured error propagation model** with deterministic stack unwinding. No error ever terminates the host program: runtime errors are captured, recorded on the runtime instance, and propagated up the Abstract Syntax Tree (AST) call stack, and every error finally reaches the host as a `ti_status_t` return value (section 4).
 
 ### Core Principles:
 1. **First-Error Latch**: Only the first runtime error that occurs is recorded into `rt->error`. Subsequent cascading failures or unhandled expressions during stack unwinding are ignored, preserving the root-cause diagnostics.
@@ -15,10 +15,10 @@ The `TienInterpreter` utilizes a **structured error propagation model** with det
    - In Statement Evaluators: A non-NULL sentinel (`TI_VAL_OK`) indicates successful execution. `NULL` strictly indicates an error.
 3. **Decoupled Data Layer**:
    - Data structures (`context_t`, `list_t`, `dict_t`) remain pure containers that return status codes (`ti_status_t`) or lookup pointers. They do not hold runtime context or invoke `ti_raise`.
-4. **Isolated Fatal Boundary**:
-   - `ti_fatal()` is strictly reserved for:
-     - Lexer & Parser (frontend AST generation before runtime initialization).
-     - Script boundary (`ti_execute()`): invoked only after the entire call stack has safely unwound and reclaimed 100% of temporary allocations.
+4. **Status at the Boundary, Never a Fatal Handler**:
+   - There is no fatal callback (`ti_register_fatal` / `ti_fatal` were removed in v3). The host decides what an error means: an ESP32 task may log it and run the next script, a CLI may exit.
+   - Build errors (lexer, parser) are logged and returned by the compiler as `TI_ERR_SYNTAX`.
+   - Runtime errors are logged by `ti_runtime_execute` after the whole call stack has unwound and returned as their kind; `ti_execute` then destroys the runtime as on success.
 
 ---
 
@@ -36,13 +36,18 @@ typedef enum {
     TI_ERR_QUEUE_FULL,          // Pending event queue reached its capacity
     TI_ERR_INTERRUPTED,         // Script execution was stopped/cancelled
     TI_ERR_TYPE_MISMATCH,       // Value type does not match expected parameter/operand type
-    TI_ERR_INDEX_OUT_OF_RANGE,  // List index outside [0, count)
+    TI_ERR_INDEX_OUT_OF_RANGE,  // List/bytes index outside [0, count)
+    TI_ERR_VALUE_OUT_OF_RANGE,  // Value does not fit the target (e.g. a byte outside 0..255)
+    TI_ERR_INVALID_VALUE,       // Right type but unusable content (e.g. to_int("abc"))
     TI_ERR_KEY_NOT_FOUND,       // Dictionary key does not exist
     TI_ERR_LIMIT_EXCEEDED,      // Configured limit reached (call recursion depth, max items)
-    TI_ERR_UNDEFINED,           // Variable or function name is not defined in active scope
+    TI_ERR_UNDEFINED,           // Variable, function or module name is not defined
     TI_ERR_DIV_ZERO,            // Division or modulo by zero
     TI_ERR_INTERNAL,            // Interpreter invariant violated (unhandled AST node/operator)
     TI_ERR_RUNTIME,             // Generic script runtime error
+    TI_ERR_TIMEOUT,             // Timed out waiting for the runtime execution lock
+    TI_ERR_READ_ONLY,           // Target can be read but not written (e.g. a module member)
+    TI_ERR_SYNTAX,              // Source text does not compile (the build error is already logged)
 } ti_status_t;
 ```
 
@@ -142,15 +147,16 @@ void ti_raise_error(ti_handle_t handle, ti_status_t kind, const char *fmt, ...);
 
 ---
 
-## 4. Migration Plan & Status
+## 4. Where an Error Ends
 
-| Step | Scope | Description | Status |
-| :--- | :--- | :--- | :--- |
-| **Step 1** | **Enum & Utilities** | Add `TI_ERR_UNDEFINED`, `TI_ERR_DIV_ZERO`, `TI_ERR_INTERNAL` to `ti_status_t` and implement `ti_err_to_str`. | **Completed** |
-| **Step 2** | `eval_variable.c` | Add `rt` to `eval_identifier`, implement `eval_lookup_variable(rt, ctx, name, line)` helper. | **Completed** |
-| **Step 3** | `eval_func.c` | Migrate `run_function`, `run_ti_function`, `eval_function_call` from `ti_log`+`ti_fatal` to `ti_raise`. | **Completed** |
-| **Step 4** | `eval_control.c`, `eval_literal.c`, `ti_runtime_visitor.c` | Migrate type assertions and default visitor branches to `ti_raise`. | Pending |
-| **Step 5** | `eval_binary.c` | Pass `rt` down to static binary operators (`binary_add`, etc.) and call `ti_raise` on mismatch/zero division. | Pending |
-| **Step 6** | `ti_runtime_context.c` | Refactor pure context lookups to return status codes. | Pending |
-| **Step 7** | Audit | Ensure `ti_fatal()` exists only at script boundary (`ti_execute()`) and frontend lexer/parser. | Pending |
-| **Step 8** | Verification | Run test suite with AddressSanitizer (ASan) to verify zero leaks on all error paths. | Pending |
+| Error | Logged by | Returned to the host by |
+| :--- | :--- | :--- |
+| Build error (lexer, parser) | The lexer or parser (`[Lexer Error]` / `[Parser Error] ... at <path>:<line>`, then the offending line). `lexer_abort` jumps back to `ti_program_compile`, which frees the whole program. | `ti_program_compile` (`TI_ERR_SYNTAX`); `ti_compile` returns `NULL`; `ti_run_string*` return `TI_ERR_SYNTAX`. |
+| Runtime error in the main script or a module | `ti_runtime_report_error`, called once by `ti_runtime_execute` after unwinding (`[Runtime Error] ...`). | `ti_execute` (the raised kind), after destroying the runtime; `ti_run_string*` pass it on. |
+| Error in an event handler | The dispatcher (`[Event Error] ...`); the error is consumed. | Nobody: the script keeps running. |
+| Error in a `ti_call` callback | `ti_call` (`[Call Error] ...`); the error is consumed. | `ti_call` (the raised kind); the script keeps running. |
+| Cancellation (`ti_stop`) | Nothing. | `ti_execute` (`TI_ERR_INTERRUPTED`). |
+
+A script module that fails to compile is a runtime error of the `import` that loaded it (`Cannot import module 'x': syntax error`), logged after the parser's own message that names the module's file.
+
+Every error path is checked for leaks: the test runners in `tests/` are built with AddressSanitizer (see `tests/test_fatal_leak.c`, `tests/test_parser_errors.c`, `tests/test_script_module.c`).

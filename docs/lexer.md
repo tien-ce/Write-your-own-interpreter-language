@@ -11,11 +11,13 @@ Defined in `src/include/ti_build_lexer.h`:
 ```c
 typedef struct LEXER_STRUCT {
     alloc_hdr_t **alloc_list; // Dedicated allocation list pointer
+    jmp_buf *err_jmp;       // Where lexer_abort() jumps on a build error (set by ti_program_compile)
     char c;                 // Current character under cursor
     unsigned int i;         // Byte offset index in contents
     unsigned int line_num;  // 1-based line counter for error diagnostics
     char *contents;         // Pointer to source code buffer
     char *line;             // Pointer to the start of the current source line
+    const char *path;       // Path of the source being built (NULL: none); borrowed from the program
 } lexer_t;
 ```
 
@@ -25,11 +27,13 @@ The `lexer_t` struct encapsulates the complete traversal state of the tokenizer.
 | Field | Type | Purpose & Contribution to Logic |
 | :--- | :--- | :--- |
 | `alloc_list` | `alloc_hdr_t **` | **Allocation List Reference:** Pointer to the program's build-time allocation list head pointer. Used by all token creation and string accumulation routines. |
+| `err_jmp` | `jmp_buf *` | **Error exit:** The `setjmp` point in `ti_program_compile()`. `lexer_abort()` jumps there after a lexer or parser error has been logged; the compiler then frees the whole program (everything is on `alloc_list`) and returns `TI_ERR_SYNTAX`. |
 | `c` | `char` | **Active character cache:** Stores `contents[i]` so that functions inspect `lexer->c` directly rather than constantly dereferencing `lexer->contents[lexer->i]`. When at the end of input, `c` becomes `'\0'`. |
 | `i` | `unsigned int` | **Byte index cursor:** Tracks the exact byte position within `contents`. Incremented by `lexer_advance()` and decremented by `lexer_go_back()`. |
 | `line_num` | `unsigned int` | **Diagnostics line tracker:** 1-based counter incremented whenever `\n` is encountered in `lexer_skip_whitespace()`. Passed to `ti_log()` when reporting syntax errors. |
 | `contents` | `char *` | **Input source buffer:** A borrowed pointer to the null-terminated source code string. The lexer never modifies or frees this buffer. |
 | `line` | `char *` | **Current line origin pointer:** Points to the first character of the current line within `contents`. When `\n` is consumed, this pointer updates to `contents + i + 1`. This allows `ti_log_line(lexer->line)` to print the entire offending source line upon an error without rescanning backward. |
+| `path` | `const char *` | **Source file name:** Set by `ti_program_compile()` to `prog->path`. Every lexer and parser error prints its location with the `TI_BUILD_AT_FMT` / `TI_BUILD_AT_ARGS(lexer, line)` macros: `at <path>:<line>`, or `at line <line>` when `path` is `NULL`. |
 
 ---
 
@@ -103,7 +107,7 @@ The `lexer_t` struct encapsulates the complete traversal state of the tokenizer.
      - Reallocates `value` with `tracked_realloc(value, strlen(value) + strlen(s) + 1)`.
      - Appends `s` with `strcat(value, s)` and frees `s` with `tracked_free(s)`.
      - Calls `lexer_advance(lexer)`.
-  4. **Error check:** If the loop terminated because `lexer->c == '\0'`, the closing quote was missing. Logs `"Missing close quote"` and halts execution via `ti_fatal()`.
+  4. **Error check:** If the loop terminated because `lexer->c == '\0'`, the closing quote was missing. Logs `"Missing close quote"` and calls `lexer_abort()` (the build stops with `TI_ERR_SYNTAX`).
   5. If closed properly, calls `lexer_advance(lexer)` to skip the closing quote and returns `token_init(TOKEN_STRING, value)`.
 - **Maintainer Note:** The resulting heap string `value` is transferred directly to `token_t->value`, which becomes owned by the token.
 
@@ -118,11 +122,11 @@ The `lexer_t` struct encapsulates the complete traversal state of the tokenizer.
      - Appends `.` to `value`.
      - Calls `lexer_advance(lexer)`.
      - While `isdigit(lexer->c)`, appends fractional digits.
-     - **Invalid suffix validation:** Checks `if (isalpha(lexer->c) || lexer->c == '_')`. If true (e.g. `3.14a` or `1.0_var`), logs an error (`"Invalid suffix '%c' on float constant"`) and calls `ti_fatal()`.
+     - **Invalid suffix validation:** Checks `if (isalpha(lexer->c) || lexer->c == '_')`. If true (e.g. `3.14a` or `1.0_var`), logs an error (`"Invalid suffix '%c' on float constant"`) and calls `lexer_abort()`.
      - Returns `token_init(TOKEN_FLOAT, value)`.
-  2b. **Hexadecimal literal:** Checked right after the integer digits (before the `.` test). If the digits collected are exactly `"0"` and the next character is `x`/`X` followed by a hex digit, the lexer appends the prefix and every following hex digit (`isxdigit`), so `0xFF` stays the text `"0xFF"`. More than 8 digits logs `"Hex constant ... does not fit 32 bits"` and calls `ti_fatal()`; an alphabetic suffix (`0xFG`) logs the usual `"Invalid suffix"` error. Returns `TOKEN_INT`; the parser converts it.
+  2b. **Hexadecimal literal:** Checked right after the integer digits (before the `.` test). If the digits collected are exactly `"0"` and the next character is `x`/`X` followed by a hex digit, the lexer appends the prefix and every following hex digit (`isxdigit`), so `0xFF` stays the text `"0xFF"`. More than 8 digits logs `"Hex constant ... does not fit 32 bits"` and calls `lexer_abort()`; an alphabetic suffix (`0xFG`) logs the usual `"Invalid suffix"` error. Returns `TOKEN_INT`; the parser converts it.
   3. **Integer validation:** If no `.` was encountered:
-     - Checks `if (isalpha(lexer->c) || lexer->c == '_')`. If true (e.g. `123abc`), logs an error (`"Invalid suffix '%c' on integer constant"`) and calls `ti_fatal()`.
+     - Checks `if (isalpha(lexer->c) || lexer->c == '_')`. If true (e.g. `123abc`), logs an error (`"Invalid suffix '%c' on integer constant"`) and calls `lexer_abort()`.
      - Returns `token_init(TOKEN_INT, value)`.
 - **Maintainer Note:** Numbers are kept as raw text in `token->value` (e.g. `"42"`, `"3.14"`). Numeric conversion (`atoi` / `atof`) is intentionally deferred to AST/Visitor evaluation.
 
@@ -186,7 +190,7 @@ The `lexer_t` struct encapsulates the complete traversal state of the tokenizer.
            - Advance 1 char
            - If matches 2nd char (==, !=, <=, >=, &&, ||): return compound token
            - Else: lexer_go_back() and return single-char token
-         Default -> Print offending character, print line via ti_log_line, call ti_fatal()
+         Default -> Log offending character (at <path>:<line>), print line via ti_log_line, call lexer_abort()
   End of input -> return token_init(TOKEN_EOF, NULL)
   ```
 

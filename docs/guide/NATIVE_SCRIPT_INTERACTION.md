@@ -133,7 +133,7 @@ if (slave < 1 || slave > MODBUS_MAX_SLAVE) {
 
 ### 4.3 What the script sees
 
-A raised error **ends the script**. The interpreter unwinds every call frame, frees all temporaries, and `ti_execute` finishes with the error: it logs the message and line, then calls the host's fatal handler (`ti_register_fatal`; `exit(1)` on desktop by default). There is no `try` in TI.
+A raised error **ends the script**. The interpreter unwinds every call frame, frees all temporaries, and `ti_execute` finishes with the error: it logs the message with its file and line (`[Runtime Error] ... at main.ti:12`), destroys the runtime and returns the error kind to the host. The host program keeps running and decides what to do (log it, run another script, exit). There is no `try` in TI.
 
 Therefore raise only for a real failure the script cannot continue after:
 

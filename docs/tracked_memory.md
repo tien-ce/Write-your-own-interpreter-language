@@ -67,6 +67,6 @@ All tracking functions accept an optional `alloc_hdr_t **list` parameter, allowi
 
 ## 3. Bulk Cleanup (`free_all`)
 
-When an isolated runtime or program context terminates, or during fatal script termination:
+When an isolated runtime or program context terminates, including after a script stopped with an error:
 - `free_all(alloc_hdr_t **list)`: Traverses `*list` from head to tail, releasing every remaining allocation in memory in a single sweep and setting `*list = NULL`.
 - Guarantees zero residual heap leaks even on abnormal script interruptions.

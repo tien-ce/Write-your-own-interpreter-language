@@ -117,10 +117,11 @@ value_t *context_copy_value(alloc_hdr_t **list, variable_t *variable)
 ---
 
 ### 2.3. Redefinition Collision Detection (`context_add_variable`)
-- Prototype: `void context_add_variable(alloc_hdr_t **list, context_t *ctx, const char *variable_name, value_t *value)`.
-- Checks only the **current local scope** (`ctx->variables[0..variable_count]`):
-  - If a variable with `name` already exists in *this* scope, logs an error (`"Redefinition of variable"`) and calls `ti_fatal()`.
+- Prototype: `ti_status_t context_add_variable(alloc_hdr_t **list, context_t *ctx, const char *name, value_t *value)`.
+- Checks only the **current scope** (the hash map of a global scope, the `ctx->variables` array of an inner one):
+  - If a variable with `name` already exists in *this* scope, returns `TI_ERR_RUNTIME` without logging. The context is a pure container: the evaluator that called it raises the script error (for example `Cannot import 'x': already defined in this scope`).
   - Shadowing an outer variable from a parent scope is permitted.
+- Returns `TI_OK`, `TI_ERR_RUNTIME` (duplicate name), `TI_ERR_NO_MEMORY` or `TI_ERR_INVALID_ARG`. Ownership of `name` and `value` passes to the context **only on `TI_OK`**; on failure the caller still owns and frees them.
 - Dynamically resizes the `ctx->variables` pointer array using `tracked_realloc(list, ...)`.
 
 ---
