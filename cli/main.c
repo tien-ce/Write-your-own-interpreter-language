@@ -84,46 +84,63 @@ static char *read_string_from_file(const char *path)
 }
 
 /**
- * @brief Module loader of the CLI: 'import lib;' loads lib.ti and 'import lib.count;' loads lib/count.ti,
- * from the directory of the main script (every module name is relative to it).
- * @param main_path Path of the main script (NULL: the current directory).
- * @param name Module name written after 'import'.
+ * @brief Module loader of the CLI: a module name is a path relative to the importing file, without ".ti".
+ * 'import lib;' loads lib.ti next to the importer, 'import ../lib/count;' loads count.ti one directory up.
+ * The returned path is canonical (realpath), so every spelling of one file is one module.
+ * @param importer_path Path of the file that runs the import (NULL: the current directory).
+ * @param name Module name as written after 'import'.
  * @param text_out Receives the module source (ti_raw_malloc), only on TI_OK.
- * @param path_out Receives the module path (ti_raw_malloc), only on TI_OK.
+ * @param path_out Receives the module's canonical path (ti_raw_malloc), only on TI_OK.
  * @return TI_OK, TI_ERR_UNDEFINED if the file does not exist, TI_ERR_NO_MEMORY, or TI_ERR_RUNTIME
  *         if the file exists but cannot be read.
  */
-static ti_status_t cli_module_loader(const char *main_path, const char *name, char **text_out, char **path_out)
+static ti_status_t cli_module_loader(const char *importer_path, const char *name, char **text_out, char **path_out)
 {
-    /* Step 1: the directory part of the main script's path, '/' included ("" when there is none) */
+    /* Step 1: the directory part of the importer's path, '/' included ("" when there is none) */
     size_t dir_len = 0;
-    if (main_path != NULL) {
-        const char *slash = strrchr(main_path, '/');
+    if (importer_path != NULL) {
+        const char *slash = strrchr(importer_path, '/');
         if (slash != NULL) {
-            dir_len = (size_t)(slash - main_path) + 1;
+            dir_len = (size_t)(slash - importer_path) + 1;
         }
     }
 
-    /* Step 2: build "<dir><name>.ti" in a ti_raw_malloc buffer (the library frees it with ti_raw_free);
-     * each '.' of the module name is a directory level ("lib.count" -> "lib/count.ti") */
+    /* Step 2: "<dir><name>.ti", as written ("project/sensors/../lib/count.ti") */
     size_t name_len = strlen(name);
     size_t ext_len = strlen(MODULE_FILE_EXT);
-    char *path = ti_raw_malloc(dir_len + name_len + ext_len + 1);
-    if (path == NULL) {
+    char *joined = malloc(dir_len + name_len + ext_len + 1);
+    if (joined == NULL) {
         return TI_ERR_NO_MEMORY;
     }
     if (dir_len > 0) {
-        memcpy(path, main_path, dir_len); /* main_path may be NULL only when dir_len is 0 */
+        memcpy(joined, importer_path, dir_len); /* importer_path may be NULL only when dir_len is 0 */
     }
-    for (size_t i = 0; i < name_len; i++) {
-        path[dir_len + i] = (name[i] == '.') ? '/' : name[i];
-    }
-    memcpy(path + dir_len + name_len, MODULE_FILE_EXT, ext_len + 1);
+    memcpy(joined + dir_len, name, name_len);
+    memcpy(joined + dir_len + name_len, MODULE_FILE_EXT, ext_len + 1);
 
-    /* Step 3: read the source; on failure nothing is handed over, so the path is freed here */
+    /* Step 3: one spelling per file: realpath removes "." and "..", follows links and fails if the file
+     * does not exist (its buffer comes from malloc) */
+    char *canonical = realpath(joined, NULL);
+    int error = errno;
+    free(joined);
+    if (canonical == NULL) {
+        return (error == ENOENT || error == ENOTDIR) ? TI_ERR_UNDEFINED : TI_ERR_RUNTIME;
+    }
+
+    /* Step 4: the library frees the path with ti_raw_free, so copy it into a ti_raw_malloc buffer */
+    size_t path_len = strlen(canonical);
+    char *path = ti_raw_malloc(path_len + 1);
+    if (path == NULL) {
+        free(canonical);
+        return TI_ERR_NO_MEMORY;
+    }
+    memcpy(path, canonical, path_len + 1);
+    free(canonical);
+
+    /* Step 5: read the source; on failure nothing is handed over, so the path is freed here */
     char *text = read_string_from_file(path);
     if (text == NULL) {
-        int error = errno;
+        error = errno;
         ti_raw_free(path);
         if (error == ENOENT) {
             return TI_ERR_UNDEFINED; /* reported by the library as 'Unknown module' */
@@ -131,7 +148,7 @@ static ti_status_t cli_module_loader(const char *main_path, const char *name, ch
         return (error == ENOMEM) ? TI_ERR_NO_MEMORY : TI_ERR_RUNTIME;
     }
 
-    /* Step 4: success: the library owns both buffers from here on */
+    /* Step 6: success: the library owns both buffers from here on */
     *text_out = text;
     *path_out = path;
     return TI_OK;
