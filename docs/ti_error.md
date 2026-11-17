@@ -83,7 +83,7 @@ typedef struct {
 | :--- | :--- |
 | path and line | `[Runtime Error] <message> at <path>:<line>` |
 | path only | `[Runtime Error] <message> in <path>` |
-| line only (no path, e.g. `ti_run_string`) | `[Runtime Error] <message> at line <line>` |
+| line only (the host passed no path) | `[Runtime Error] <message> at line <line>` |
 | neither | `[Runtime Error] <message>` |
 
 Build errors name their file the same way: the lexer borrows the program's path (`lexer->path`), and every lexer and parser message ends with `at <path>:<line>` (`at line <line>` without a path), through `TI_BUILD_AT_FMT` / `TI_BUILD_AT_ARGS` in `src/include/ti_build_lexer.h`.

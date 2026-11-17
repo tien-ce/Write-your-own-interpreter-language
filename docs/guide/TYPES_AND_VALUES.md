@@ -242,7 +242,7 @@ Errors:
 A runtime error names the file whose code raised it: `[Runtime Error] Division by zero error at project/sensors/calibration.ti:4` (only the line when the script has no path).
 
 #### 2.8.3 Where script modules come from
-The library does not read files. The host registers a **module loader** callback that turns a module name into source text and a path; without one, only native modules exist. The host also passes the main script's path when it runs it (`ti_run_string_take(source, path)`). Writing a loader: [Functions & Native C Extension API](FUNCTIONS_AND_NATIVE_API.md), section 4.7.
+The library does not read files. The host registers a **module loader** callback that turns a module name into source text and a path; without one, only native modules exist. The host also passes the main script's path when it compiles it (`ti_compile(source, path)`, `ti_run_string(source, path)` or `ti_run_string_take(source, path)`). Writing a loader: [Functions & Native C Extension API](FUNCTIONS_AND_NATIVE_API.md), section 4.7.
 
 Writing a native module in C: [Functions & Native C Extension API](FUNCTIONS_AND_NATIVE_API.md), section 4.6.
 

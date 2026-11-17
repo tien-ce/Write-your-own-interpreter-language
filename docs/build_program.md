@@ -12,7 +12,7 @@ Defined in `src/include/ti_build_program.h` (opaque to hosts: `TienInterpreter.h
 typedef struct TI_PROGRAM_STRUCT {
     ast_t       *root_ast;    /* Root AST node of the compiled program */
     alloc_hdr_t *alloc_list;  /* Dedicated allocation list tracking all build-time memory */
-    char        *path;        /* Source path (owned copy on alloc_list), NULL if unknown (e.g. ti_run_string) */
+    char        *path;        /* Source path (owned copy on alloc_list), NULL if the host passed none */
 } ti_program_t;
 ```
 
@@ -36,9 +36,9 @@ typedef struct TI_PROGRAM_STRUCT {
 
 | Caller | `path` |
 | :--- | :--- |
-| `ti_compile(source)` | `NULL` |
-| `ti_run_string(source)` | `NULL` |
-| `ti_run_string_take(source, path)` | The host's path of the main script |
+| `ti_compile(source, path)` | The host's path of the main script (may be `NULL`) |
+| `ti_run_string(source, path)` | The host's path of the main script (may be `NULL`) |
+| `ti_run_string_take(source, path)` | The host's path of the main script (may be `NULL`) |
 | `import` of a script module | The path returned by the module loader |
 
 ---

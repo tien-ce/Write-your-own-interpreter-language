@@ -335,12 +335,16 @@ A script module is another `.ti` file imported by name (`import sensors.calibrat
 typedef ti_status_t (*ti_module_loader_t)(const char *main_path, const char *name,
                                           char **text_out, char **path_out);
 void        ti_register_module_loader(ti_module_loader_t loader);   /* NULL: no script modules */
-ti_status_t ti_run_string_take(char *source_code, const char *path);
+
+/* The main script's path is given where its source is compiled (may be NULL) */
+ti_program_t *ti_compile(const char *source_code, const char *path);     /* then ti_create + ti_execute */
+ti_status_t   ti_run_string(const char *source_code, const char *path);
+ti_status_t   ti_run_string_take(char *source_code, const char *path);
 ```
 
 | Parameter | Meaning |
 | :--- | :--- |
-| `main_path` | Path of the **main script**: the `path` given to `ti_run_string_take` (`NULL` with `ti_run_string`, or when the host passed none). It is the same for every import, also for an import inside a module. |
+| `main_path` | Path of the **main script**: the `path` given to `ti_compile` / `ti_run_string` / `ti_run_string_take` (`NULL` when the host passed none). The program keeps a copy, and `ti_execute` hands it to every import, also to an import inside a module. |
 | `name` | Module name as written after `import`, parts joined by `.`: `"config"`, `"sensors.calibration"`. |
 | `text_out` | Receives the source text, null-terminated, allocated with `ti_raw_malloc`. |
 | `path_out` | Receives the path of the module's file, allocated with `ti_raw_malloc`. **Required:** it is the module's identity (4.7.2). |
@@ -354,7 +358,7 @@ ti_status_t ti_run_string_take(char *source_code, const char *path);
 
 **Ownership:** on `TI_OK` the library owns both buffers and frees them with `ti_raw_free` (after compiling, or at once when the module is already loaded). On any other status the library reads neither out parameter: free what you allocated and leave them alone.
 
-`ti_run_string_take` takes the main script's source the same way (a `ti_raw_malloc` buffer, freed by the library) and copies `path`. Pass the path the loader should resolve names from.
+All three copy `path`; pass the path the loader should resolve names from. `ti_run_string_take` also takes the main script's source like a loader buffer (`ti_raw_malloc`, freed by the library); `ti_compile` and `ti_run_string` only read the source. The path belongs to the program, not the runtime: `ti_create` and `ti_execute` take none.
 
 #### 4.7.2 The path is the module's identity
 The runtime keeps one instance per module file. On every import of a name that no native module has:
