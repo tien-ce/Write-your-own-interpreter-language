@@ -82,3 +82,12 @@ The codebase consists of **8 major modules** organized cleanly across `src/` and
 The project relies on external libraries located in the `lib/` directory:
 
 - **chashmap**: A C library for dictionary and symbol table implementations. Located at `lib/chashmap` (symlinked). Used extensively for variable scope resolution and environment contexts.
+
+---
+
+## 5. Contributors
+
+| Contributor | Role |
+| :--- | :--- |
+| Tien | Author and maintainer |
+| Claude Opus 5.5 (Anthropic) | AI pair programmer: design reviews, implementation help, tests, CLI and documentation |
