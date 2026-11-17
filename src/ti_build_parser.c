@@ -1200,21 +1200,41 @@ static ast_t *parser_parse_continue_statement(parser_t *parser)
 }
 
 /**
- * @brief Parse import statement: import <name>[.<name>...] [as <alias>];.
- * Without 'as' the variable is named after the last part ('import lib.count;' binds 'count').
+ * @brief Parse import statement: import [./ | ../ ...]<name>[/<name>...] [as <alias>];.
+ * Without 'as' the variable is named after the last part ('import ../lib/count;' binds 'count').
  * 'as' is not a keyword: it is recognized only here, so scripts may still use it as a name.
  * @param parser Pointer to parser.
- * @return AST import statement node.
+ * @return AST import statement node (alias is always set: the 'as' name or the last part).
  */
-/* import <id>[.<id>...] [as <alias>]; */
+/* import ('./' | '../')* <id> ('/' <id>)* [as <alias>]; */
 static ast_t *parser_parse_import_statement(parser_t *parser)
 {
     int line = parser->lexer->line_num;
     parser_eat(parser, TOKEN_KW_IMPORT); // Eat 'import'
 
-    /* Step 1: the module name is identifiers joined by '.' ("lib.count"); any other token is a syntax
-     * error raised by parser_eat. Every part is on the alloc list, so an abort frees them with the program */
-    char *module_name = NULL;
+    /* The module name is a path written without quotes: "lib", "lib/count", "./count", "../../lib/count".
+     * The library gives it no meaning (the host's loader resolves it); any other token is a syntax error
+     * raised by parser_eat. Everything is on the alloc list, so an abort frees it with the program */
+    char *module_name = parser_check_alloc(parser, tracked_strdup(parser->alloc_list, ""));
+
+    /* Step 1a: leading "./" and "../" parts ('.' or '..', always followed by '/') */
+    while (parser->current_token->type == TOKEN_DOT) {
+        const char *prefix = "./";
+        parser_eat(parser, TOKEN_DOT); // Eat '.'
+        if (parser->current_token->type == TOKEN_DOT) {
+            prefix = "../";
+            parser_eat(parser, TOKEN_DOT); // Eat the second '.'
+        }
+        parser_eat(parser, TOKEN_SLASH); // Not a '/': syntax error, does not return
+
+        size_t used = strlen(module_name);
+        module_name = parser_check_alloc(parser, tracked_realloc(parser->alloc_list, module_name,
+                                                                 used + strlen(prefix) + 1));
+        strcpy(module_name + used, prefix);
+    }
+
+    /* Step 1b: names separated by '/'; the last one is kept as the default variable name */
+    char *last_part = NULL;
     for (;;) {
         /* Take the identifier before eating it (parser_eat frees the token's value) */
         char *part = (parser->current_token->type == TOKEN_ID) ? parser->current_token->value : NULL;
@@ -1223,23 +1243,25 @@ static ast_t *parser_parse_import_statement(parser_t *parser)
         }
         parser_eat(parser, TOKEN_ID); // Not a name: syntax error, does not return
 
-        /* The first part becomes the name; each later one is appended after a '.' */
-        if (module_name == NULL) {
-            module_name = part;
-        } else {
-            size_t used = strlen(module_name);
-            module_name = parser_check_alloc(parser, tracked_realloc(parser->alloc_list, module_name,
-                                                                     used + 1 + strlen(part) + 1));
-            module_name[used] = '.';
-            strcpy(module_name + used + 1, part);
-            tracked_free(parser->alloc_list, part);
+        /* Append the part, after a '/' unless it is the first one */
+        bool first = (last_part == NULL);
+        size_t used = strlen(module_name);
+        module_name = parser_check_alloc(parser, tracked_realloc(parser->alloc_list, module_name,
+                                                                 used + (first ? 0 : 1) + strlen(part) + 1));
+        if (!first) {
+            module_name[used++] = '/';
         }
+        strcpy(module_name + used, part);
 
-        /* A '.' means another part follows */
-        if (parser->current_token->type != TOKEN_DOT) {
+        /* Only the last part is kept */
+        tracked_free(parser->alloc_list, last_part);
+        last_part = part;
+
+        /* A '/' means another name follows */
+        if (parser->current_token->type != TOKEN_SLASH) {
             break;
         }
-        parser_eat(parser, TOKEN_DOT); // Eat '.'
+        parser_eat(parser, TOKEN_SLASH); // Eat '/'
     }
 
     /* Step 2: optional alias: 'as' arrives as an identifier token, followed by the variable name */
@@ -1253,10 +1275,11 @@ static ast_t *parser_parse_import_statement(parser_t *parser)
         parser_eat(parser, TOKEN_ID); // Not a name: syntax error, does not return
     }
 
-    /* Step 3: without 'as', a dotted name binds its last part ("lib.count" -> count) */
-    const char *last_dot = strrchr(module_name, '.');
-    if (alias == NULL && last_dot != NULL) {
-        alias = parser_check_alloc(parser, tracked_strdup(parser->alloc_list, last_dot + 1));
+    /* Step 3: without 'as', the variable is named after the last part ("../lib/count" -> count) */
+    if (alias == NULL) {
+        alias = last_part;
+    } else {
+        tracked_free(parser->alloc_list, last_part);
     }
     parser_eat(parser, TOKEN_SEMI); // Eat ';'
 

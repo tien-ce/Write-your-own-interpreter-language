@@ -42,16 +42,19 @@ typedef void (*ti_log_callback_t)(const char *fmt, va_list args);
 
 /**
  * @brief Callback type that loads the source of a script module for 'import <name>;'.
+ * The library gives the name no meaning: the loader resolves it, for example relative to importer_path.
  * The returned path identifies the module: names resolved to the same path are one module (loaded,
- * compiled and run once per runtime). Out parameters are read only when TI_OK is returned; the library
- * then owns both buffers and frees them with ti_raw_free.
- * @param main_path Path of the main script (may be NULL); borrowed, read only.
- * @param name Module name written after 'import' ("sensors.calibration"); borrowed, read only.
+ * compiled and run once per runtime), so return one spelling per file. Out parameters are read only
+ * when TI_OK is returned; the library then owns both buffers and frees them with ti_raw_free.
+ * @param importer_path Path of the file that runs the import: the main script's path given to ti_compile
+ *                      or ti_run_string*, or the path this loader returned for a module (may be NULL);
+ *                      borrowed, read only.
+ * @param name Module name as written after 'import' ("lib", "lib/count", "../lib/count"); borrowed, read only.
  * @param text_out Receives the module source text (null-terminated), allocated with ti_raw_malloc.
  * @param path_out Receives the path of the module's file, allocated with ti_raw_malloc (required).
  * @return TI_OK, TI_ERR_UNDEFINED if there is no such module, or another status if loading failed.
  */
-typedef ti_status_t (*ti_module_loader_t)(const char *main_path, const char *name,
+typedef ti_status_t (*ti_module_loader_t)(const char *importer_path, const char *name,
                                           char **text_out, char **path_out);
 
 /* -------------------- Platform & Logging API -------------------- */
@@ -98,8 +101,8 @@ void ti_init_builtin(void);
 /**
  * @brief Compile a Ti language source code string into an immutable AST program.
  * @param source_code Null-terminated source code string (only read: the caller keeps it).
- * @param path Path of the script (copied; may be NULL). Errors name the file with it, and when the program
- *             runs as the main script the module loader receives it as main_path for every 'import'.
+ * @param path Path of the script (copied; may be NULL). Errors name the file with it, and the module loader
+ *             receives it as importer_path for every 'import' written in this script.
  * @return Newly allocated ti_program_t, or NULL on a syntax error (already logged), NULL source or out of memory.
  */
 ti_program_t *ti_compile(const char *source_code, const char *path);

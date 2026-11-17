@@ -287,7 +287,7 @@ ti_status_t ti_runtime_execute(ti_handle_t handle, ti_program_t *prog)
     /* Hold the execution lock for the whole run: ti_call callers get in only at safe points */
     ti_runtime_exec_lock(rt, TI_PORT_WAIT_FOREVER);
 
-    /* The main namespace borrows the program (the host owns it): every import hands its path to the loader */
+    /* The main namespace borrows the program (the host owns it): its imports hand its path to the loader */
     rt->main_ns.prog = prog;
 
     /* Run the main script in the main namespace (rt->ns switching and top-level flow checks happen inside);

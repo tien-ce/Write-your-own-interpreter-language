@@ -94,10 +94,10 @@ variable_t *ti_namespace_find_variable(ti_namespace_t *ns, const char *name);
 
 /**
  * @brief Ask the host's module loader for the source and the path of a script module.
- * The loader resolves the name from the main script's path; the path it returns names the file,
+ * The loader gets the path of the file that runs the import; the path it returns names the module's file,
  * so the caller can find a module already loaded from it before compiling anything.
  * @param rt Pointer to active runtime instance.
- * @param name Module name written after 'import' ("sensors.calibration").
+ * @param name Module name written after 'import' ("../lib/calibration").
  * @param line Line of the import statement, for error reports.
  * @param text_out Receives the source text (ti_raw_malloc; the caller frees it or hands it to ti_namespace_load).
  * @param path_out Receives the path (ti_raw_malloc; the caller frees it or hands it to ti_namespace_load).

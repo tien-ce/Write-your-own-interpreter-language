@@ -118,9 +118,10 @@ bool ti_namespace_read_source(ti_runtime_t *rt, const char *name, int line, char
         return false;
     }
 
-    /* Step 2: ask the host, passing the main script's path (module names are resolved from it) */
-    const char *main_path = (rt->main_ns.prog != NULL) ? rt->main_ns.prog->path : NULL;
-    ti_status_t status = s_module_loader(main_path, name, &text, &path);
+    /* Step 2: ask the host, passing the path of the file that runs this import (the running namespace's
+     * program: the main script or a module); what the name means is the host's business */
+    const char *importer_path = (rt->ns->prog != NULL) ? rt->ns->prog->path : NULL;
+    ti_status_t status = s_module_loader(importer_path, name, &text, &path);
     if (status != TI_OK) {
         /* The out parameters are not read on failure: the host leaves nothing in them */
         if (status == TI_ERR_UNDEFINED) {
