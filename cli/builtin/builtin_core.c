@@ -51,10 +51,6 @@ static value_t *builtin_print(ti_handle_t handle, value_t **argv, int argc)
             }
             break;
         }
-        case VAL_MODULE:
-            /* Same form as to_string: only the module name */
-            printf("<module %s>", argv[i]->module_val->name);
-            break;
         case VAL_BYTES: {
             /* Binary data has no text form: print it as hex digits */
             const uint8_t *data = val_bytes_data(argv[i]);
