@@ -81,10 +81,10 @@ static value_t *builtin_print(ti_handle_t handle, value_t **argv, int argc)
  */
 static value_t *builtin_delay(ti_handle_t handle, value_t **argv, int argc)
 {
+    /* A wrong call is a script error: raise it so the script unwinds (the native returns NULL) */
     if (argc != 1) {
-        ti_log("[ERROR]: delay() expects 1 argument (milliseconds)\n");
-        ti_fatal();
-        return val_new_null();
+        ti_raise_error(handle, TI_ERR_INVALID_ARG, "delay() expects 1 argument (milliseconds)");
+        return NULL;
     }
 
     int ms = 0;
@@ -93,9 +93,8 @@ static value_t *builtin_delay(ti_handle_t handle, value_t **argv, int argc)
     } else if (argv[0]->type == VAL_FLOAT) {
         ms = (int)argv[0]->float_val;
     } else {
-        ti_log("[ERROR]: delay() argument must be an integer or float\n");
-        ti_fatal();
-        return val_new_null();
+        ti_raise_error(handle, TI_ERR_TYPE_MISMATCH, "delay() argument must be an integer or float");
+        return NULL;
     }
 
     /* The runtime sleeps with its lock released: events and ti_call callbacks run at once, then

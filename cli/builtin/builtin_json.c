@@ -11,18 +11,17 @@ static value_t *builtin_get_json(ti_handle_t handle, value_t **argv, int argc);
 
 /**
  * @brief Built-in native get_json function using cJSON.
- * @param handle Calling runtime handle (unused).
+ * @param handle Calling runtime handle, used to raise an argument error.
  * @param argv Array of argument values (json_string, key).
  * @param argc Number of arguments passed.
- * @return Extracted value as value_t.
+ * @return Extracted value as value_t, or NULL after raising an error.
  */
 static value_t *builtin_get_json(ti_handle_t handle, value_t **argv, int argc)
 {
-    (void)handle;
+    /* A wrong call is a script error: raise it so the script unwinds (the native returns NULL) */
     if (argc < 2 || argv[0]->type != VAL_STRING || argv[1]->type != VAL_STRING) {
-        ti_log("[ERROR]: get_json() expects (string json, string key)\n");
-        ti_fatal();
-        return val_new_null();
+        ti_raise_error(handle, TI_ERR_INVALID_ARG, "get_json() expects (string json, string key)");
+        return NULL;
     }
 
     const char *json_str = argv[0]->string_val ? argv[0]->string_val : "";

@@ -6,7 +6,6 @@
 /* -------------------- Static Function Prototypes -------------------- */
 
 static void ti_log_callback(const char *fmt, va_list args);
-static void ti_fatal_callback(void);
 
 /* -------------------- Static Functions -------------------- */
 
@@ -22,22 +21,13 @@ static void ti_log_callback(const char *fmt, va_list args)
     printf("%s", buffer);
 }
 
-/**
- * @brief Default desktop fatal error callback calling exit(1).
- */
-static void ti_fatal_callback(void)
-{
-    exit(1);
-}
-
 /* -------------------- Public Functions -------------------- */
 
 /* Initialize built-in interpreter native functions */
 void ti_init_builtin(void)
 {
-    /* Host callbacks first, so registration problems can already be logged */
+    /* Host log callback first, so registration problems can already be logged */
     ti_register_log(ti_log_callback);
-    ti_register_fatal(ti_fatal_callback);
 
     /* One register function per topic file */
     builtin_core_register();

@@ -13,18 +13,6 @@ static void arduino_log_callback(const char *fmt, va_list args)
     Serial.print(buffer);
 }
 
-/**
- * @brief Arduino fatal error callback function (halts execution).
- */
-static void arduino_fatal_callback(void)
-{
-    Serial.println("[FATAL] Interpreter error! Halting system.");
-    while (1)
-    {
-        delay(1000);
-    }
-}
-
 /* -------------------- Static Built-in Functions -------------------- */
 
 /**
@@ -98,7 +86,6 @@ void setup()
 
     // 1. Register platform callbacks
     ti_register_log(arduino_log_callback);
-    ti_register_fatal(arduino_fatal_callback);
 
     // 2. Register native built-in functions
     static param_t delay_params[] = { { VAL_INT, (char *)"ms" } };
