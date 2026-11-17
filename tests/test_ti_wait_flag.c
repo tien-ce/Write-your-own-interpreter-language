@@ -82,7 +82,7 @@ static void start_script(const char *source)
     g_io_result = 0;
     g_seen_result = 0;
     g_wait_status = TI_ERR_RUNTIME;
-    g_prog = ti_compile(source);
+    g_prog = ti_compile(source, NULL);
     g_handle = ti_create();
     CHECK(g_prog != NULL && g_handle != TI_INVALID_HANDLE, "setup");
 }

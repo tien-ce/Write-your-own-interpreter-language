@@ -246,7 +246,7 @@ static void run(const char *name, const char *src, int want_result, int want_des
     g_destroyed = 0;
     g_result = -1;
     g_log[0] = '\0';
-    (void)ti_run_string(src);
+    (void)ti_run_string(src, NULL);
 
     bool log_ok = (want_log != NULL) ? strstr(g_log, want_log) != NULL : g_log[0] == '\0';
     if (g_result != want_result || g_destroyed != want_destroyed || !log_ok) {

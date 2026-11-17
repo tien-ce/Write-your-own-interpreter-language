@@ -23,7 +23,7 @@ static void on_log(const char *fmt, va_list a)
 /* Run one script and report whether it ended with the expected status */
 static int run_case(const char *name, const char *script, ti_status_t want)
 {
-    ti_status_t status = ti_run_string(script);
+    ti_status_t status = ti_run_string(script, NULL);
     if (status != want) {
         printf("FAIL: %-28s returned status %d, expected %d\n", name, (int)status, (int)want);
         return 1;

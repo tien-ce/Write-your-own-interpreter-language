@@ -292,6 +292,33 @@ static void test_module_path(void)
     CHECK(g_importers[0] == '\0');
 }
 
+/* The other ways in pass the main script's path the same way: ti_run_string, and compile/create/execute */
+static void test_other_runners(void)
+{
+    const char *src = "import t; import lib.a; t.mark(a.v == 7);";
+
+    /* ti_run_string copies the path like ti_run_string_take */
+    g_result = -1;
+    g_log[0] = '\0';
+    g_importers[0] = '\0';
+    CHECK(ti_run_string(src, "dir/main.ti") == TI_OK);
+    CHECK(g_result == 1);
+    CHECK(strcmp(g_importers, "lib.a<-dir/main.ti;") == 0);
+
+    /* Two-phase: the path goes into the program at compile time; execute hands it to the loader */
+    g_result = -1;
+    g_importers[0] = '\0';
+    ti_program_t *prog = ti_compile(src, "dir/main.ti");
+    CHECK(prog != NULL);
+    ti_handle_t handle = ti_create();
+    CHECK(handle != TI_INVALID_HANDLE);
+    CHECK(ti_execute(handle, prog) == TI_OK);
+    ti_program_free(prog);
+    CHECK(g_result == 1);
+    CHECK(strcmp(g_importers, "lib.a<-dir/main.ti;") == 0);
+    CHECK(g_log[0] == '\0');
+}
+
 /* Every error message of a script module */
 static void test_errors(void)
 {
@@ -331,6 +358,7 @@ int main(void)
 
     test_namespaces();
     test_module_path();
+    test_other_runners();
     test_errors();
 
     printf(g_fails ? "FAILED (%d)\n" : "ALL PASSED\n", g_fails);

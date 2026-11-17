@@ -52,7 +52,7 @@ int main(void)
     for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
         for (int round = 0; round < 5; round++) {
             /* Borrowed source: the caller keeps it */
-            ti_status_t status = ti_run_string(cases[i].script);
+            ti_status_t status = ti_run_string(cases[i].script, "case.ti");
             if (status != cases[i].want) {
                 printf("FAIL: %-24s ti_run_string returned status %d\n", cases[i].name, (int)status);
                 failed++;
@@ -68,7 +68,7 @@ int main(void)
     }
 
     /* NULL source is rejected without touching anything */
-    if (ti_run_string(NULL) != TI_ERR_INVALID_ARG || ti_run_string_take(NULL, NULL) != TI_ERR_INVALID_ARG) {
+    if (ti_run_string(NULL, NULL) != TI_ERR_INVALID_ARG || ti_run_string_take(NULL, NULL) != TI_ERR_INVALID_ARG) {
         printf("FAIL: NULL source\n");
         failed++;
     }

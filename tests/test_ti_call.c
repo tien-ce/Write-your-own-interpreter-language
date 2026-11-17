@@ -50,7 +50,7 @@ int main(void)
 {
     ti_register_log(log_cb);
 
-    g_prog = ti_compile(SCRIPT);
+    g_prog = ti_compile(SCRIPT, NULL);
     g_handle = ti_create();
     CHECK(g_prog != NULL && g_handle != TI_INVALID_HANDLE, "setup");
 
