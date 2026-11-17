@@ -2,6 +2,7 @@
 #include "include/tracked_memory.h"
 #include "include/ti_build_lexer.h"
 #include "include/ti_build_parser.h"
+#include "TienInterpreter.h"
 #include <stdlib.h>
 
 /* -------------------- Public Program Functions -------------------- */
@@ -68,7 +69,9 @@ ti_program_t *ti_program_compile(const char *source_code, const char *path, ti_s
         goto fail;
     }
 
-    /* Step 4: parse; a build error is logged, then lexer_abort jumps back here */
+    /* Step 4: parse; a build error is logged (with the path, so it names its file), then lexer_abort
+     * jumps back here */
+    lexer->path = prog->path;
     lexer->err_jmp = &err_jmp;
     if (setjmp(err_jmp) == 0) {
         prog->root_ast = parser_parse(parser);

@@ -82,11 +82,12 @@ struct MODULE_STRUCT {
 bool ti_register_module(const ti_module_t *module);
 
 /**
- * @brief Find a registered module by name.
+ * @brief Find a registered native module (a host's static const table) by name.
+ * Script modules are never in this registry: they are loaded per runtime on import.
  * @param name Module name written after 'import'.
- * @return The module, or NULL if no module is registered under that name.
+ * @return The module, or NULL if no native module is registered under that name.
  */
-const ti_module_t *ti_module_find(const char *name);
+const ti_module_t *ti_module_native_find(const char *name);
 
 /**
  * @brief Find a function of a module by name (module.name(args)).

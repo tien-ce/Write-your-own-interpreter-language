@@ -31,19 +31,20 @@ static function_t *builtin_find_function(const char *name)
 }
 
 /**
- * @brief Find a user script-defined function by name in the runtime table.
+ * @brief Find a user script-defined function by name in the namespace whose code is running.
  * @param rt Pointer to active runtime instance.
  * @param name Function identifier name in Ti scripts.
  * @return Pointer to function_t if found, NULL otherwise.
  */
 static function_t *user_find_function(ti_runtime_t *rt, const char *name)
 {
-    if (!rt || !rt->user_functions) {
+    if (!rt || !rt->ns->functions) {
         return NULL;
     }
-    for (int i = 0; i < rt->user_function_count; i++) {
-        if (strcmp(name, rt->user_functions[i].name) == 0) {
-            return &rt->user_functions[i];
+    /* Search only the running namespace (main script or module): each one has its own function names */
+    for (int i = 0; i < rt->ns->function_count; i++) {
+        if (strcmp(name, rt->ns->functions[i].name) == 0) {
+            return &rt->ns->functions[i];
         }
     }
     return NULL;
@@ -146,7 +147,7 @@ static void function_frame_release(ti_runtime_t *rt, context_t *func_ctx)
  */
 value_t *run_ti_function(ti_runtime_t *rt, context_t *ctx, function_t *func, value_t **argv, int argc, ast_t *node)
 {
-    (void)ctx; // Function only connects with runtime global context (not from caller)
+    (void)ctx; // The caller's scope is never the frame parent: the body sees only its own namespace (lexical scoping)
 
     /* Cancelled or errored: do not start the call. Queued events are deliberately NOT run here:
      * a call can sit in the middle of an expression, and event callbacks run only at statement
@@ -166,15 +167,16 @@ value_t *run_ti_function(ti_runtime_t *rt, context_t *ctx, function_t *func, val
     context_t *func_ctx = NULL;
     value_t *ret_val = NULL;
     value_t *result = NULL;
+    ti_namespace_t *saved_ns = rt->ns; /* Caller's namespace, restored at out on every path */
 
-    /* Create isolated context for function call linked to global context */
+    /* Create isolated context for the call, linked to the globals of the namespace the function was defined in */
     func_ctx = context_init(&rt->alloc_list);
     if (func_ctx == NULL) {
         /* function_frame_release accepts a NULL frame and still restores call_depth */
         ti_raise(rt, TI_ERR_NO_MEMORY, node->line, "Cannot allocate call frame for function '%s'", func->name);
         goto out;
     }
-    func_ctx->parent = rt->global_context;
+    func_ctx->parent = func->ns->globals;
 
     /* Deep copy evaluated arguments and bind them to parameter variables in local context */
     for (int i = 0; i < argc; i++) {
@@ -193,7 +195,8 @@ value_t *run_ti_function(ti_runtime_t *rt, context_t *ctx, function_t *func, val
         }
     }
 
-    /* Execute the function body compound block */
+    /* Execute the body inside its own namespace: plain calls and definitions in it resolve there */
+    rt->ns = func->ns;
     ast_t *body = func->def->value.function_definition.body;
     value_t *body_result = visitor_visit(rt, func_ctx, body);
 
@@ -244,7 +247,8 @@ value_t *run_ti_function(ti_runtime_t *rt, context_t *ctx, function_t *func, val
     ret_val = NULL;
 
 out:
-    /* Single cleanup point: unreturned value, then the call frame */
+    /* Single cleanup point: back to the caller's namespace, then the unreturned value and the call frame */
+    rt->ns = saved_ns;
     val_free(ret_val);
     function_frame_release(rt, func_ctx);
     return result;
@@ -268,13 +272,13 @@ value_t *eval_function_definition(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         return NULL;
     }
 
-    /* Dynamically expand the runtime user function table */
-    function_t *temp = tracked_realloc(&rt->alloc_list, rt->user_functions, sizeof(function_t) * (rt->user_function_count + 1));
+    /* Grow the function table of the namespace whose code is running (main script or module) */
+    function_t *temp = tracked_realloc(&rt->alloc_list, rt->ns->functions, sizeof(function_t) * (rt->ns->function_count + 1));
     if (temp == NULL) {
         ti_raise(rt, TI_ERR_NO_MEMORY, node->line, "Cannot grow the function table");
         return NULL;
     }
-    rt->user_functions = temp;
+    rt->ns->functions = temp;
 
     /* Build the parameter table: types are copied, names are borrowed from the AST like name and def */
     int param_count = node->value.function_definition.param_count;
@@ -293,15 +297,16 @@ value_t *eval_function_definition(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         }
     }
 
-    /* Register function entry into the runtime table */
-    rt->user_functions[rt->user_function_count].name = name;
-    rt->user_functions[rt->user_function_count].type = FUNC_TI;
-    rt->user_functions[rt->user_function_count].return_type = node->value.function_definition.return_type;
-    rt->user_functions[rt->user_function_count].return_element_type = node->value.function_definition.return_element_type;
-    rt->user_functions[rt->user_function_count].params = params;
-    rt->user_functions[rt->user_function_count].param_count = param_count;
-    rt->user_functions[rt->user_function_count].def = node;
-    rt->user_function_count++;
+    /* Register the entry; the function remembers that namespace as its home (lexical scoping) */
+    rt->ns->functions[rt->ns->function_count].name = name;
+    rt->ns->functions[rt->ns->function_count].type = FUNC_TI;
+    rt->ns->functions[rt->ns->function_count].return_type = node->value.function_definition.return_type;
+    rt->ns->functions[rt->ns->function_count].return_element_type = node->value.function_definition.return_element_type;
+    rt->ns->functions[rt->ns->function_count].params = params;
+    rt->ns->functions[rt->ns->function_count].param_count = param_count;
+    rt->ns->functions[rt->ns->function_count].def = node;
+    rt->ns->functions[rt->ns->function_count].ns = rt->ns;
+    rt->ns->function_count++;
     return TI_VAL_OK;
 }
 
@@ -470,16 +475,26 @@ value_t *eval_method_call(ti_runtime_t *rt, context_t *ctx, ast_t *node)
     }
 
     /* Steps 2-3: find the function in the receiver's table: a module's functions or a handle type's methods */
-    const ti_builtin_def_t *method = NULL;
-    bool with_self = true; /* handle methods receive the receiver as argument 0 (self) */
+    const ti_builtin_def_t *method = NULL; /* native function found (native module or handle type) */
+    function_t builtin;                    /* storage for that native function, described as a function_t */
+    function_t *func = NULL;               /* function to run: &builtin, or an entry of a script module namespace */
+    bool with_self = true;                 /* handle methods receive the receiver as argument 0 (self) */
     if (argv[0]->type == VAL_MODULE) {
-        /* A module is not an object: its functions receive only the written arguments */
-        method = ti_module_find_func(argv[0]->module_val, method_name);
-        if (method == NULL) {
-            ti_raise(rt, TI_ERR_UNDEFINED, node->line, "Module %s has no function '%s'",
-                     argv[0]->module_val->name, method_name);
+        /* The value already points at the module instance imported by this runtime */
+        const ti_module_instance_t *instance = argv[0]->module_val;
+
+        /* A native module looks in its static table, a script module in its namespace */
+        if (instance->native != NULL) {
+            method = ti_module_find_func(instance->native, method_name);
+        } else {
+            func = ti_namespace_find_function(instance->ns, method_name);
+        }
+        if (method == NULL && func == NULL) {
+            ti_raise(rt, TI_ERR_UNDEFINED, node->line, "Module %s has no function '%s'", instance->name, method_name);
             goto out;
         }
+
+        /* A module is not an object: its functions receive only the written arguments */
         with_self = false;
     } else {
         /* Only handles have methods, and an empty handle ('handle h;') has no type to look in */
@@ -500,6 +515,21 @@ value_t *eval_method_call(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         }
     }
 
+    /* A native function (module or handle) is described as a function_t once, here; a method's params
+     * include self at index 0, a module function's start at the first written argument */
+    if (method != NULL) {
+        builtin = (function_t){
+            .name        = method->name,
+            .type        = FUNC_BUILTIN,
+            .return_type = method->return_type,
+            .return_element_type = VAL_NULL,
+            .params      = method->params,
+            .param_count = method->param_count,
+            .native_fn   = method->function,
+        };
+        func = &builtin;
+    }
+
     /* Step 4: evaluate the written arguments after self; NULL means the argument already failed */
     for (int i = 0; i < written_argc; i++) {
         argv[i + 1] = visitor_visit(rt, ctx, node->value.method_call.args[i]);
@@ -508,22 +538,13 @@ value_t *eval_method_call(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         }
     }
 
-    /* Step 5: run it like any native function: run_function checks count and types against its params
-     * (a method's params include self at index 0; a module function's start at the first written argument) */
-    function_t func = {
-        .name        = method->name,
-        .type        = FUNC_BUILTIN,
-        .return_type = method->return_type,
-        .return_element_type = VAL_NULL,
-        .params      = method->params,
-        .param_count = method->param_count,
-        .native_fn   = method->function,
-    };
-    /* A module function skips argv[0] (the module); it is still freed below with the others */
+    /* Step 5: one call for every kind: run_function checks count and types, then runs the native
+     * or the script function (run_ti_function switches rt->ns to the module's namespace itself).
+     * A module function skips argv[0] (the module); it is still freed below with the others */
     if (with_self) {
-        result = run_function(rt, ctx, &func, argv, argc, node);
+        result = run_function(rt, ctx, func, argv, argc, node);
     } else {
-        result = run_function(rt, ctx, &func, argv + 1, written_argc, node);
+        result = run_function(rt, ctx, func, argv + 1, written_argc, node);
     }
 
 out:
@@ -556,17 +577,34 @@ value_t *eval_attribute(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         return NULL;
     }
 
-    /* Module constant: return a copy, so the script never holds the static value itself */
+    /* Module member: a native constant or a script module's top-level variable */
     if (object->type == VAL_MODULE) {
-        const ti_module_const_t *constant = ti_module_find_const(object->module_val, name);
-        if (constant == NULL) {
-            ti_raise(rt, TI_ERR_UNDEFINED, node->line, "Module %s has no constant '%s'", object->module_val->name, name);
-            goto out;
+        /* The value already points at the module instance imported by this runtime */
+        const ti_module_instance_t *instance = object->module_val;
+        const value_t *member = NULL;
+
+        /* A native module looks in its static constant table, a script module in its namespace */
+        if (instance->native != NULL) {
+            const ti_module_const_t *constant = ti_module_find_const(instance->native, name);
+            if (constant == NULL) {
+                ti_raise(rt, TI_ERR_UNDEFINED, node->line, "Module %s has no constant '%s'", instance->name, name);
+                goto out;
+            }
+            member = &constant->value;
+        } else {
+            variable_t *variable = ti_namespace_find_variable(instance->ns, name);
+            if (variable == NULL) {
+                ti_raise(rt, TI_ERR_UNDEFINED, node->line, "Module %s has no variable '%s'", instance->name, name);
+                goto out;
+            }
+            member = variable->value;
         }
-        result = val_copy(&constant->value);
+
+        /* Return a copy (like reading a variable), so the script never holds the module's own value */
+        result = val_copy(member);
         if (result == NULL) {
-            ti_raise(rt, TI_ERR_NO_MEMORY, node->line, "Cannot read constant '%s' of module %s: out of memory",
-                     name, object->module_val->name);
+            ti_raise(rt, TI_ERR_NO_MEMORY, node->line, "Cannot read '%s' of module %s: out of memory",
+                     name, instance->name);
         }
         goto out;
     }
@@ -652,10 +690,10 @@ ti_status_t ti_runtime_invoke(ti_runtime_t *rt, const char *func_name, value_t *
 
     /*
      * run_function validates argument count and types; run_ti_function executes the body in a
-     * fresh context parented to global_context and consumes FLOW_RETURN. The definition node
+     * fresh context parented to the main namespace globals and consumes FLOW_RETURN. The definition node
      * stands in for the missing call node in error reports.
      */
-    value_t *ret_val = run_function(rt, rt->global_context, func, args, argc, func->def);
+    value_t *ret_val = run_function(rt, rt->main_ns.globals, func, args, argc, func->def);
 
     rt->in_dispatch = saved_in_dispatch;
     rt->call_depth = saved_depth;
@@ -675,6 +713,7 @@ ti_status_t ti_runtime_invoke(ti_runtime_t *rt, const char *func_name, value_t *
         rt->status = TI_RT_OK;
         rt->error.kind = TI_OK;
         rt->error.line = 0;
+        rt->error.path = NULL;
         rt->error.message[0] = '\0';
         val_free(ret_val);
         return kind;

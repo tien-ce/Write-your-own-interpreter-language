@@ -15,7 +15,27 @@ typedef struct LEXER_STRUCT {
     unsigned int line_num;  // Current line number (1-based)
     char *contents;         // Pointer to input buffer
     char *line;             // Pointer to start of current line
+    const char *path;       // Path of the source being built (NULL: none); borrowed from the program
 } lexer_t;
+
+/* -------------------- Build Error Location -------------------- */
+
+/*
+ * Where a build error is, for the "at ..." part of a lexer or parser message:
+ * "<path>:<line>" when the source has a path, "line <line>" when it has none.
+ * Usage: ti_log("... at " TI_BUILD_AT_FMT "\n", TI_BUILD_AT_ARGS(lexer, lexer->line_num));
+ */
+
+/** @brief Format of the location: three conversions, filled by TI_BUILD_AT_ARGS. */
+#define TI_BUILD_AT_FMT "%s%s%d"
+
+/**
+ * @brief Arguments matching TI_BUILD_AT_FMT.
+ * @param lexer Lexer of the build (its path names the file).
+ * @param line_num Line of the error.
+ */
+#define TI_BUILD_AT_ARGS(lexer, line_num) \
+    ((lexer)->path != NULL ? (lexer)->path : "line "), ((lexer)->path != NULL ? ":" : ""), (int)(line_num)
 
 /* -------------------- Public Functions -------------------- */
 

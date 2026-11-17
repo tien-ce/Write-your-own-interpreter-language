@@ -15,6 +15,9 @@ typedef struct AST_STRUCT ast_t;
 struct TI_RUNTIME_STRUCT;
 typedef struct TI_RUNTIME_STRUCT ti_runtime_t;
 
+struct TI_NAMESPACE_STRUCT;
+typedef struct TI_NAMESPACE_STRUCT ti_namespace_t;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -86,6 +89,8 @@ typedef struct FUNCTION_STRUCT {
     const param_t *params;     /* Read-only through this pointer: a builtin points into a static const table,
                                   a FUNC_TI owns a heap array (only function_free casts const away to free it) */
     int         param_count;   /* Number of declared parameters (-1 for variadic builtins) */
+    ti_namespace_t *ns;        /* FUNC_TI: namespace it was defined in (its globals and sibling functions),
+                                  set once at definition; NULL for builtins. Not owned */
     union {
         native_fn_t native_fn; /* Builtin native C callback */
         ast_t      *def;       /* Interpreter TI AST function definition */

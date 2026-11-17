@@ -2,6 +2,7 @@
 #include "include/ti_runtime_visitor.h"
 #include "include/ti_type.h"
 #include "include/ti_type_value_dict.h"
+#include "include/ti_build_program.h"
 #include "include/tracked_memory.h"
 #include "include/debug.h"
 #include "TienInterpreter.h"
@@ -172,7 +173,8 @@ out:
 }
 
 /**
- * @brief Evaluate an import statement: bind a variable to a registered module.
+ * @brief Evaluate an import statement: bind a variable to the runtime's instance of a native or script module
+ * (created on the first import, reused afterwards).
  * @param rt Pointer to active runtime instance.
  * @param ctx Pointer to context (the variable is defined in this scope).
  * @param node Import statement AST node.
@@ -194,20 +196,75 @@ value_t *eval_import_statement(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         return NULL;
     }
 
-    /* Only modules registered by the host can be imported */
-    const ti_module_t *module = ti_module_find(module_name);
-    if (module == NULL) {
-        ti_raise(rt, TI_ERR_UNDEFINED, node->line, "Unknown module '%s'", module_name);
-        goto out;
+    /* A module this runtime imported before is reused (== stays true, a script's top level never runs twice).
+     * Instances live on the runtime alloc list, so they never move; calloc leaves native, ns and next NULL */
+    ti_module_instance_t *instance = NULL;
+    const ti_module_t *module = ti_module_native_find(module_name);
+    if (module != NULL) {
+        /* Step 1: a native module registered by the host wins; its table's address identifies it */
+        instance = ti_module_instance_find_native(rt, module);
+        if (instance == NULL) {
+            instance = tracked_calloc(&rt->alloc_list, 1, sizeof(ti_module_instance_t));
+            if (instance == NULL) {
+                ti_raise(rt, TI_ERR_NO_MEMORY, node->line, "Cannot import '%s': out of memory", module_name);
+                goto out;
+            }
+            instance->name = module->name;
+            instance->native = module;
+            instance->next = rt->modules;
+            rt->modules = instance;
+        }
+    } else {
+        /* Step 2: otherwise the host's loader provides a script; the path it returns identifies the file.
+         * false: the error (unknown module, load failure) is already raised */
+        char *text = NULL;
+        char *path = NULL;
+        if (!ti_namespace_read_source(rt, module_name, node->line, &text, &path)) {
+            goto out;
+        }
+
+        instance = ti_module_instance_find_script(rt, path);
+        if (instance != NULL) {
+            /* Step 3a: already loaded from this file (maybe under another name): the source is not needed */
+            ti_raw_free(text);
+            ti_raw_free(path);
+        } else {
+            /* Step 3b: first load of this file: a new instance wrapping a new namespace */
+            instance = tracked_calloc(&rt->alloc_list, 1, sizeof(ti_module_instance_t));
+            if (instance == NULL) {
+                ti_raw_free(text);
+                ti_raw_free(path);
+                ti_raise(rt, TI_ERR_NO_MEMORY, node->line, "Cannot import '%s': out of memory", module_name);
+                goto out;
+            }
+
+            /* Text and path are freed inside; NULL: the compile error is already raised */
+            instance->ns = ti_namespace_load(rt, module_name, node->line, text, path);
+            if (instance->ns == NULL) {
+                tracked_free(&rt->alloc_list, instance);
+                goto out;
+            }
+            instance->name = module_name;
+
+            /* Link it at the head of rt->modules before anything runs, so a circular import finds it */
+            instance->next = rt->modules;
+            rt->modules = instance;
+
+            /* Step 4: run its top level once, in its own namespace. On failure the error is already raised;
+             * the instance stays listed and is released when the runtime is destroyed */
+            if (!ti_namespace_run(rt, instance->ns, instance->ns->prog->root_ast)) {
+                goto out;
+            }
+        }
     }
 
-    /* The value only holds the address of the static module table */
+    /* Step 5: the value only holds the address of the instance (never owned by the value) */
     value = val_init(VAL_MODULE);
     if (value == NULL) {
         ti_raise(rt, TI_ERR_NO_MEMORY, node->line, "Cannot import '%s': out of memory", module_name);
         goto out;
     }
-    value->module_val = module;
+    value->module_val = instance;
 
     /* Register the binding into the current scope, like a variable definition */
     ti_status_t status = context_add_variable(&rt->alloc_list, ctx, variable_name, value);

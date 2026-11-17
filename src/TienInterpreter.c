@@ -33,10 +33,18 @@ void ti_register_log(ti_log_callback_t func)
  */
 void ti_log_line(char *line)
 {
-    while (line != NULL && *line != '\n' && *line != '\0') {
-        printf("%c", *line);
-        line++;
+    if (line == NULL) {
+        return;
     }
+
+    /* The line ends at its newline or at the end of the source (the last line may have no newline) */
+    int length = 0;
+    while (line[length] != '\n' && line[length] != '\0') {
+        length++;
+    }
+
+    /* Through the log callback like every other message, always closed by a newline */
+    ti_log("%.*s\n", length, line);
 }
 
 /**
@@ -114,14 +122,16 @@ ti_status_t ti_run_string(const char *source_code)
 }
 
 /* Compile and run a script, freeing the host's source buffer right after compiling */
-ti_status_t ti_run_string_take(char *source_code)
+ti_status_t ti_run_string_take(char *source_code, const char *path)
 {
-    /* Phase 1: compile (a NULL source, a syntax error or out of memory comes back as the status) */
+    /* Phase 1: compile (a NULL source, a syntax error or out of memory comes back as the status);
+     * the program keeps its own copy of the path, read by the module loader on import */
     ti_status_t status = TI_OK;
-    ti_program_t *prog = ti_program_compile(source_code, NULL, &status);
+    ti_program_t *prog = ti_program_compile(source_code, path, &status);
 
-    /* The program keeps no pointer into the source (the compiler works on its own copy): release it now */
-    free(source_code);
+    /* The program keeps no pointer into the source (the compiler works on its own copy): release it now,
+     * with the allocator the host was told to use (ti_raw_malloc) */
+    ti_raw_free(source_code);
 
     if (!prog) {
         return status;

@@ -40,6 +40,20 @@ extern "C" {
  */
 typedef void (*ti_log_callback_t)(const char *fmt, va_list args);
 
+/**
+ * @brief Callback type that loads the source of a script module for 'import <name>;'.
+ * The returned path identifies the module: names resolved to the same path are one module (loaded,
+ * compiled and run once per runtime). Out parameters are read only when TI_OK is returned; the library
+ * then owns both buffers and frees them with ti_raw_free.
+ * @param main_path Path of the main script (may be NULL); borrowed, read only.
+ * @param name Module name written after 'import' ("sensors.calibration"); borrowed, read only.
+ * @param text_out Receives the module source text (null-terminated), allocated with ti_raw_malloc.
+ * @param path_out Receives the path of the module's file, allocated with ti_raw_malloc (required).
+ * @return TI_OK, TI_ERR_UNDEFINED if there is no such module, or another status if loading failed.
+ */
+typedef ti_status_t (*ti_module_loader_t)(const char *main_path, const char *name,
+                                          char **text_out, char **path_out);
+
 /* -------------------- Platform & Logging API -------------------- */
 
 /**
@@ -49,7 +63,8 @@ typedef void (*ti_log_callback_t)(const char *fmt, va_list args);
 void ti_log(const char *fmt, ...);
 
 /**
- * @brief Print a line of text from the given pointer up to newline or null terminator.
+ * @brief Log a line of text from the given pointer up to newline or null terminator, then a newline
+ * (through the registered log callback, like ti_log).
  * @param line Pointer to start of line.
  */
 void ti_log_line(char *line);
@@ -59,6 +74,13 @@ void ti_log_line(char *line);
  * @param func Pointer to callback function.
  */
 void ti_register_log(ti_log_callback_t func);
+
+/**
+ * @brief Register the callback that loads script modules ('import <name>;' of a name no native module has).
+ * Call at host startup, before any runtime is created (the loader is not locked).
+ * @param loader Loader callback, or NULL to offer no script modules (import then fails with 'Unknown module').
+ */
+void ti_register_module_loader(ti_module_loader_t loader);
 
 /* -------------------- Public Interpreter API -------------------- */
 
@@ -129,12 +151,14 @@ ti_status_t ti_run_string(const char *source_code);
 
 /**
  * @brief Compile and run a script like ti_run_string, taking ownership of the source buffer.
- * The buffer is freed with free() right after compiling (before the script runs), in every case,
+ * The buffer is freed with ti_raw_free right after compiling (before the script runs), in every case,
  * so the source text and the running script never occupy memory at the same time.
- * @param source_code Source text allocated with malloc (never a literal or a flash string); freed here.
+ * @param source_code Source text allocated with ti_raw_malloc (never a literal or a flash string); freed here.
+ * @param path Path of the script (copied; may be NULL). The module loader receives it as main_path
+ *             for every 'import', in the main script and in its modules.
  * @return Same as ti_run_string.
  */
-ti_status_t ti_run_string_take(char *source_code);
+ti_status_t ti_run_string_take(char *source_code, const char *path);
 
 /**
  * @brief Request execution cancellation to immediately halt running script.

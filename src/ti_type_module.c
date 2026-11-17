@@ -19,7 +19,7 @@ bool ti_register_module(const ti_module_t *module)
     }
 
     /* Names must be unique: import would always find the first one */
-    if (ti_module_find(module->name) != NULL) {
+    if (ti_module_native_find(module->name) != NULL) {
         return false;
     }
     if (s_module_count >= TI_MAX_MODULES) {
@@ -32,8 +32,8 @@ bool ti_register_module(const ti_module_t *module)
     return true;
 }
 
-/* Find a registered module by name */
-const ti_module_t *ti_module_find(const char *name)
+/* Find a registered native module by name */
+const ti_module_t *ti_module_native_find(const char *name)
 {
     if (name == NULL) {
         return NULL;

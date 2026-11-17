@@ -3,6 +3,7 @@
 
 #include "ti_runtime_context.h"
 #include "ti_type_func.h"
+#include "ti_runtime_namespace.h"
 #include "ti_type.h"
 #include "ti_port.h"
 #include "tracked_memory.h"
@@ -53,8 +54,30 @@ typedef enum {
 typedef struct {
     ti_status_t kind;                         // Error category (TI_ERR_*)
     int         line;                         // Source line where the error was raised (0 if unknown)
+    const char *path;                         // Path of the program whose code raised it (NULL if none); borrowed
+                                              // from that program, valid while the runtime is alive
     char        message[TI_ERROR_MESSAGE_SIZE]; // Formatted, null-terminated description
 } ti_error_t;
+
+/* -------------------- Module Instance -------------------- */
+
+/*
+ * A module (ti_module_t) is a static const table defined by the host, shared by every runtime.
+ * A module instance is what one runtime holds after 'import': it wraps either a native module table
+ * or a script module namespace, so VAL_MODULE handles both kinds the same way.
+ */
+
+/**
+ * @brief One imported module of a runtime: a native module table or a script module namespace.
+ * Each instance is allocated once and never moves (VAL_MODULE values point at it); the runtime keeps
+ * them in a linked list (rt->modules) and frees them when it is destroyed.
+ */
+typedef struct TI_MODULE_INSTANCE_STRUCT {
+    const char        *name;   /* Module name used by 'import' (borrowed: the native table or the importer's AST) */
+    const ti_module_t *native; /* Native module: its static const table (NULL for a script module) */
+    ti_namespace_t    *ns;     /* Script module: its namespace (NULL for a native module) */
+    struct TI_MODULE_INSTANCE_STRUCT *next; /* Next imported module of the same runtime (NULL: last) */
+} ti_module_instance_t;
 
 /* -------------------- Runtime Instance Structure -------------------- */
 
@@ -66,9 +89,9 @@ typedef struct TI_RUNTIME_STRUCT {
     alloc_hdr_t        *alloc_list;          /* Dedicated allocation tracking list for this runtime */
 
     /* Script state: scopes and functions owned by the running script */
-    context_t          *global_context;      /* Global variable scope */
-    function_t         *user_functions;      /* Script-defined functions (top-level definitions only) */
-    int                 user_function_count; /* Number of script functions */
+    ti_namespace_t      main_ns;             /* Namespace of the main script: its globals and functions */
+    ti_namespace_t     *ns;                  /* Namespace whose code is running (&main_ns outside module code) */
+    ti_module_instance_t *modules;           /* Head of the imported module list (NULL: none imported yet) */
 
     /* Call stack: recursion limits */
     int                 call_depth;          /* Current recursion depth */
@@ -170,13 +193,32 @@ void ti_raise(ti_runtime_t *rt, ti_status_t kind, int line, const char *fmt, ...
 void ti_runtime_report_error(ti_runtime_t *rt);
 
 /**
- * @brief Run a compiled program in the global scope of a runtime (the runtime is not destroyed here).
+ * @brief Run a compiled program in the main namespace of a runtime (the runtime is not destroyed here).
  * A raised runtime error is logged (ti_runtime_report_error) and returned as the status.
  * @param handle Runtime handle (owner thread only).
  * @param prog Compiled program to run.
  * @return TI_OK, TI_ERR_INTERRUPTED if stopped, the raised error kind, TI_ERR_STALE_HANDLE or TI_ERR_INVALID_ARG.
  */
 ti_status_t ti_runtime_execute(ti_handle_t handle, ti_program_t *prog);
+
+/* -------------------- Module Instance Functions -------------------- */
+
+/**
+ * @brief Find the instance of a native module this runtime has already imported.
+ * @param rt Pointer to active runtime instance.
+ * @param module The native module's registered table.
+ * @return The instance in rt->modules wrapping that table, or NULL if not imported yet.
+ */
+ti_module_instance_t *ti_module_instance_find_native(ti_runtime_t *rt, const ti_module_t *module);
+
+/**
+ * @brief Find the instance of a script module this runtime has already loaded from a file.
+ * The path is the module's identity: two names the loader resolves to the same path are one module.
+ * @param rt Pointer to active runtime instance.
+ * @param path Path returned by the module loader.
+ * @return The instance in rt->modules whose program has that path, or NULL if not loaded yet.
+ */
+ti_module_instance_t *ti_module_instance_find_script(ti_runtime_t *rt, const char *path);
 
 /* -------------------- Event Queue Functions -------------------- */
 

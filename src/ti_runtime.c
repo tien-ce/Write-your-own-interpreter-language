@@ -1,11 +1,11 @@
 #include "include/ti_runtime.h"
 #include "include/ti_runtime_registry.h"
 #include "include/ti_build_program.h"
-#include "include/ti_runtime_visitor.h"
 #include "include/tracked_memory.h"
 #include "TienInterpreter.h"
 #include <stdarg.h>
 #include <stdio.h>
+#include <string.h>
 
 /* -------------------- Static Function Prototypes -------------------- */
 
@@ -46,9 +46,10 @@ static bool runtime_init(ti_runtime_t *rt)
     rt->alloc_list = NULL;
 
     /* Script state */
-    rt->global_context = context_init_global(&rt->alloc_list);
-    rt->user_functions = NULL;
-    rt->user_function_count = 0;
+    /* A failure leaves main_ns.globals NULL, caught by the rollback check below */
+    (void)ti_namespace_init(rt, &rt->main_ns);
+    rt->ns = &rt->main_ns;
+    rt->modules = NULL;
 
     /* Call stack */
     rt->call_depth = 0;
@@ -59,6 +60,7 @@ static bool runtime_init(ti_runtime_t *rt)
     rt->status = TI_RT_OK;
     rt->error.kind = TI_OK;
     rt->error.line = 0;
+    rt->error.path = NULL;
     rt->error.message[0] = '\0';
 
     /* Event queue */
@@ -80,10 +82,10 @@ static bool runtime_init(ti_runtime_t *rt)
     rt->wake = ti_signal_create();
 
     /* Any missing object means the runtime cannot synchronize: roll everything back */
-    if (!rt->global_context || !rt->exec_lock || !rt->handoff || !rt->wake) {
+    if (!rt->main_ns.globals || !rt->exec_lock || !rt->handoff || !rt->wake) {
         runtime_sync_destroy(rt);
         tracked_free_all(&rt->alloc_list);
-        rt->global_context = NULL;
+        rt->main_ns.globals = NULL;
         return false;
     }
     return true;
@@ -155,8 +157,18 @@ ti_status_t ti_runtime_destroy(ti_handle_t handle)
     ti_task_free(rt->active_task);
     rt->active_task = NULL;
 
+    /* Script modules: their variables own heap values (handles get destroyed) and each namespace owns
+     * its compiled program, which is not on the runtime alloc list */
+    for (ti_module_instance_t *instance = rt->modules; instance != NULL; instance = instance->next) {
+        if (instance->ns != NULL) {
+            ti_namespace_free(rt, instance->ns);
+            ti_program_free(instance->ns->prog);
+            instance->ns->prog = NULL;
+        }
+    }
+
     /* Global variables own heap values (value_t) that are not on the alloc list: release them first */
-    context_free_internal(&rt->alloc_list, rt->global_context);
+    context_free_internal(&rt->alloc_list, rt->main_ns.globals);
 
     /*
      * Batch deallocate 100% of all runtime-allocated objects:
@@ -222,6 +234,11 @@ void ti_raise(ti_runtime_t *rt, ti_status_t kind, int line, const char *fmt, ...
     rt->error.kind = kind;
     rt->error.line = line;
 
+    /* The running namespace is the one whose code raised it (a native raises inside its caller's namespace):
+     * remember its program's path; the program outlives the error (main: until execute returns, modules:
+     * until destroy) */
+    rt->error.path = (rt->ns != NULL && rt->ns->prog != NULL) ? rt->ns->prog->path : NULL;
+
     /* Format into the fixed buffer; vsnprintf always null-terminates and truncates if too long */
     va_list args;
     va_start(args, fmt);
@@ -238,14 +255,19 @@ void ti_runtime_report_error(ti_runtime_t *rt)
         return;
     }
 
-    if (rt->error.line > 0) {
+    /* With a path: "<path>:<line>" names the file the line belongs to (main script or module) */
+    if (rt->error.path != NULL && rt->error.line > 0) {
+        ti_log("[Runtime Error] %s at %s:%d\n", rt->error.message, rt->error.path, rt->error.line);
+    } else if (rt->error.path != NULL) {
+        ti_log("[Runtime Error] %s in %s\n", rt->error.message, rt->error.path);
+    } else if (rt->error.line > 0) {
         ti_log("[Runtime Error] %s at line %d\n", rt->error.message, rt->error.line);
     } else {
         ti_log("[Runtime Error] %s\n", rt->error.message);
     }
 }
 
-/* Run a compiled program in the global scope of a runtime; a raised error is logged and returned */
+/* Run a compiled program in the main namespace of a runtime; a raised error is logged and returned */
 ti_status_t ti_runtime_execute(ti_handle_t handle, ti_program_t *prog)
 {
     if (!prog || !prog->root_ast) {
@@ -265,20 +287,12 @@ ti_status_t ti_runtime_execute(ti_handle_t handle, ti_program_t *prog)
     /* Hold the execution lock for the whole run: ti_call callers get in only at safe points */
     ti_runtime_exec_lock(rt, TI_PORT_WAIT_FOREVER);
 
-    /* Walk and evaluate the AST graph from root */
-    visitor_visit(rt, rt->global_context, prog->root_ast);
+    /* The main namespace borrows the program (the host owns it): every import hands its path to the loader */
+    rt->main_ns.prog = prog;
 
-    /* Validate control flow invariants at script completion (only if nothing failed earlier) */
-    if (rt->status == TI_RT_OK) {
-        if (rt->global_context->flow_state == FLOW_BREAK) {
-            ti_raise(rt, TI_ERR_RUNTIME, 0, "'break' statement not within a loop");
-        } else if (rt->global_context->flow_state == FLOW_CONTINUE) {
-            ti_raise(rt, TI_ERR_RUNTIME, 0, "'continue' statement not within a loop");
-        } else if (rt->global_context->flow_state == FLOW_RETURN) {
-            /* Consume return signal at top-level script boundary */
-            rt->global_context->flow_state = FLOW_NORMAL;
-        }
-    }
+    /* Run the main script in the main namespace (rt->ns switching and top-level flow checks happen inside);
+     * the outcome is read from the runtime state below, which tells an interruption from an error */
+    (void)ti_namespace_run(rt, &rt->main_ns, prog->root_ast);
 
     /* Decide the outcome while the runtime is still locked: an interruption, or the raised error kind */
     ti_status_t status = ti_runtime_is_interrupted(rt) ? TI_ERR_INTERRUPTED : TI_OK;
@@ -289,4 +303,30 @@ ti_status_t ti_runtime_execute(ti_handle_t handle, ti_program_t *prog)
 
     ti_runtime_exec_unlock(rt);
     return status;
+}
+
+/* -------------------- Module Instance Operations -------------------- */
+
+/* Find the instance of an already imported native module */
+ti_module_instance_t *ti_module_instance_find_native(ti_runtime_t *rt, const ti_module_t *module)
+{
+    /* A native module is one static table: its address is its identity */
+    for (ti_module_instance_t *instance = rt->modules; instance != NULL; instance = instance->next) {
+        if (instance->native == module) {
+            return instance;
+        }
+    }
+    return NULL;
+}
+
+/* Find the instance of a script module already loaded from a file */
+ti_module_instance_t *ti_module_instance_find_script(ti_runtime_t *rt, const char *path)
+{
+    /* A script module is one file: the path its program was compiled from is its identity */
+    for (ti_module_instance_t *instance = rt->modules; instance != NULL; instance = instance->next) {
+        if (instance->ns != NULL && strcmp(instance->ns->prog->path, path) == 0) {
+            return instance;
+        }
+    }
+    return NULL;
 }

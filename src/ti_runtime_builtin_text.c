@@ -361,10 +361,6 @@ ti_status_t ti_text_append_value(ti_text_buffer_t *text, const value_t *value)
         return text_append(text, val_handle_is_open(value) ? "<handle %s>" : "<handle %s closed>", htype->name);
     }
 
-    case VAL_MODULE:
-        /* Show only the module name, like a function value */
-        return text_append(text, "<module %s>", value->module_val->name);
-
     case VAL_BYTES: {
         /* Binary data has no text form: render it as hex digits */
         const uint8_t *data = value->bytes_val->data;

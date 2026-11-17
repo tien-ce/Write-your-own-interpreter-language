@@ -124,7 +124,7 @@ static token_t *lexer_collect_string(lexer_t *lexer)
 
     /* Check for unclosed string literal */
     if (lexer->c == '\0') {
-        ti_log("[Lexer Error] Missing close quote at line %d\n", lexer->line_num);
+        ti_log("[Lexer Error] Missing close quote at " TI_BUILD_AT_FMT "\n", TI_BUILD_AT_ARGS(lexer, lexer->line_num));
         ti_log_line(lexer->line);
         lexer_abort(lexer);
     }
@@ -155,7 +155,7 @@ static token_t *lexer_collect_hex_bytes(lexer_t *lexer)
         }
         /* Invalid character */
         if (!isxdigit((unsigned char)lexer->c)) {
-            ti_log("[Lexer Error] Invalid character '%c' in bytes literal at line %d\n", lexer->c, lexer->line_num);
+            ti_log("[Lexer Error] Invalid character '%c' in bytes literal at " TI_BUILD_AT_FMT "\n", lexer->c, TI_BUILD_AT_ARGS(lexer, lexer->line_num));
             ti_log_line(lexer->line);
             lexer_abort(lexer);
         }
@@ -166,12 +166,12 @@ static token_t *lexer_collect_hex_bytes(lexer_t *lexer)
     }
     /* The literal must be closed and made of whole bytes (two digits each) */
     if (lexer->c == '\0') {
-        ti_log("[Lexer Error] Missing close quote in bytes literal at line %d\n", lexer->line_num);
+        ti_log("[Lexer Error] Missing close quote in bytes literal at " TI_BUILD_AT_FMT "\n", TI_BUILD_AT_ARGS(lexer, lexer->line_num));
         ti_log_line(lexer->line);
         lexer_abort(lexer);
     }
     if (length % 2 != 0) {
-        ti_log("[Lexer Error] Bytes literal needs an even number of hex digits at line %d\n", lexer->line_num);
+        ti_log("[Lexer Error] Bytes literal needs an even number of hex digits at " TI_BUILD_AT_FMT "\n", TI_BUILD_AT_ARGS(lexer, lexer->line_num));
         ti_log_line(lexer->line);
         lexer_abort(lexer);
     }
@@ -264,12 +264,12 @@ static token_t *lexer_collect_number(lexer_t *lexer)
             prefix_done = true;
         } while (isxdigit((unsigned char)lexer->c));
         if (digits > 8) {
-            ti_log("[Lexer Error] Hex constant '%s' does not fit 32 bits at line %d\n", value, lexer->line_num);
+            ti_log("[Lexer Error] Hex constant '%s' does not fit 32 bits at " TI_BUILD_AT_FMT "\n", value, TI_BUILD_AT_ARGS(lexer, lexer->line_num));
             ti_log_line(lexer->line);
             lexer_abort(lexer);
         }
         if (isalpha((unsigned char)lexer->c) || lexer->c == '_') {
-            ti_log("[Lexer Error] Invalid suffix '%c' on integer constant '%s' at line %d\n", lexer->c, value, lexer->line_num);
+            ti_log("[Lexer Error] Invalid suffix '%c' on integer constant '%s' at " TI_BUILD_AT_FMT "\n", lexer->c, value, TI_BUILD_AT_ARGS(lexer, lexer->line_num));
             ti_log_line(lexer->line);
             lexer_abort(lexer);
         }
@@ -295,7 +295,7 @@ static token_t *lexer_collect_number(lexer_t *lexer)
 
         /* Reject invalid alphanumeric suffixes on float constants */
         if (isalpha(lexer->c) || lexer->c == '_') {
-            ti_log("[Lexer Error] Invalid suffix '%c' on float constant '%s' at line %d\n", lexer->c, value, lexer->line_num);
+            ti_log("[Lexer Error] Invalid suffix '%c' on float constant '%s' at " TI_BUILD_AT_FMT "\n", lexer->c, value, TI_BUILD_AT_ARGS(lexer, lexer->line_num));
             ti_log_line(lexer->line);
             lexer_abort(lexer);
         }
@@ -304,7 +304,7 @@ static token_t *lexer_collect_number(lexer_t *lexer)
 
     /* Reject invalid alphanumeric suffixes on integer constants */
     if (isalpha(lexer->c) || lexer->c == '_') {
-        ti_log("[Lexer Error] Invalid suffix '%c' on integer constant '%s' at line %d\n", lexer->c, value, lexer->line_num);
+        ti_log("[Lexer Error] Invalid suffix '%c' on integer constant '%s' at " TI_BUILD_AT_FMT "\n", lexer->c, value, TI_BUILD_AT_ARGS(lexer, lexer->line_num));
         ti_log_line(lexer->line);
         lexer_abort(lexer);
     } 
@@ -326,6 +326,7 @@ lexer_t *lexer_init(alloc_hdr_t **list, char *str)
     lexer->c = lexer->contents[lexer->i];
     lexer->line_num = 1;
     lexer->line = lexer->contents;
+    lexer->path = NULL; // Set by the builder when the source has a path
     return lexer;
 }
 
@@ -530,7 +531,7 @@ token_t *lexer_get_next_token(lexer_t *lexer)
         case '~':
             return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_TILDE, NULL));
         default:
-            ti_log("[Lexer Error] Unexpected character %c, at line %d\n", lexer->c, lexer->line_num);
+            ti_log("[Lexer Error] Unexpected character %c, at " TI_BUILD_AT_FMT "\n", lexer->c, TI_BUILD_AT_ARGS(lexer, lexer->line_num));
             ti_log_line(lexer->line);
             lexer_abort(lexer);
         }

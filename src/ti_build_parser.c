@@ -77,8 +77,8 @@ static int token_type_to_op(parser_t *parser, int token_type)
     case TOKEN_SHL:         return OP_SHL;
     case TOKEN_SHR:         return OP_SHR;
     default:
-        ti_log("[Parser Error] Unknown operator token %s at line %d\n",
-               token_to_str(token_type), parser->lexer->line_num);
+        ti_log("[Parser Error] Unknown operator token %s at " TI_BUILD_AT_FMT "\n",
+               token_to_str(token_type), TI_BUILD_AT_ARGS(parser->lexer, parser->lexer->line_num));
         ti_log_line(parser->lexer->line);
         lexer_abort(parser->lexer);
         return -1;
@@ -124,8 +124,8 @@ static type_spec_t parser_parse_type(parser_t *parser)
     case TOKEN_KW_HANDLE: spec.type = VAL_HANDLE; break;
     case TOKEN_KW_FUNC:   spec.type = VAL_FUNC;   break;
     default:
-        ti_log("[Parser Error] Unexpected type %s, at line %d\n",
-               token_to_str(parser->current_token->type), parser->lexer->line_num);
+        ti_log("[Parser Error] Unexpected type %s, at " TI_BUILD_AT_FMT "\n",
+               token_to_str(parser->current_token->type), TI_BUILD_AT_ARGS(parser->lexer, parser->lexer->line_num));
         ti_log_line(parser->lexer->line);
         lexer_abort(parser->lexer);
         return spec;
@@ -165,7 +165,7 @@ static ast_t *parser_parse_param(parser_t *parser)
 
     /* A parameter must hold a value, so void is rejected */
     if (type.type == VAL_VOID) {
-        ti_log("[Parser Error] Parameter cannot have type void, at line %d\n", parser->lexer->line_num);
+        ti_log("[Parser Error] Parameter cannot have type void, at " TI_BUILD_AT_FMT "\n", TI_BUILD_AT_ARGS(parser->lexer, parser->lexer->line_num));
         ti_log_line(parser->lexer->line);
         lexer_abort(parser->lexer);
     }
@@ -242,8 +242,8 @@ static ast_t *parser_parse_definition(parser_t *parser)
     case TOKEN_SEMI: /* declaration without initializer */
         return parser_parse_variable_definition(parser, type, name);
     default:
-        ti_log("[Parser Error] Unexpected token %s in definition at line %d\n",
-               token_to_str(parser->current_token->type), parser->lexer->line_num);
+        ti_log("[Parser Error] Unexpected token %s in definition at " TI_BUILD_AT_FMT "\n",
+               token_to_str(parser->current_token->type), TI_BUILD_AT_ARGS(parser->lexer, parser->lexer->line_num));
         ti_log_line(parser->lexer->line);
         lexer_abort(parser->lexer);
         return NULL;
@@ -269,10 +269,10 @@ static void parser_eat(parser_t *parser, int expected_type)
         old_token = NULL;
     } else {
         /* Format and log syntax error with offending source line */
-        ti_log("[Parser Error] Unexpected token %s ('%s') at line %d\n",
+        ti_log("[Parser Error] Unexpected token %s ('%s') at " TI_BUILD_AT_FMT "\n",
                token_to_str(parser->current_token->type),
                parser->current_token->value ? parser->current_token->value : "<eof>",
-               parser->lexer->line_num);
+               TI_BUILD_AT_ARGS(parser->lexer, parser->lexer->line_num));
         ti_log_line(parser->lexer->line);
         ti_log("Expected token %s, but received %s\n",
                token_to_str(expected_type),
@@ -325,10 +325,10 @@ static ast_t *parser_parse_statement(parser_t *parser)
     case TOKEN_KW_IMPORT:
         return parser_parse_import_statement(parser);
     default:
-        ti_log("[Parser Error] Unexpected statement starting with %s ('%s') at line %d\n",
+        ti_log("[Parser Error] Unexpected statement starting with %s ('%s') at " TI_BUILD_AT_FMT "\n",
                token_to_str(parser->current_token->type),
                parser->current_token->value ? parser->current_token->value : "",
-               parser->lexer->line_num);
+               TI_BUILD_AT_ARGS(parser->lexer, parser->lexer->line_num));
         ti_log_line(parser->lexer->line);
         lexer_abort(parser->lexer);
         return NULL;
@@ -681,7 +681,7 @@ static ast_t *parser_parse_primary(parser_t *parser)
         while (parser->current_token->type != TOKEN_RBRACE) {
             /* 1. Strict Validation: Key MUST be a string literal */
             if (parser->current_token->type != TOKEN_STRING) {
-                ti_log("[Parser Error] Dictionary key must be a string literal at line %d\n", parser->lexer->line_num);
+                ti_log("[Parser Error] Dictionary key must be a string literal at " TI_BUILD_AT_FMT "\n", TI_BUILD_AT_ARGS(parser->lexer, parser->lexer->line_num));
                 ti_log_line(parser->lexer->line);
                 lexer_abort(parser->lexer);
             }
@@ -693,7 +693,7 @@ static ast_t *parser_parse_primary(parser_t *parser)
             
             /* 2. Strict Validation: Expect Colon ':' */
             if (parser->current_token->type != TOKEN_COLON) {
-                ti_log("[Parser Error] Expected ':' after dictionary key at line %d\n", parser->lexer->line_num);
+                ti_log("[Parser Error] Expected ':' after dictionary key at " TI_BUILD_AT_FMT "\n", TI_BUILD_AT_ARGS(parser->lexer, parser->lexer->line_num));
                 ti_log_line(parser->lexer->line);
                 lexer_abort(parser->lexer);
             }
@@ -715,7 +715,7 @@ static ast_t *parser_parse_primary(parser_t *parser)
                 parser_eat(parser, TOKEN_COMMA);
             } else if (parser->current_token->type != TOKEN_RBRACE) {
                 /* If not a comma and not a right brace, it's a syntax error */
-                ti_log("[Parser Error] Expected ',' or '}' in dictionary literal at line %d\n", parser->lexer->line_num);
+                ti_log("[Parser Error] Expected ',' or '}' in dictionary literal at " TI_BUILD_AT_FMT "\n", TI_BUILD_AT_ARGS(parser->lexer, parser->lexer->line_num));
                 ti_log_line(parser->lexer->line);
                 lexer_abort(parser->lexer);
             }
@@ -738,7 +738,7 @@ static ast_t *parser_parse_primary(parser_t *parser)
         const char *hex = parser->current_token->value; // "1A024A..."
         int length = (int)(strlen(hex) / 2);
         if (length > TI_MAX_BYTES_LEN) {
-          ti_log("[Parser Error] Bytes literal exceeds %d bytes at line %d\n", TI_MAX_BYTES_LEN, parser->lexer->line_num);
+          ti_log("[Parser Error] Bytes literal exceeds %d bytes at " TI_BUILD_AT_FMT "\n", TI_MAX_BYTES_LEN, TI_BUILD_AT_ARGS(parser->lexer, parser->lexer->line_num));
           ti_log_line(parser->lexer->line);
           lexer_abort(parser->lexer);
         }
@@ -770,10 +770,10 @@ static ast_t *parser_parse_primary(parser_t *parser)
         return expr;
     }
     default:
-        ti_log("[Parser Error] Unexpected token %s ('%s') in expression at line %d\n",
+        ti_log("[Parser Error] Unexpected token %s ('%s') in expression at " TI_BUILD_AT_FMT "\n",
                token_to_str(parser->current_token->type),
                parser->current_token->value ? parser->current_token->value : "",
-               parser->lexer->line_num);
+               TI_BUILD_AT_ARGS(parser->lexer, parser->lexer->line_num));
         ti_log_line(parser->lexer->line);
         lexer_abort(parser->lexer);
         return NULL;
@@ -798,8 +798,8 @@ static val_type_t parser_parse_list_element_type(parser_t *parser)
     case TOKEN_KW_DICT:   element_type = VAL_DICT;   break;
     default:
         /* Containers are rejected as elements: refcounting cannot reclaim reference cycles */
-        ti_log("[Parser Error] Expect list element type , but got %s at line %d\n",
-               token_to_str(parser->current_token->type), parser->lexer->line_num);
+        ti_log("[Parser Error] Expect list element type , but got %s at " TI_BUILD_AT_FMT "\n",
+               token_to_str(parser->current_token->type), TI_BUILD_AT_ARGS(parser->lexer, parser->lexer->line_num));
         ti_log_line(parser->lexer->line);
         lexer_abort(parser->lexer);
         return VAL_NULL;
@@ -829,7 +829,7 @@ static ast_t *parser_parse_list_literal(parser_t *parser)
 
         /* Reject literals that could never fit in a list at runtime */
         if (element_count >= TI_MAX_LIST_ITEMS) {
-            ti_log("[Parser Error] List literal exceeds %d elements at line %d\n", TI_MAX_LIST_ITEMS, parser->lexer->line_num);
+            ti_log("[Parser Error] List literal exceeds %d elements at " TI_BUILD_AT_FMT "\n", TI_MAX_LIST_ITEMS, TI_BUILD_AT_ARGS(parser->lexer, parser->lexer->line_num));
             ti_log_line(parser->lexer->line);
             lexer_abort(parser->lexer);
         }
@@ -844,7 +844,7 @@ static ast_t *parser_parse_list_literal(parser_t *parser)
         if (parser->current_token->type == TOKEN_COMMA) {
             parser_eat(parser, TOKEN_COMMA);
         } else if (parser->current_token->type != TOKEN_RBRACKET) {
-            ti_log("[Parser Error] Expected ',' or ']' in list literal at line %d\n", parser->lexer->line_num);
+            ti_log("[Parser Error] Expected ',' or ']' in list literal at " TI_BUILD_AT_FMT "\n", TI_BUILD_AT_ARGS(parser->lexer, parser->lexer->line_num));
             ti_log_line(parser->lexer->line);
             lexer_abort(parser->lexer);
         }
@@ -963,7 +963,7 @@ static ast_t *parser_parse_if_statement(parser_t *parser)
 static void *parser_check_alloc(parser_t *parser, void *ptr)
 {
     if (ptr == NULL) {
-        ti_log("[Parser Error] Out of memory at line %d\n", parser->lexer->line_num);
+        ti_log("[Parser Error] Out of memory at " TI_BUILD_AT_FMT "\n", TI_BUILD_AT_ARGS(parser->lexer, parser->lexer->line_num));
         lexer_abort(parser->lexer); // Does not return
     }
     return ptr;
@@ -1036,7 +1036,7 @@ static ast_t *parser_parse_member_access(parser_t *parser, ast_t *node)
 
         /* The member name must follow the dot (rejects dev. and dev.5) */
         if (parser->current_token->type != TOKEN_ID) {
-            ti_log("[Parser Error] Expected member name after '.' at line %d\n", parser->lexer->line_num);
+            ti_log("[Parser Error] Expected member name after '.' at " TI_BUILD_AT_FMT "\n", TI_BUILD_AT_ARGS(parser->lexer, parser->lexer->line_num));
             ti_log_line(parser->lexer->line);
             lexer_abort(parser->lexer);
         }
@@ -1109,8 +1109,8 @@ static ast_t *parser_parse_assignment_expr(parser_t *parser, ast_t *target)
             op = OP_DIV;
             break;
         default:
-            ti_log("[Parser Error] Unexpected token %s in assignment at line %d\n",
-                   token_to_str(token_type), parser->lexer->line_num);
+            ti_log("[Parser Error] Unexpected token %s in assignment at " TI_BUILD_AT_FMT "\n",
+                   token_to_str(token_type), TI_BUILD_AT_ARGS(parser->lexer, parser->lexer->line_num));
             ti_log_line(parser->lexer->line);
             lexer_abort(parser->lexer);
             return NULL;
@@ -1129,7 +1129,7 @@ static ast_t *parser_parse_assignment_expr(parser_t *parser, ast_t *target)
         /* The target is reused as the left operand, so it needs its own copy */
         ast_t *left = ast_clone(parser->alloc_list, target);
         if (left == NULL) {
-            ti_log("[Parser Error] Unsupported target for compound assignment at line %d\n", line);
+            ti_log("[Parser Error] Unsupported target for compound assignment at " TI_BUILD_AT_FMT "\n", TI_BUILD_AT_ARGS(parser->lexer, line));
             ti_log_line(parser->lexer->line);
             lexer_abort(parser->lexer);
             return NULL;
@@ -1200,39 +1200,63 @@ static ast_t *parser_parse_continue_statement(parser_t *parser)
 }
 
 /**
- * @brief Parse import statement: import <module> [as <alias>];.
+ * @brief Parse import statement: import <name>[.<name>...] [as <alias>];.
+ * Without 'as' the variable is named after the last part ('import lib.count;' binds 'count').
  * 'as' is not a keyword: it is recognized only here, so scripts may still use it as a name.
  * @param parser Pointer to parser.
  * @return AST import statement node.
  */
-/* import <module> [as <alias>]; */
+/* import <id>[.<id>...] [as <alias>]; */
 static ast_t *parser_parse_import_statement(parser_t *parser)
 {
     int line = parser->lexer->line_num;
     parser_eat(parser, TOKEN_KW_IMPORT); // Eat 'import'
 
-    /* The module name must follow 'import' */
-    if (parser->current_token->type != TOKEN_ID) {
-        ti_log("[Parser Error] Expected module name after 'import' at line %d\n", parser->lexer->line_num);
-        ti_log_line(parser->lexer->line);
-        lexer_abort(parser->lexer);
-    }
-    char *module_name = parser->current_token->value;
-    parser->current_token->value = NULL; // Change the owner to ast instead of token
-    parser_eat(parser, TOKEN_ID);
+    /* Step 1: the module name is identifiers joined by '.' ("lib.count"); any other token is a syntax
+     * error raised by parser_eat. Every part is on the alloc list, so an abort frees them with the program */
+    char *module_name = NULL;
+    for (;;) {
+        /* Take the identifier before eating it (parser_eat frees the token's value) */
+        char *part = (parser->current_token->type == TOKEN_ID) ? parser->current_token->value : NULL;
+        if (part != NULL) {
+            parser->current_token->value = NULL; // Change the owner to the parser instead of the token
+        }
+        parser_eat(parser, TOKEN_ID); // Not a name: syntax error, does not return
 
-    /* Optional alias: 'as' arrives as an identifier token, followed by the variable name */
+        /* The first part becomes the name; each later one is appended after a '.' */
+        if (module_name == NULL) {
+            module_name = part;
+        } else {
+            size_t used = strlen(module_name);
+            module_name = parser_check_alloc(parser, tracked_realloc(parser->alloc_list, module_name,
+                                                                     used + 1 + strlen(part) + 1));
+            module_name[used] = '.';
+            strcpy(module_name + used + 1, part);
+            tracked_free(parser->alloc_list, part);
+        }
+
+        /* A '.' means another part follows */
+        if (parser->current_token->type != TOKEN_DOT) {
+            break;
+        }
+        parser_eat(parser, TOKEN_DOT); // Eat '.'
+    }
+
+    /* Step 2: optional alias: 'as' arrives as an identifier token, followed by the variable name */
     char *alias = NULL;
     if (parser->current_token->type == TOKEN_ID && strcmp(parser->current_token->value, "as") == 0) {
         parser_eat(parser, TOKEN_ID); // Eat 'as'
-        if (parser->current_token->type != TOKEN_ID) {
-            ti_log("[Parser Error] Expected name after 'as' at line %d\n", parser->lexer->line_num);
-            ti_log_line(parser->lexer->line);
-            lexer_abort(parser->lexer); // module_name is on the alloc list: freed by ti_compile
+        alias = (parser->current_token->type == TOKEN_ID) ? parser->current_token->value : NULL;
+        if (alias != NULL) {
+            parser->current_token->value = NULL; // Change the owner to ast instead of token
         }
-        alias = parser->current_token->value;
-        parser->current_token->value = NULL; // Change the owner to ast instead of token
-        parser_eat(parser, TOKEN_ID);
+        parser_eat(parser, TOKEN_ID); // Not a name: syntax error, does not return
+    }
+
+    /* Step 3: without 'as', a dotted name binds its last part ("lib.count" -> count) */
+    const char *last_dot = strrchr(module_name, '.');
+    if (alias == NULL && last_dot != NULL) {
+        alias = parser_check_alloc(parser, tracked_strdup(parser->alloc_list, last_dot + 1));
     }
     parser_eat(parser, TOKEN_SEMI); // Eat ';'
 
@@ -1321,7 +1345,7 @@ static ast_t *parser_parse_for_statement(parser_t *parser)
     case TOKEN_ID: {
         ast_t *target = parser_parse_expr(parser);
         if (!parser_is_update_token(parser->current_token->type)) {
-            ti_log("[Parser Error] for-loop init must be a definition or an assignment at line %d\n", parser->lexer->line_num);
+            ti_log("[Parser Error] for-loop init must be a definition or an assignment at " TI_BUILD_AT_FMT "\n", TI_BUILD_AT_ARGS(parser->lexer, parser->lexer->line_num));
             ti_log_line(parser->lexer->line);
             lexer_abort(parser->lexer);
         }
@@ -1329,8 +1353,8 @@ static ast_t *parser_parse_for_statement(parser_t *parser)
         break;
     }
     default:
-        ti_log("[Parser Error] Unexpected token %s in for-loop init at line %d\n",
-               token_to_str(parser->current_token->type), parser->lexer->line_num);
+        ti_log("[Parser Error] Unexpected token %s in for-loop init at " TI_BUILD_AT_FMT "\n",
+               token_to_str(parser->current_token->type), TI_BUILD_AT_ARGS(parser->lexer, parser->lexer->line_num));
         ti_log_line(parser->lexer->line);
         lexer_abort(parser->lexer);
     }
@@ -1345,14 +1369,14 @@ static ast_t *parser_parse_for_statement(parser_t *parser)
     /* Step part: an assignment (omitted is allowed) */
     if (parser->current_token->type != TOKEN_RPAREN) {
         if (parser->current_token->type != TOKEN_ID) {
-            ti_log("[Parser Error] for-loop step must be an assignment at line %d\n", parser->lexer->line_num);
+            ti_log("[Parser Error] for-loop step must be an assignment at " TI_BUILD_AT_FMT "\n", TI_BUILD_AT_ARGS(parser->lexer, parser->lexer->line_num));
             ti_log_line(parser->lexer->line);
             lexer_abort(parser->lexer);
         }
         /* Current token is TOKEN_ID, so the AST returned from parser_expr should be identifier or array access*/
         ast_t *target = parser_parse_expr(parser);
         if (!parser_is_update_token(parser->current_token->type)) {
-            ti_log("[Parser Error] for-loop step must be an assignment at line %d\n", parser->lexer->line_num);
+            ti_log("[Parser Error] for-loop step must be an assignment at " TI_BUILD_AT_FMT "\n", TI_BUILD_AT_ARGS(parser->lexer, parser->lexer->line_num));
             ti_log_line(parser->lexer->line);
             lexer_abort(parser->lexer);
         }

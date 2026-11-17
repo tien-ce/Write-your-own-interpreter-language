@@ -26,6 +26,9 @@ typedef struct HANDLE_TYPE_STRUCT ti_handle_type_t;
 /* Built-in module descriptor (functions, constants): defined in ti_type_module.h */
 typedef struct MODULE_STRUCT ti_module_t;
 
+/* Imported module of a runtime (opaque: defined inside the library) */
+typedef struct TI_MODULE_INSTANCE_STRUCT ti_module_instance_t;
+
 /**
  * @brief Encapsulates the state and structure of a hash table based dictionary.
  * Uses the external chashmap library for internal storage.
@@ -57,7 +60,8 @@ typedef struct VALUE_STRUCT {
         list_t *list_val;
         bytes_t *bytes_val;
         handle_t *handle_val;      /* VAL_HANDLE: opaque native object */
-        const ti_module_t *module_val; /* VAL_MODULE: static const module table (not owned, never freed) */
+        ti_module_instance_t *module_val; /* VAL_MODULE: module instance of the runtime (not owned; lives until
+                                             the runtime is destroyed, so it must not leave the runtime) */
         char *func_name;          /* VAL_FUNC: name of a script function, resolved at call time */
     };
 } value_t;
