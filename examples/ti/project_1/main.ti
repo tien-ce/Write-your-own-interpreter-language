@@ -1,10 +1,10 @@
 /*
  * Script module example: main.ti imports other .ti files of this project.
  *     import config;                   config.ti, next to this file (variable 'config')
- *     import util.counter as c;        util/counter.ti, bound to 'c'
- *     import sensors.temperature;      sensors/temperature.ti (variable 'temperature', the last part)
- * Module names are relative to this file's directory, in main and in every module. A module is its file:
- * every name that leads to the same file gives the same module (loaded and run once).
+ *     import util/counter as c;        util/counter.ti, bound to 'c'
+ *     import sensors/temperature;      sensors/temperature.ti (variable 'temperature', the last part)
+ * A module name is a path without ".ti", relative to the file that imports it (the CLI's loader).
+ * A module is its file: every name that leads to the same file gives the same module (loaded and run once).
  * A module's code runs in its own namespace: its functions see its own variables and functions,
  * and the same names in main never clash with them.
  * Run:  ./ti.out examples/ti/project_1/main.ti
@@ -15,17 +15,17 @@ import config;
 print("project " + config.NAME + ", " + to_string(config.MAX) + " readings");
 
 /* A module keeps its own state: its functions change its own 'count' */
-import util.counter as c;
+import util/counter as c;
 int count = 100;                        // main's own 'count', not the module's
 c.increase();
 c.increase();
 print("counter: " + to_string(c.get()) + " (read as variable: " + to_string(c.count) + "), main count: " + to_string(count));
 
-/* A module can import another one: temperature.ti has 'import sensors.calibration;' (names are relative
- * to this file's directory). The file is the module: importing it again here gives the same instance */
-import sensors.temperature;
+/* A module can import another one: temperature.ti has 'import calibration;' (relative to its own
+ * directory). The file is the module: importing it here as sensors/calibration gives the same instance */
+import sensors/temperature;
 // Temperature import calibration so the runtime also has it but can't access because haven't create val_module 
-import sensors.calibration as ca;
+import sensors/calibration as ca;
 print ("module == module :", ca == temperature.calibration);
 for (int i = 0; i < config.MAX; i += 1) {
     int raw = 20 + i;
@@ -47,7 +47,7 @@ copy = 0;
 print("copy changed, module still: " + to_string(c.count));
 
 /* Each line below stops the script with an error; uncomment one to see its message */
-// import util.missing;                 // Unknown module 'util.missing'
-// c.decrease();                        // Module util.counter has no function 'decrease'
-// int x = c.total;                     // Module util.counter has no variable 'total'
-// c.count = 5;                         // Cannot set 'count' of module util.counter: read-only
+// import util/missing;                 // Unknown module 'util/missing'
+// c.decrease();                        // Module util/counter has no function 'decrease'
+// int x = c.total;                     // Module util/counter has no variable 'total'
+// c.count = 5;                         // Cannot set 'count' of module util/counter: read-only

@@ -1,5 +1,5 @@
-/* Converts raw readings. Module names are relative to the main script's directory, also in a module */
-import sensors.calibration;
+/* Converts raw readings. A module name is relative to this file: calibration.ti is next to it */
+import calibration;
 
 int read(int raw) {
     return calibration.apply(raw);
