@@ -1,0 +1,6 @@
+/* Project settings: read as config.NAME and config.MAX */
+string NAME = "project_1";
+int MAX = 3;
+
+/* Top-level code runs once, the first time a runtime imports this module */
+print("[config] loaded");

@@ -1,0 +1,6 @@
+/* Calibration of the temperature sensor */
+int OFFSET = 2;
+
+int apply(int raw) {
+    return raw - OFFSET;
+}

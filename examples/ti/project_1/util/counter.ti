@@ -1,0 +1,10 @@
+/* A counter that keeps its state in this module's own namespace */
+int count = 0;
+
+void increase() {
+    count += 1;
+}
+
+int get() {
+    return count;
+}
