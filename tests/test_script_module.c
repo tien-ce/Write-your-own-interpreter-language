@@ -1,10 +1,10 @@
 /*
  * Script modules: 'import <name>;' of a name no native module has goes through the host's module loader.
  * Covers calls into a module (its functions see its own globals and functions), reading its variables,
- * namespaces that keep the same names apart, a top level that runs once per runtime, the main script's
- * path handed to the loader (also for imports inside modules), the file path as the module's identity
- * (two names of one file are one module), dotted module names (import lib.a;), circular imports,
- * handles kept in module variables, and every error message. The loader serves sources from an
+ * namespaces that keep the same names apart, a top level that runs once per runtime, the importer's path
+ * handed to the loader (the main script's, then a module's for the imports inside it), the file path as
+ * the module's identity (two names of one file are one module), path names (import ../lib/a;), circular
+ * imports, handles kept in module variables, and every error message. The loader serves sources from an
  * in-memory table.
  *
  * Build and run (from the repository root); AddressSanitizer reports any leak at exit:
@@ -25,11 +25,11 @@ static int g_destroyed;        /* Number of native objects destroyed */
 static int g_result;           /* Value reported by t.mark (-1 = not reported) */
 static int g_ticks;            /* Number of t.tick() calls (counts how often a top level ran) */
 static char g_log[4096];       /* Everything the interpreter logged during one script */
-static char g_importers[512];  /* "name<-main_path;" for every loader call of one script */
+static char g_importers[512];  /* "name<-importer_path;" for every loader call of one script */
 
 /* -------------------- Module Sources -------------------- */
 
-/* Files the loader can serve, by resolved path ("<main script dir><name>.ti") */
+/* Files the loader can serve, by clean path ("<importer dir><name>.ti" without "." and "..") */
 static const struct {
     const char *path;
     const char *source;
@@ -47,7 +47,7 @@ static const struct {
     { "dir/outer.ti",   "import inner; int value = inner.value + 1;\n" },
     { "dir/inner.ti",   "int value = 41;\n" },
     { "dir/lib/a.ti",   "int v = 7;\n" },
-    { "dir/sub/user.ti", "import lib.a; int v = a.v;\n" },
+    { "dir/sub/user.ti", "import ../lib/a; int v = a.v;\n" },
     { "dir/cyc_a.ti",   "import cyc_b; int a = 1;\n" },
     { "dir/cyc_b.ti",   "import cyc_a; int b = 2;\n" },
     { "dir/bad.ti",     "int x = ;\n" },
@@ -78,13 +78,43 @@ static char *raw_dup(const char *text)
     return copy;
 }
 
-/* Loader like the CLI's: "<directory of main_path><name>.ti" ('.' -> '/'), served from s_files */
-static ti_status_t test_loader(const char *main_path, const char *name, char **text_out, char **path_out)
+/**
+ * @brief Remove "." parts and "<dir>/.." pairs from a relative path, in place (realpath without a disk),
+ * so every spelling of one file gives one path: "dir/sub/../lib/a.ti" -> "dir/lib/a.ti".
+ * @param path Path to clean (at most 128 bytes, at most 16 parts).
+ */
+static void clean_path(char *path)
+{
+    char *parts[16];
+    int count = 0;
+    for (char *part = strtok(path, "/"); part != NULL && count < 16; part = strtok(NULL, "/")) {
+        if (strcmp(part, ".") == 0) {
+            continue;
+        }
+        if (strcmp(part, "..") == 0 && count > 0 && strcmp(parts[count - 1], "..") != 0) {
+            count--;
+            continue;
+        }
+        parts[count++] = part;
+    }
+
+    char clean[128] = "";
+    for (int i = 0; i < count; i++) {
+        if (i > 0) {
+            strcat(clean, "/");
+        }
+        strcat(clean, parts[i]);
+    }
+    strcpy(path, clean);
+}
+
+/* Loader like the CLI's: "<directory of importer_path><name>.ti", cleaned, served from s_files */
+static ti_status_t test_loader(const char *importer_path, const char *name, char **text_out, char **path_out)
 {
     /* Record who asked for what, so a case can check the path handed to the loader */
     size_t used = strlen(g_importers);
     snprintf(g_importers + used, sizeof(g_importers) - used, "%s<-%s;", name,
-             main_path != NULL ? main_path : "(null)");
+             importer_path != NULL ? importer_path : "(null)");
 
     /* A load failure that is not "no such module" */
     if (strcmp(name, "io") == 0) {
@@ -103,16 +133,12 @@ static ti_status_t test_loader(const char *main_path, const char *name, char **t
         name = "counter";
     }
 
-    /* Resolve the path from the main script's directory; each '.' of the name is a directory level */
+    /* Resolve the name from the importer's directory, then clean it to one spelling per file */
     char path[128];
-    const char *slash = (main_path != NULL) ? strrchr(main_path, '/') : NULL;
-    int dir_len = (slash != NULL) ? (int)(slash - main_path) + 1 : 0;
-    snprintf(path, sizeof(path), "%.*s%s.ti", dir_len, dir_len > 0 ? main_path : "", name);
-    for (char *c = path + dir_len; *c != '\0'; c++) {
-        if (*c == '.' && strcmp(c, ".ti") != 0) {
-            *c = '/';
-        }
-    }
+    const char *slash = (importer_path != NULL) ? strrchr(importer_path, '/') : NULL;
+    int dir_len = (slash != NULL) ? (int)(slash - importer_path) + 1 : 0;
+    snprintf(path, sizeof(path), "%.*s%s.ti", dir_len, dir_len > 0 ? importer_path : "", name);
+    clean_path(path);
 
     for (size_t i = 0; i < sizeof(s_files) / sizeof(s_files[0]); i++) {
         if (strcmp(s_files[i].path, path) == 0) {
@@ -260,14 +286,15 @@ static void test_namespaces(void)
 /* The path handed to the loader, and the path as the module's identity */
 static void test_module_path(void)
 {
-    /* Every import gets the main script's path, also the one inside a module */
+    /* The loader gets the path of the file that runs the import: main's, then the module's */
     run("nested import", "dir/main.ti", "import t; import outer; t.mark(outer.value == 42);", 1, 0, NULL);
     CHECK(strstr(g_importers, "outer<-dir/main.ti;") != NULL);
-    CHECK(strstr(g_importers, "inner<-dir/main.ti;") != NULL);
+    CHECK(strstr(g_importers, "inner<-dir/outer.ti;") != NULL);
 
-    /* A module in a subdirectory imports by the name main uses, and gets main's instance */
+    /* A module in a subdirectory reaches the same file with "../": it gets main's instance */
     run("shared from module", "dir/main.ti",
-        "import t; import lib.a; import sub.user; t.mark(user.v == 7 && user.a == a);", 1, 0, NULL);
+        "import t; import lib/a; import sub/user; t.mark(user.v == 7 && user.a == a);", 1, 0, NULL);
+    CHECK(strstr(g_importers, "../lib/a<-dir/sub/user.ti;") != NULL);
 
     /* Two names the loader resolves to one file are one module: one top level, one instance */
     run("same file two names", "dir/main.ti",
@@ -281,11 +308,15 @@ static void test_module_path(void)
     run("no path", NULL, "import lib;", -1, 0, "Unknown module 'lib'");
     CHECK(strcmp(g_importers, "lib<-(null);") == 0);
 
-    /* A dotted name reaches the loader as written; without 'as' the variable is its last part */
-    run("dotted name", "dir/main.ti", "import t; import lib.a; t.mark(a.v == 7);", 1, 0, NULL);
-    CHECK(strcmp(g_importers, "lib.a<-dir/main.ti;") == 0);
-    run("dotted name as", "dir/main.ti", "import t; import lib.a as m; t.mark(m.v == 7);", 1, 0, NULL);
-    run("dotted twice", "dir/main.ti", "import t; import lib.a; import lib.a as m; t.mark(m == a);", 1, 0, NULL);
+    /* A path name reaches the loader as written; without 'as' the variable is its last part */
+    run("path name", "dir/main.ti", "import t; import lib/a; t.mark(a.v == 7);", 1, 0, NULL);
+    CHECK(strcmp(g_importers, "lib/a<-dir/main.ti;") == 0);
+    run("path name as", "dir/main.ti", "import t; import lib/a as m; t.mark(m.v == 7);", 1, 0, NULL);
+    run("dot slash name", "dir/main.ti", "import t; import ./lib/a; t.mark(a.v == 7);", 1, 0, NULL);
+    CHECK(strcmp(g_importers, "./lib/a<-dir/main.ti;") == 0);
+    run("two spellings", "dir/main.ti", "import t; import lib/a; import ./lib/a as m; t.mark(m == a);", 1, 0, NULL);
+    run("parent from main", "dir/sub/main.ti", "import t; import ../../dir/lib/a; t.mark(a.v == 7);", 1, 0, NULL);
+    CHECK(strcmp(g_importers, "../../dir/lib/a<-dir/sub/main.ti;") == 0);
 
     /* A native module never reaches the loader */
     run("native skips loader", "dir/main.ti", "import t; t.mark(true);", 1, 0, NULL);
@@ -295,7 +326,7 @@ static void test_module_path(void)
 /* The other ways in pass the main script's path the same way: ti_run_string, and compile/create/execute */
 static void test_other_runners(void)
 {
-    const char *src = "import t; import lib.a; t.mark(a.v == 7);";
+    const char *src = "import t; import lib/a; t.mark(a.v == 7);";
 
     /* ti_run_string copies the path like ti_run_string_take */
     g_result = -1;
@@ -303,7 +334,7 @@ static void test_other_runners(void)
     g_importers[0] = '\0';
     CHECK(ti_run_string(src, "dir/main.ti") == TI_OK);
     CHECK(g_result == 1);
-    CHECK(strcmp(g_importers, "lib.a<-dir/main.ti;") == 0);
+    CHECK(strcmp(g_importers, "lib/a<-dir/main.ti;") == 0);
 
     /* Two-phase: the path goes into the program at compile time; execute hands it to the loader */
     g_result = -1;
@@ -315,7 +346,7 @@ static void test_other_runners(void)
     CHECK(ti_execute(handle, prog) == TI_OK);
     ti_program_free(prog);
     CHECK(g_result == 1);
-    CHECK(strcmp(g_importers, "lib.a<-dir/main.ti;") == 0);
+    CHECK(strcmp(g_importers, "lib/a<-dir/main.ti;") == 0);
     CHECK(g_log[0] == '\0');
 }
 
@@ -333,12 +364,14 @@ static void test_errors(void)
     CHECK(strstr(g_log, "[Syntax Error]") == NULL);                 /* and is the only build error line */
     run("module raises", main_path, "import raises;", -1, 0, "t.fail: always fails");
 
-    /* Module names: only identifiers joined by '.'; any other token is a syntax error */
+    /* Module names: ('./' | '../')* ID ('/' ID)*; any other token is a syntax error */
     run("string name", main_path, "import \"lib/a\" as a;", -1, 0, "Expected token ID, but received STRING");
-    run("trailing dot", main_path, "import lib.;", -1, 0, "Expected token ID, but received ';'");
-    run("double dot", main_path, "import lib..a;", -1, 0, "Expected token ID, but received '.'");
-    run("slash", main_path, "import lib/a;", -1, 0, "Expected token ';'");
-    run("number part", main_path, "import lib.2;", -1, 0, "Expected token ID");
+    run("trailing slash", main_path, "import lib/;", -1, 0, "Expected token ID, but received ';'");
+    run("dot in name", main_path, "import lib.a;", -1, 0, "Expected token ';', but received '.'");
+    run("three dots", main_path, "import .../a;", -1, 0, "Expected token '/', but received '.'");
+    run("dots without slash", main_path, "import ..a;", -1, 0, "Expected token '/', but received ID");
+    run("parent in the middle", main_path, "import lib/../a;", -1, 0, "Expected token ID, but received '.'");
+    run("number part", main_path, "import lib/2;", -1, 0, "Expected token ID");
 
     /* Members */
     run("no function", main_path, "import lib; lib.nope();", -1, 0, "Module lib has no function 'nope'");
