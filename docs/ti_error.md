@@ -67,9 +67,21 @@ typedef enum {
 typedef struct {
     ti_status_t kind;                         // Error category (TI_ERR_*)
     int         line;                         // Source line where error occurred (0 if unknown)
+    const char *path;                         // Path of the program whose code raised it (NULL if none)
     char        message[TI_ERROR_MESSAGE_SIZE]; // Formatted diagnostic message
 } ti_error_t;
 ```
+
+`path` is borrowed from the program of the running namespace (`rt->ns->prog->path`): the main script's program lives until `ti_execute` returns, a script module's until the runtime is destroyed, so it is valid wherever the error is reported. `ti_runtime_report_error` prints:
+
+| Record | Log line |
+| :--- | :--- |
+| path and line | `[Runtime Error] <message> at <path>:<line>` |
+| path only | `[Runtime Error] <message> in <path>` |
+| line only (no path, e.g. `ti_run_string`) | `[Runtime Error] <message> at line <line>` |
+| neither | `[Runtime Error] <message>` |
+
+Build errors name their file the same way: the lexer borrows the program's path (`lexer->path`), and every lexer and parser message ends with `at <path>:<line>` (`at line <line>` without a path), through `TI_BUILD_AT_FMT` / `TI_BUILD_AT_ARGS` in `src/include/ti_build_lexer.h`.
 
 ---
 
@@ -80,7 +92,7 @@ typedef struct {
 void ti_raise(ti_runtime_t *rt, ti_status_t kind, int line, const char *fmt, ...);
 ```
 - Sets `rt->status = TI_RT_ERROR;`.
-- If no previous error was latched, copies `kind`, `line`, and formats `fmt` into `rt->error.message`.
+- If no previous error was latched, copies `kind`, `line`, the running namespace's program path (`path`), and formats `fmt` into `rt->error.message`. A native that raises (`ti_raise_error`) runs in its caller's namespace, so the path is the file of the code that called it.
 - **CRITICAL REQUIREMENT:** `ti_raise` does NOT terminate execution or jump via `longjmp`. The caller MUST immediately release local resources and return `NULL`.
 
 ```c

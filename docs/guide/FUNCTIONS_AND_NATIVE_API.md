@@ -312,7 +312,7 @@ Build each constant row with a helper (`val_new_*` allocates, so it cannot be us
 | Function | Use |
 | :--- | :--- |
 | `ti_register_module(&module)` | Make it importable. `false` for `NULL`, an empty name, a duplicate name, or a full registry (`TI_MAX_MODULES`, default 16). |
-| `ti_module_find(name)` | Registered module or `NULL`. |
+| `ti_module_native_find(name)` | Registered module or `NULL` (script modules are never in this registry, see 4.7). |
 | `ti_module_find_func(module, name)` | Function row or `NULL`. |
 | `ti_module_find_const(module, name)` | Constant row or `NULL`. |
 
@@ -324,6 +324,106 @@ void module_machine_register(void) { ti_register_module(&s_machine_module); }
 * Register at startup, from one thread, before any runtime is created: the registry is not locked.
 * Use a module for an API only some scripts need (`machine`, `modbus`); keep `register_builtin_function` for functions every script uses (`print`, `delay`).
 * Module natives raise errors like any native (4.4).
+
+### 4.7 Script Modules: the Module Loader
+A script module is another `.ti` file imported by name (`import sensors.calibration;`). The library never touches a filesystem: the host registers one **module loader** callback that turns a module name into source text and a path. Without a loader, `import` finds only native modules (4.6). Script usage: [Types & Values](TYPES_AND_VALUES.md), section 2.8.
+
+**Reference code:** `cli_module_loader` in `cli/main.c`; tests: `tests/test_script_module.c`; example project: `examples/ti/project_1/`.
+
+#### 4.7.1 API (`src/TienInterpreter.h`)
+```c
+typedef ti_status_t (*ti_module_loader_t)(const char *main_path, const char *name,
+                                          char **text_out, char **path_out);
+void        ti_register_module_loader(ti_module_loader_t loader);   /* NULL: no script modules */
+ti_status_t ti_run_string_take(char *source_code, const char *path);
+```
+
+| Parameter | Meaning |
+| :--- | :--- |
+| `main_path` | Path of the **main script**: the `path` given to `ti_run_string_take` (`NULL` with `ti_run_string`, or when the host passed none). It is the same for every import, also for an import inside a module. |
+| `name` | Module name as written after `import`, parts joined by `.`: `"config"`, `"sensors.calibration"`. |
+| `text_out` | Receives the source text, null-terminated, allocated with `ti_raw_malloc`. |
+| `path_out` | Receives the path of the module's file, allocated with `ti_raw_malloc`. **Required:** it is the module's identity (4.7.2). |
+
+| Loader returns | Script sees |
+| :--- | :--- |
+| `TI_OK` with both buffers set | The module is compiled (once) and imported. |
+| `TI_ERR_UNDEFINED` | `Unknown module 'x'` |
+| Any other status (`TI_ERR_NO_MEMORY`, ...) | `Cannot load module 'x': <reason>` |
+| `TI_OK` with a `NULL` buffer | `Cannot load module 'x': the loader returned no source` (or `no path`) |
+
+**Ownership:** on `TI_OK` the library owns both buffers and frees them with `ti_raw_free` (after compiling, or at once when the module is already loaded). On any other status the library reads neither out parameter: free what you allocated and leave them alone.
+
+`ti_run_string_take` takes the main script's source the same way (a `ti_raw_malloc` buffer, freed by the library) and copies `path`. Pass the path the loader should resolve names from.
+
+#### 4.7.2 The path is the module's identity
+The runtime keeps one instance per module file. On every import of a name that no native module has:
+1. The loader is called and returns text and path.
+2. If a module was already loaded from that path, it is reused (its top level does not run again) and the text is freed unread.
+3. Otherwise the text is compiled, the module gets its own namespace, and its top level runs once.
+
+So:
+* **Return the same string for the same file.** `project/sensors/cal.ti` and `project/./sensors/cal.ti` are two modules to the library. Build paths one way only.
+* Two names that lead to one file are one module (`==` is true, one set of variables).
+* The loader runs (and reads the file) **every time an `import` statement runs**, also when the module is already loaded. Import at top level, not inside a function called in a loop.
+
+#### 4.7.3 Example: module names from the project root
+This loader is for hosts where **every module name is a path from the project root**, the directory of the main script. Each `.` is a directory level, and the same file has the same name everywhere: main and `sensors/temperature.ti` both write `import sensors.calibration;`.
+
+```c
+/* 'import sensors.calibration;' with main at project/main.ti -> project/sensors/calibration.ti */
+static ti_status_t cli_module_loader(const char *main_path, const char *name, char **text_out, char **path_out)
+{
+    /* Step 1: the root is the main script's directory, '/' included ("" when there is none) */
+    size_t dir_len = 0;
+    const char *slash = (main_path != NULL) ? strrchr(main_path, '/') : NULL;
+    if (slash != NULL) {
+        dir_len = (size_t)(slash - main_path) + 1;
+    }
+
+    /* Step 2: "<root><name with '.' as '/'>.ti" in a ti_raw_malloc buffer */
+    size_t name_len = strlen(name);
+    char *path = ti_raw_malloc(dir_len + name_len + sizeof(".ti"));
+    if (path == NULL) {
+        return TI_ERR_NO_MEMORY;
+    }
+    if (dir_len > 0) {
+        memcpy(path, main_path, dir_len);
+    }
+    for (size_t i = 0; i < name_len; i++) {
+        path[dir_len + i] = (name[i] == '.') ? '/' : name[i];
+    }
+    memcpy(path + dir_len + name_len, ".ti", sizeof(".ti"));
+
+    /* Step 3: read the file into a ti_raw_malloc buffer; on failure hand nothing over */
+    char *text = read_string_from_file(path);
+    if (text == NULL) {
+        int error = errno;
+        ti_raw_free(path);
+        return (error == ENOENT) ? TI_ERR_UNDEFINED : (error == ENOMEM) ? TI_ERR_NO_MEMORY : TI_ERR_RUNTIME;
+    }
+
+    *text_out = text;
+    *path_out = path;
+    return TI_OK;
+}
+
+int main(int argc, char *argv[])
+{
+    ti_register_module_loader(cli_module_loader);
+    ti_run_string_take(read_string_from_file(argv[1]), argv[1]);   /* argv[1] is main_path */
+}
+```
+
+**Hosts with one fixed root** (for example an ESP32 with modules on SPIFFS, where there is no working directory) use the same scheme with an absolute root instead of the main script's directory: ignore `main_path` and build `"/spiffs/" + name + ".ti"`. The returned path is absolute, so it is the same for every import of that file.
+
+#### 4.7.4 Names relative to the importing file
+The loader above resolves every name from one root. A host that wants each file to import **relative to its own directory** (`sensors/temperature.ti` writing `import calibration;` for `sensors/calibration.ti`) cannot do it with this callback: it receives the main script's path, never the path of the file that runs the import. Such a host needs a **different callback** (one that also receives the importing file's path) and a **different import form**, because the same name would then mean different files in different directories (Python marks these with a leading dot: `from . import calibration`). This library version provides neither: use names from the project root.
+
+#### 4.7.5 Rules
+* Register the loader at startup, before any runtime is created: it is not locked.
+* The loader runs on the script's thread while the script holds its runtime's execution lock. Keep it short, and do not call TI API functions from it.
+* Allocate both buffers with `ti_raw_malloc` (never `malloc`, a literal or a flash string).
 
 ---
 

@@ -19,7 +19,7 @@ Defined in `src/include/ti_type.h`:
 * `VAL_LIST`: Homogeneous, reference-counted array of elements (`list_t *`).
 * `VAL_DICT`: String-keyed hash map (`dict_t *`).
 * `VAL_HANDLE`: Opaque, reference-counted wrapper around a native C object (`handle_t *`). Scripts hold it and use the methods and attributes of its type; see 2.7.
-* `VAL_MODULE`: A module bound by `import` (`const ti_module_t *module_val`, the address of the native's static descriptor; copying or freeing it does nothing else). See 2.8.
+* `VAL_MODULE`: A module bound by `import` (`ti_module_instance_t *module_val`, the runtime's instance of a native module table or of a script module; the instance lives until the runtime is destroyed, so copying or freeing the value does nothing else). See 2.8.
 * `VAL_ANY`: **Not a value type.** A wildcard used only in the parameter table of a native C function (`param_t.type`) meaning "any type is accepted here". No `value_t` ever carries it (`val_init(VAL_ANY)` returns `NULL`), scripts cannot declare it, and `val_type_to_str` prints it as `any`. See [Functions & Native C Extension API](FUNCTIONS_AND_NATIVE_API.md), section 4.3.
 
 ---
@@ -188,24 +188,63 @@ Rules:
 | empty handle (`handle h;`) | `<handle none>` |
 
 ### 2.8 Modules (`import`)
-A module is a named group of native functions and constants provided by the host (for example `machine` in the CLI). `import` makes it visible as a variable:
+`import` binds a module to a variable. A module is one of two kinds; the script uses both the same way:
+
+| Kind | Made of | Members |
+| :--- | :--- | :--- |
+| **Native module** | A table of C functions and constants registered by the host (for example `machine` in the CLI) | `m.f(args)` native functions, `m.NAME` constants |
+| **Script module** | Another `.ti` file, provided by the host's module loader | `m.f(args)` its top-level functions, `m.name` its top-level variables |
+
+When both exist for a name, the native module wins.
+
+#### 2.8.1 Syntax
 ```c
-import machine;                        // variable 'machine' of type module
+import machine;                        // native module, variable 'machine'
 import machine as m;                   // same module under another name
-handle u = m.UART(1, 9600, m.SERIAL_8N1);
-int frame = machine.SERIAL_8N1;        // a constant: a plain value once read
-print(machine);                        // <module machine>
+import config;                         // script module config.ti, variable 'config'
+import sensors.temperature;            // sensors/temperature.ti, variable 'temperature' (the last part)
+import util.counter as c;              // util/counter.ti, variable 'c'
 ```
-Full file: [`examples/ti/module_machine.ti`](../../examples/ti/module_machine.ti).
+* The module name is identifiers joined by `.`. Any other token is a syntax error: no strings (`import "lib/a"`), no `/`, no empty part (`import lib.;`, `import lib..a;`), no number (`import lib.2;`).
+* Without `as`, the variable is named after the **last** part (`sensors.temperature` binds `temperature`).
+* What a name means as a file is the host's choice (the loader, 2.8.3). In the CLI, each `.` is a directory level and names are relative to the main script's directory.
+
+#### 2.8.2 Using a module
+```c
+import machine;
+handle u = machine.UART(1, 9600, machine.SERIAL_8N1);   // native function, native constant
+
+import util.counter as c;
+c.increase();                          // runs inside util/counter.ti: it changes that file's 'count'
+int n = c.count;                       // reads a top-level variable of the module: a copy
+```
+Full files: [`examples/ti/module_machine.ti`](../../examples/ti/module_machine.ti) (native), [`examples/ti/project_1/main.ti`](../../examples/ti/project_1/main.ti) (script modules).
 
 Rules:
 * **Scope:** `import` declares a variable in the current scope. A top-level import is visible inside functions; an import inside a function or block is local to it. Importing the same name twice in one scope is an error.
-* **Functions:** `module.f(args)` calls a native of the module; count and types are checked like any built-in. There is no self.
-* **Constants:** `module.NAME` gives a copy. Constants are read-only: `machine.SERIAL_8N1 = 5;` raises `TI_ERR_READ_ONLY`.
-* **What a script can do with a module:** call its functions, read its constants, store it in a dict, `==` / `!=` (same module), `to_string` / `print`. There is no `module` type keyword, so it cannot be declared as a typed variable (`int x = machine;` is a type error), and it has no JSON form.
-* **Unknown names** raise `TI_ERR_UNDEFINED`: `Unknown module 'x'`, `Module machine has no function 'x'`, `Module machine has no constant 'x'`.
+* **Functions:** `m.f(args)` has no self; count and types are checked like any call. A script module's function runs in its own module: it sees the module's variables and calls the module's other functions, never main's (main and a module may both define `count` or `helper()` without clashing).
+* **Constants and variables:** `m.NAME` gives a copy. Changing the copy never changes the module. A member cannot be assigned from outside: `machine.SERIAL_8N1 = 5;` and `c.count = 5;` raise `TI_ERR_READ_ONLY`. A script module changes its own variables through its functions (`c.increase()`).
+* **One module per runtime:** the first import loads it; every later import, anywhere in the main script or in another module, gives the **same** module (`==` is true). A script module's top level runs once, on its first import.
+* **A module is its file:** two names that the loader maps to one file are one module. In the CLI, `sensors/temperature.ti` writes `import sensors.calibration;` and main writes `import sensors.calibration as ca;`: both get the same module, with one set of variables.
+* **Modules can import modules.** A circular import (`a` imports `b`, `b` imports `a`) does not loop: the second import gets the module that is still running its top level, so variables defined after that point are not there yet.
+* **What a script can do with a module:** call its functions, read its members, store it in a variable or a dict, `==` / `!=` (same module). There is no `module` type keyword, so it cannot be declared as a typed variable (`int x = machine;` is a type error). It has no text form: `to_string(machine)` raises `TI_ERR_TYPE_MISMATCH`, and it has no JSON form.
 
-Writing a module in C: [Functions & Native C Extension API](FUNCTIONS_AND_NATIVE_API.md), section 4.6.
+Errors:
+
+| Error | Example message |
+| :--- | :--- |
+| No module with that name | `Unknown module 'util.missing'` |
+| The loader failed for another reason | `Cannot load module 'x': <reason>` |
+| The module's file does not compile | `Cannot import module 'lib.count': syntax error` (after the parser's own message, which names the module's file and line) |
+| An error in the module's top level | That error, with the module's file and line |
+| Unknown member | `Module machine has no function 'x'`, `Module machine has no constant 'x'`, `Module util.counter has no variable 'x'` |
+
+A runtime error names the file whose code raised it: `[Runtime Error] Division by zero error at project/sensors/calibration.ti:4` (only the line when the script has no path).
+
+#### 2.8.3 Where script modules come from
+The library does not read files. The host registers a **module loader** callback that turns a module name into source text and a path; without one, only native modules exist. The host also passes the main script's path when it runs it (`ti_run_string_take(source, path)`). Writing a loader: [Functions & Native C Extension API](FUNCTIONS_AND_NATIVE_API.md), section 4.7.
+
+Writing a native module in C: [Functions & Native C Extension API](FUNCTIONS_AND_NATIVE_API.md), section 4.6.
 
 ---
 

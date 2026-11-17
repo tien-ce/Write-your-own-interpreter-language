@@ -45,13 +45,16 @@ bool is_active = true;
   dev.close();
   ```
   Details: [Types & Values](TYPES_AND_VALUES.md), section 2.7; writing such natives: [Functions & Native C Extension API](FUNCTIONS_AND_NATIVE_API.md), section 4.5.
-* **Modules (`import`)**: a named group of native functions and constants provided by the host. `import` binds it in the current scope.
+* **Modules (`import`)**: a native module (C functions and constants provided by the host) or a script module (another `.ti` file, provided by the host's module loader). `import` binds it in the current scope; without `as` the variable is named after the last part of the name.
   ```c
   import machine;                                        // or: import machine as m;
   handle u = machine.UART(1, 9600, machine.SERIAL_8N1);  // module function, module constant
   u.write("hello");
+
+  import sensors.temperature;                            // CLI: sensors/temperature.ti next to main
+  int t = temperature.read(21);                          // runs in the module, with its own variables
   ```
-  Details: [Types & Values](TYPES_AND_VALUES.md), section 2.8; writing a module: [Functions & Native C Extension API](FUNCTIONS_AND_NATIVE_API.md), section 4.6.
+  Details: [Types & Values](TYPES_AND_VALUES.md), section 2.8; writing a native module: [Functions & Native C Extension API](FUNCTIONS_AND_NATIVE_API.md), section 4.6; writing a module loader: section 4.7.
 
 ### 1.3 Bitwise Operators (`int` only)
 
