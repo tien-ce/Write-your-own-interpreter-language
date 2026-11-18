@@ -134,7 +134,7 @@ ti_runtime_eval_binary.c  ti_runtime_eval_control.c  ti_runtime_eval_func.c  ti_
 
 ## 4. Variable Evaluation (`src/ti_runtime_eval_variable.c`)
 
-- **`eval_variable_definition`:** Evaluates initializer expression via `visitor_visit(rt, ctx, node->value.variable_definition.value)`, verifies type compatibility between declared variable type and value type (halting with an error via `val_type_to_str` if mismatched), duplicates the variable name string onto `&rt->alloc_list`, and adds to current scope via `context_add_variable(&rt->alloc_list, ctx, name, value)`.
+- **`eval_variable_definition`:** Creates the value in one of three ways: `size != NULL` (`list int l[n];`) → `eval_sized_list` (evaluates `n`, checks `int` and `0..TI_MAX_LIST_ITEMS`, rejects a `list` element type, `val_list_reserve(n)` once, then pushes `n` values from `eval_default_value` with `val_list_push_raw`); `value == NULL` (`int x;`) → `eval_default_value(rt, node, type, element_type)`; otherwise evaluates the initializer expression via `visitor_visit(rt, ctx, node->value.variable_definition.value)`. Then it verifies type compatibility between declared variable type and value type (halting with an error via `val_type_to_str` if mismatched), duplicates the variable name string onto `&rt->alloc_list`, and adds to current scope via `context_add_variable(&rt->alloc_list, ctx, name, value)`.
 - **`eval_assignment`:**
   1. Looks up variable via `context_find_variable(ctx, id)`.
   2. Evaluates new value: `visitor_visit(rt, ctx, node->value.assignment.value)`.

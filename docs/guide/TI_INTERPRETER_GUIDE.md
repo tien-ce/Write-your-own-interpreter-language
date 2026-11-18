@@ -22,7 +22,11 @@ bool is_active = true;
   list int numbers = [1, 2, 3, 4];
   int first = numbers[0];
   numbers[1] = 20;
+
+  list dict stations[station_count];   // station_count empty dicts (sized declaration, list only)
+  list int zeros[4];                   // [0, 0, 0, 0]
   ```
+  A sized declaration fills the list with default values (`0`, `0.0`, `false`, `""`, `{}`); the size is an `int` expression `0..1024`, and no `= ...` may follow. Details: [Types & Values](TYPES_AND_VALUES.md), section 2.2.
 * **Dictionaries (`dict`)**:
   ```c
   dict config = {"host": "localhost", "port": 8080};

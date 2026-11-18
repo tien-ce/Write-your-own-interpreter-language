@@ -104,7 +104,7 @@ Because an AST is an arbitrarily deep recursive hierarchy, deallocation must str
   - **`AST_PARAM`:** Frees string `param_name`.
   - **`AST_BINARY_EXPR`:** Calls `ast_free(binary_expr.left)` and `ast_free(binary_expr.right)`.
   - **`AST_UNARY_EXPR`:** Calls `ast_free(unary_expr.operand)`.
-  - **`AST_VARIABLE_DEFINITION`:** Frees `variable_name` string, then calls `ast_free(value)`.
+  - **`AST_VARIABLE_DEFINITION`:** Frees `variable_name` string, then calls `ast_free(value)` and `ast_free(size)` (`size` is the element count of `list <type> name[size];`, NULL otherwise).
   - **`AST_ASSIGNMENT`:** Calls `ast_free(target)` and `ast_free(value)`.
   - **`AST_RETURN_STATEMENT`:** Calls `ast_free(return_statement.value)` (safe if `NULL`).
   - **`AST_IF_STATEMENT`:** Calls `ast_free` on `condition`, `body`, and `else_body` (if non-NULL).

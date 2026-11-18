@@ -164,6 +164,12 @@ In `parser_parse_definition(parser_t *parser)`:
    - If the peeked token is `(`, it branches to `parser_parse_function_definition()`.
    - Otherwise, it branches to `parser_parse_variable_definition()`.
 
+### Variable Definition: `parser_parse_variable_declaration`
+- Called after `<type> <name>` by `parser_parse_definition` (statement; it routes `=`, `[` and `;` here) and by the `for` init. It never eats `;`: the statement caller eats it, the `for` header eats it as its separator.
+- Forms: `<type> name;` (`value` and `size` NULL: the runtime creates the default value), `<type> name = <expr>;` (`value`), `list <elem> name[<expr>];` (`size`).
+- `[` with a non-list type logs `Only a list can be declared with a size ('name')` and aborts. After `]` nothing else is parsed, so `= ...` hits the caller's `parser_eat(TOKEN_SEMI)`.
+- The size is any expression; its type and range are checked by the runtime (`eval_sized_list` in `ti_runtime_eval_variable.c`).
+
 ### Function Definition & Typed Parameters
 - **`parser_parse_param(parser_t *parser)`:** Parses a typed parameter declaration `<type> <param_name>` (e.g. `int a`, `string s`). Returns an `AST_PARAM` node storing `param_type` and `param_name`.
 - **`parser_parse_function_definition(parser_t *parser)`:** Parses `<return_type> <func_name>(<type> param1, <type> param2, ...) { <body> }`.

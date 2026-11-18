@@ -48,6 +48,28 @@ numbers[1] = 25;         // Subscript assignment (same type only)
 ```
 > **Note:** An element of the wrong type (`list int l = [1, "a"];`) is caught at runtime with `TI_ERR_TYPE_MISMATCH`, reported with the element index and the line.
 
+#### Sized declaration: `list <elem_type> name[size];`
+Creates `size` elements, each the default value of the element type (`0`, `0.0`, `false`, `""`, `{}`), like `int x;` does for one variable. Use it when the elements start empty; when the values are known, write a literal instead.
+```c
+list dict stations[config["station_count"]];  // N empty dicts
+list int samples[8];                           // [0,0,0,0,0,0,0,0]
+
+while (true) {
+    list dict fresh[3];   // a new list every iteration: the body is a new scope
+    dict first = fresh[0];
+    first["id"] = 1;      // fills fresh[0] (a variable shares the element)
+}
+```
+| Rule | Otherwise |
+| :--- | :--- |
+| Only for `list` | `int x[3];` is a parser error (`Only a list can be declared with a size`) |
+| No initializer after it | `list int l[3] = [...];` is a parser error (`Expected token ';'`) |
+| `size` is any `int` expression, evaluated at run time | Not an `int`: `TI_ERR_TYPE_MISMATCH` |
+| `0 <= size <= TI_MAX_LIST_ITEMS` (1024) | `TI_ERR_VALUE_OUT_OF_RANGE` |
+| The element type has a default | `list list l[2];` is `TI_ERR_TYPE_MISMATCH` (an inner list has no element type) |
+
+Also allowed as a `for` init (`for (list int l[4]; ...; ...)`). The element storage is allocated once for all `size` elements.
+
 ### 2.3 Dictionaries (`dict`)
 Dictionaries store key-value pairs where keys are always strings:
 ```c
@@ -294,6 +316,10 @@ Always use the dedicated constructors in `src/include/ti_type_value.h`:
 /* Create a list of integers */
 value_t *list_val = val_new_list(VAL_INT);
 list_t *list = list_val->list_val;
+
+/* Optional: when the count is known, allocate the element storage once
+ * (otherwise it starts at 4 slots and doubles with realloc when full) */
+val_list_reserve(list, 2);   // TI_OK, TI_ERR_LIMIT_EXCEEDED (> TI_MAX_LIST_ITEMS), TI_ERR_NO_MEMORY
 
 /* Append elements (Ownership of val_new_int is transferred to list) */
 val_list_push(list, val_new_int(10));
