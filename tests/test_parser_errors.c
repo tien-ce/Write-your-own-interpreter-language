@@ -77,6 +77,9 @@ int main(void)
         { "method name is number",     "handle d;\nd.5;\n" },
         { "method unclosed call",      "handle d;\nd.read(1;\n" },
         { "method on chain missing",   "handle d;\nd.read().;\n" },
+        { "sized non-list",            "int x[3];\n" },
+        { "sized list with init",      "list int l[3] = [1, 2, 3];\n" },
+        { "sized list unclosed",       "list int l[3;\n" },
     };
 
     /* Valid syntax that fails at run time: a nested list literal and attribute reads (obj.name) */
@@ -84,6 +87,20 @@ int main(void)
         { "nested list",               "list int l = [[1]];\n" },
         { "attribute on empty handle", "handle d;\nd.baud;\n" },
         { "attribute in expression",   "handle d;\nint b = d.baud + 1;\n" },
+        { "sized list size not int",   "list int l[\"3\"];\n" },
+        { "sized list of lists",       "list list l[2];\n" },
+    };
+
+    /* Sized list declarations that run: a wrong content assigns a string to an int (TI_ERR_TYPE_MISMATCH) */
+    static const struct { const char *name; const char *script; } sized_ok_cases[] = {
+        { "sized list of dicts",       "int n = 3;\nlist dict s[n];\n"
+                                       "if (to_string(s) != \"[{},{},{}]\") { int bad = \"x\"; }\n" },
+        { "sized list defaults",       "list int i[2];\nlist string t[1];\nlist bool b[1];\n"
+                                       "if (to_string(i) != \"[0,0]\" || to_string(t) != \"[\\\"\\\"]\" || to_string(b) != \"[false]\") { int bad = \"x\"; }\n" },
+        { "sized list empty",          "list float f[0];\nif (to_string(f) != \"[]\") { int bad = \"x\"; }\n" },
+        { "sized list in loop",        "int c = 0;\nwhile (c < 3) {\n  list dict w[2];\n  dict d = w[0];\n"
+                                       "  if (to_string(w) != \"[{},{}]\") { int bad = \"x\"; }\n  d[\"c\"] = c;\n  c = c + 1;\n}\n" },
+        { "sized list in for init",    "for (list int l[4]; false; ) { }\n" },
     };
 
     ti_register_log(on_log);
@@ -95,6 +112,12 @@ int main(void)
     for (size_t i = 0; i < sizeof(runtime_cases) / sizeof(runtime_cases[0]); i++) {
         failed += run_case(runtime_cases[i].name, runtime_cases[i].script, TI_ERR_TYPE_MISMATCH);
     }
+    for (size_t i = 0; i < sizeof(sized_ok_cases) / sizeof(sized_ok_cases[0]); i++) {
+        failed += run_case(sized_ok_cases[i].name, sized_ok_cases[i].script, TI_OK);
+    }
+    failed += run_case("sized list negative", "list int l[-1];\n", TI_ERR_VALUE_OUT_OF_RANGE);
+    failed += run_case("sized list too large", "list int l[1025];\n", TI_ERR_VALUE_OUT_OF_RANGE);
+    failed += run_case("sized list at limit", "list int l[1024];\n", TI_OK);
 
     /* Size limits are only reachable with a long literal */
     char *long_bytes = make_repeat("bytes b = x\"", "41", 5000, "\";\n");
