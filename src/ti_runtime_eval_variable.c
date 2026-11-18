@@ -2,6 +2,7 @@
 #include "include/ti_runtime_visitor.h"
 #include "include/ti_type.h"
 #include "include/ti_type_value_dict.h"
+#include "include/ti_type_value_list.h"
 #include "include/ti_build_program.h"
 #include "include/tracked_memory.h"
 #include "include/debug.h"
@@ -14,19 +15,21 @@
 /* -------------------- Static Function Prototypes -------------------- */
 
 static variable_t *eval_lookup_variable(ti_runtime_t *rt, context_t *ctx, const char *name, int line);
-static value_t *eval_default_value(ti_runtime_t *rt, ast_t *node);
+static value_t *eval_default_value(ti_runtime_t *rt, ast_t *node, val_type_t type, val_type_t element_type);
+static value_t *eval_sized_list(ti_runtime_t *rt, context_t *ctx, ast_t *node);
 
 /* -------------------- Static Functions -------------------- */
 
 /**
- * @brief Create the default value of a declaration without initializer ('int x;').
+ * @brief Create the default value of a type, for 'int x;' and for each element of 'list int l[n];'.
  * @param rt Pointer to active runtime instance.
- * @param node Variable definition AST node whose value is NULL.
- * @return New value of the declared type, or NULL after ti_raise() (no default for the type, or out of memory).
+ * @param node Variable definition AST node (name and line for error reports).
+ * @param type Type of the value to create.
+ * @param element_type Element type when type is VAL_LIST (VAL_NULL otherwise).
+ * @return New value of the type, or NULL after ti_raise() (no default for the type, or out of memory).
  */
-static value_t *eval_default_value(ti_runtime_t *rt, ast_t *node)
+static value_t *eval_default_value(ti_runtime_t *rt, ast_t *node, val_type_t type, val_type_t element_type)
 {
-    val_type_t type = node->value.variable_definition.variable_type;
     value_t *value = NULL;
 
     switch (type) {
@@ -51,7 +54,7 @@ static value_t *eval_default_value(ti_runtime_t *rt, ast_t *node)
 
     case VAL_LIST:
         /* Empty list of the declared element type ('list int l;') */
-        value = val_new_list(node->value.variable_definition.element_type);
+        value = val_new_list(element_type);
         break;
 
     case VAL_BYTES:
@@ -71,6 +74,80 @@ static value_t *eval_default_value(ti_runtime_t *rt, ast_t *node)
                  node->value.variable_definition.variable_name);
     }
     return value;
+}
+
+/**
+ * @brief Create the list of 'list <type> name[size];': size elements, each the default value of the element type.
+ * @param rt Pointer to active runtime instance.
+ * @param ctx Pointer to context (the size expression is evaluated in it).
+ * @param node Variable definition AST node whose size is not NULL.
+ * @return New list value, or NULL after ti_raise().
+ */
+static value_t *eval_sized_list(ti_runtime_t *rt, context_t *ctx, ast_t *node)
+{
+    const char *name = node->value.variable_definition.variable_name;
+    val_type_t element_type = node->value.variable_definition.element_type;
+    value_t *result = NULL;
+    value_t *list_val = NULL;
+    ti_status_t status = TI_OK;
+
+    /* Step 1: an inner list has no element type of its own, so it has no default value */
+    if (element_type == VAL_LIST) {
+        ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line, "Cannot declare '%s' with a size: list elements have no default value", name);
+        return NULL;
+    }
+
+    /* Step 2: the size is an int in 0..TI_MAX_LIST_ITEMS; NULL means it already failed or was cancelled */
+    value_t *size_val = visitor_visit(rt, ctx, node->value.variable_definition.size);
+    if (size_val == NULL) {
+        return NULL;
+    }
+    if (size_val->type != VAL_INT) {
+        ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line, "Size of list '%s' must be int, but got %s",
+                 name, val_type_to_str(size_val->type));
+        val_free(size_val);
+        return NULL;
+    }
+    int size = size_val->int_val;
+    val_free(size_val);
+    if (size < 0 || size > TI_MAX_LIST_ITEMS) {
+        ti_raise(rt, TI_ERR_VALUE_OUT_OF_RANGE, node->line, "Size of list '%s' must be 0..%d, but got %d",
+                 name, TI_MAX_LIST_ITEMS, size);
+        return NULL;
+    }
+
+    /* Step 3: one allocation for all element slots, so the pushes below never grow it */
+    list_val = val_new_list(element_type);
+    if (list_val == NULL) {
+        ti_raise(rt, TI_ERR_NO_MEMORY, node->line, "Cannot create list '%s'", name);
+        goto out;
+    }
+    status = val_list_reserve(list_val->list_val, size);
+    if (status != TI_OK) {
+        ti_raise(rt, status, node->line, "Cannot allocate %d elements of list '%s': %s", size, name, ti_err_to_str(status));
+        goto out;
+    }
+
+    /* Step 4: fill every slot with a fresh default value (push_raw: nothing to copy, the value is new) */
+    for (int i = 0; i < size; i++) {
+        value_t *elem_val = eval_default_value(rt, node, element_type, VAL_NULL);
+        if (elem_val == NULL) {
+            goto out;
+        }
+        /* val_list_push_raw takes ownership of elem_val even on failure */
+        status = val_list_push_raw(list_val->list_val, elem_val);
+        if (status != TI_OK) {
+            ti_raise(rt, status, node->line, "Cannot append element %d of list '%s': %s", i, name, ti_err_to_str(status));
+            goto out;
+        }
+    }
+
+    result = list_val;
+    list_val = NULL;
+
+out:
+    val_free(list_val);
+    return result;
 }
 
 /**
@@ -120,9 +197,13 @@ value_t *eval_variable_definition(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         return NULL;
     }
 
-    if (node->value.variable_definition.value == NULL) {
+    if (node->value.variable_definition.size != NULL) {
+        /* Sized list declaration ('list dict l[n];'): n default elements */
+        value = eval_sized_list(rt, ctx, node);
+    } else if (node->value.variable_definition.value == NULL) {
         /* Declaration without initializer ('int x;'): use the type's default value */
-        value = eval_default_value(rt, node);
+        value = eval_default_value(rt, node, node->value.variable_definition.variable_type,
+                                   node->value.variable_definition.element_type);
     } else {
         /* Recursively evaluate initializer expression */
         value = visitor_visit(rt, ctx, node->value.variable_definition.value);

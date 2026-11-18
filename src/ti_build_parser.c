@@ -225,7 +225,7 @@ static ast_t *parser_parse_function_definition(parser_t *parser, type_spec_t typ
 }
 
 /**
- * @brief Parse a definition: '<type> <identifier>' followed by '(' (function), '=' or ';' (variable).
+ * @brief Parse a definition: '<type> <identifier>' followed by '(' (function), '[', '=' or ';' (variable).
  * @param parser Pointer to parser.
  * @return AST definition node.
  */
@@ -239,7 +239,8 @@ static ast_t *parser_parse_definition(parser_t *parser)
     case TOKEN_LPAREN:
         return parser_parse_function_definition(parser, type, name);
     case TOKEN_EQUALS:
-    case TOKEN_SEMI: /* declaration without initializer */
+    case TOKEN_LBRACKET: /* sized list declaration */
+    case TOKEN_SEMI:     /* declaration without initializer */
         return parser_parse_variable_definition(parser, type, name);
     default:
         ti_log("[Parser Error] Unexpected token %s in definition at " TI_BUILD_AT_FMT "\n",
@@ -859,20 +860,33 @@ static ast_t *parser_parse_list_literal(parser_t *parser)
 }
 
 /**
- * @brief Parse the rest of a variable declaration after '<type> <name>': '= expr' or nothing, no ';'.
+ * @brief Parse the rest of a variable declaration after '<type> <name>': '[size]', '= expr' or nothing, no ';'.
  * Without an initializer the node's value is NULL and the runtime creates the type's default value.
- * @param parser Pointer to parser (current token is '=' or ';').
+ * @param parser Pointer to parser (current token is '[', '=' or ';').
  * @param type Declared type (with element type for lists).
  * @param name Variable name (ownership passes to the AST node).
- * @return AST variable definition node (value is NULL for a plain declaration).
+ * @return AST variable definition node (value is NULL for a plain or sized declaration).
  */
-/* [= <expr>] */
+/* [ '[' <expr> ']' | = <expr> ] */
 static ast_t *parser_parse_variable_declaration(parser_t *parser, type_spec_t type, char *name)
 {
     ast_t *value = NULL;
+    ast_t *size = NULL;
 
-    /* Plain declaration: leave ';' for the caller, value stays NULL */
-    if (parser->current_token->type != TOKEN_SEMI) {
+    if (parser->current_token->type == TOKEN_LBRACKET) {
+        /* Sized declaration: only a list has an element count */
+        if (type.type != VAL_LIST) {
+            ti_log("[Parser Error] Only a list can be declared with a size ('%s') at " TI_BUILD_AT_FMT "\n",
+                   name, TI_BUILD_AT_ARGS(parser->lexer, parser->lexer->line_num));
+            ti_log_line(parser->lexer->line);
+            lexer_abort(parser->lexer);
+        }
+
+        /* Element count expression, checked by the runtime; ';' is left for the caller, so '= ...' after it is an error */
+        parser_eat(parser, TOKEN_LBRACKET); // Eat '['
+        size = parser_parse_expr(parser);
+        parser_eat(parser, TOKEN_RBRACKET); // Eat ']'
+    } else if (parser->current_token->type != TOKEN_SEMI) {
         /* Definition: parse assignment operator and initialization expression */
         parser_eat(parser, TOKEN_EQUALS); // Eat '='
         value = parser_parse_expr(parser);
@@ -889,6 +903,7 @@ static ast_t *parser_parse_variable_declaration(parser_t *parser, type_spec_t ty
     var_def_node->value.variable_definition.element_type = type.element_type;
     var_def_node->value.variable_definition.variable_name = name;
     var_def_node->value.variable_definition.value = value;
+    var_def_node->value.variable_definition.size = size;
     return var_def_node;
 }
 
@@ -1290,8 +1305,8 @@ static ast_t *parser_parse_import_statement(parser_t *parser)
 }
 
 /**
- * @brief Parse the rest of a variable definition after '<type> <name>': [= expr];.
- * @param parser Pointer to parser (current token is '=' or ';').
+ * @brief Parse the rest of a variable definition after '<type> <name>': ['[' expr ']' | = expr];.
+ * @param parser Pointer to parser (current token is '[', '=' or ';').
  * @param type Declared type.
  * @param name Variable name (ownership passes to the AST node).
  * @return AST variable definition node.

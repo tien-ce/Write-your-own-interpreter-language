@@ -122,6 +122,7 @@ typedef struct AST_STRUCT {
       val_type_t element_type;      // Element type when variable_type is VAL_LIST (VAL_NULL otherwise)
       char *variable_name;
       struct AST_STRUCT *value;     // Value (right hand side) of definition statement
+      struct AST_STRUCT *size;      // Element count of 'list <type> name[size];' (NULL otherwise)
     } variable_definition;
 
     /* Function call */

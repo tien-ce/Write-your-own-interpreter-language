@@ -38,11 +38,12 @@ void ast_free(ast_t *ast)
         break;
 
     case AST_VARIABLE_DEFINITION:
-        /* Free variable name string and initializer expression */
+        /* Free variable name string, initializer expression and list size expression */
         if (ast->value.variable_definition.variable_name) {
             tracked_free(NULL, ast->value.variable_definition.variable_name);
         }
         ast_free(ast->value.variable_definition.value);
+        ast_free(ast->value.variable_definition.size);
         break;
 
     case AST_FUNCTION_DEFINITION: {

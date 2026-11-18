@@ -125,6 +125,20 @@ void list_release(list_t *list)
     ti_raw_free(list);
 }
 
+/* Allocate storage for at least capacity elements in one block */
+ti_status_t val_list_reserve(list_t *list, int capacity)
+{
+    if (list == NULL || capacity < 0) {
+        return TI_ERR_INVALID_ARG;
+    }
+    if (capacity > TI_MAX_LIST_ITEMS) {
+        return TI_ERR_LIMIT_EXCEEDED;
+    }
+
+    /* From an empty list this is one allocation of max(capacity, LIST_INITIAL_CAPACITY) slots */
+    return list_reserve(list, capacity) ? TI_OK : TI_ERR_NO_MEMORY;
+}
+
 /* -------------------- List Element Operations -------------------- */
 
 /* Append a value to the end of the list with strict type checking */

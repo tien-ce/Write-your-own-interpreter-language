@@ -37,6 +37,15 @@ void list_retain(list_t *list);
  */
 void list_release(list_t *list);
 
+/**
+ * @brief Allocate storage for at least capacity elements in one block, so the next pushes do not grow it.
+ * The element count is not changed.
+ * @param list List reference object.
+ * @param capacity Number of element slots required (0..TI_MAX_LIST_ITEMS).
+ * @return TI_OK, TI_ERR_LIMIT_EXCEEDED (capacity above TI_MAX_LIST_ITEMS), TI_ERR_NO_MEMORY or TI_ERR_INVALID_ARG.
+ */
+ti_status_t val_list_reserve(list_t *list, int capacity);
+
 /* -------------------- List Element Functions -------------------- */
 
 /**
