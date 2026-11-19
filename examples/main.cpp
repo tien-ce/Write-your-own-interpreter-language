@@ -45,7 +45,7 @@ static value_t *built_in_print(value_t **argv, int argc)
                 break;
         }
     }
-    return val_new_null();
+    return val_new_void();
 }
 
 /**
@@ -57,7 +57,7 @@ static value_t *built_in_delay(value_t **argv, int argc)
     {
         delay(argv[0]->int_val);
     }
-    return val_new_null();
+    return val_new_void();
 }
 
 /**
@@ -69,7 +69,7 @@ static value_t *built_in_digital_write(value_t **argv, int argc)
     {
         digitalWrite(argv[0]->int_val, argv[1]->int_val);
     }
-    return val_new_null();
+    return val_new_void();
 }
 
 /* -------------------- Arduino Setup & Loop -------------------- */
