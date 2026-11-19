@@ -273,10 +273,6 @@ static value_t *binary_equal(ti_runtime_t *rt, value_t *left, value_t *right, in
         /* Equal length and content */
         value->bool_val = val_bytes_equal(left->bytes_val, right->bytes_val);
         break;
-    case VAL_NULL:
-        /* Both operands are NULL; evaluate to true */
-        value->bool_val = true;
-        break;
     default:
         /* Handle unsupported operand types and signal fatal error */
         ti_raise(rt, TI_ERR_TYPE_MISMATCH, line, "Unexpected operands %s, %s in binary equal", val_type_to_str(left->type), val_type_to_str(right->type));
@@ -339,10 +335,6 @@ static value_t *binary_not_equal(ti_runtime_t *rt, value_t *left, value_t *right
     case VAL_BYTES:
         /* Different length or content */
         value->bool_val = !val_bytes_equal(left->bytes_val, right->bytes_val);
-        break;
-    case VAL_NULL:
-        /* Both operands are NULL; evaluate to false */
-        value->bool_val = false;
         break;
     default:
         /* Handle unsupported operand types and signal fatal error */
@@ -653,6 +645,17 @@ value_t *eval_binary_expr(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         goto out;
     }
 
+    /* null compares with every type and is only equal to null; every other operator rejects it below */
+    int op = node->value.binary_expr.op;
+    if ((op == OP_DEQ || op == OP_NEQ) && (left->type == VAL_NULL || right->type == VAL_NULL)) {
+        bool both_null = (left->type == right->type);
+        result = val_new_bool((op == OP_DEQ) ? both_null : !both_null);
+        if (result == NULL) {
+            ti_raise(rt, TI_ERR_NO_MEMORY, node->line, "Cannot allocate comparison result");
+        }
+        goto out;
+    }
+
     /* Enforce type symmetry between left and right operands */
     if (left->type != right->type) {
         ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line, "Type mismatch in binary expression: %s and %s", val_type_to_str(left->type), val_type_to_str(right->type));
@@ -660,7 +663,7 @@ value_t *eval_binary_expr(ti_runtime_t *rt, context_t *ctx, ast_t *node)
     }
 
     /* Dispatch operator evaluation to the corresponding handler */
-    switch (node->value.binary_expr.op) {
+    switch (op) {
     case OP_ADD:
         result = binary_add(rt, left, right, node->line);
         break;
@@ -728,12 +731,7 @@ value_t *eval_unary_expr(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         goto out;
     }
 
-    if (operand->type == VAL_NULL) {
-        ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line, "Unary expression operand evaluated to NULL");
-        goto out;
-    }
-
-    /* Dispatch unary operator evaluation */
+    /* Dispatch unary operator evaluation (each operator rejects types it does not support, null included) */
     switch (node->value.unary_expr.op) {
     case OP_POS:
         /* Unary plus: preserve integer or float value */

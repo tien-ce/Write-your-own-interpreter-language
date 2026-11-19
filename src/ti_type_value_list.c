@@ -192,7 +192,8 @@ ti_status_t val_list_push_raw(list_t *list, value_t *val)
     ti_status_t status = TI_OK;
     if (list == NULL) {
         status = TI_ERR_INVALID_ARG;
-    } else if (val->type != list->elem_type) {
+    } else if (val->type != list->elem_type && val->type != VAL_NULL) {
+        /* null is accepted: a copied list may hold elements set to null (l[i] = null) */
         status = TI_ERR_TYPE_MISMATCH;
     } else if (list->count + 1 > TI_MAX_LIST_ITEMS) {
         status = TI_ERR_LIMIT_EXCEEDED;
@@ -265,7 +266,8 @@ ti_status_t val_list_set(list_t *list, int index, value_t *val)
         status = TI_ERR_INVALID_ARG;
     } else if (index < 0 || index >= list->count) {
         status = TI_ERR_INDEX_OUT_OF_RANGE;
-    } else if (val->type != list->elem_type) {
+    } else if (!val_can_replace(list->items[index].type, val->type)) {
+        /* Compared with the element held now, so an element set to null cannot be set again */
         status = TI_ERR_TYPE_MISMATCH;
     }
 

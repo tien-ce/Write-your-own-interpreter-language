@@ -217,6 +217,9 @@ static token_t *lexer_collect_id(lexer_t *lexer)
     if (strcmp(value, "continue") == 0) { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_CONTINUE, NULL); }
     if (strcmp(value, "import") == 0)   { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_IMPORT, NULL); }
 
+    /* Match the null literal (the value of nothing, e.g. a native that failed) */
+    if (strcmp(value, "null") == 0)     { tracked_free(lexer->alloc_list, value); return token_init(lexer->alloc_list, TOKEN_KW_NULL, NULL); }
+
     /* Match boolean literals */
     if (strcmp(value, "true") == 0) {
         return token_init(lexer->alloc_list, TOKEN_BOOL, value);

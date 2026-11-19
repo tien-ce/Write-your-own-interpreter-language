@@ -31,8 +31,8 @@ void dict_release(dict_t *dict);
  * Ownership of val is always transferred: on failure the value is freed.
  * @param dict Dictionary reference object.
  * @param key String identifier for the entry.
- * @param val Value to insert.
- * @return TI_OK, TI_ERR_TYPE_MISMATCH (key already holds another type), TI_ERR_LIMIT_EXCEEDED, TI_ERR_NO_MEMORY or TI_ERR_INVALID_ARG.
+ * @param val Value to insert (a new key takes any type; an existing key follows val_can_replace).
+ * @return TI_OK, TI_ERR_TYPE_MISMATCH (key holds another type, or holds null), TI_ERR_LIMIT_EXCEEDED, TI_ERR_NO_MEMORY or TI_ERR_INVALID_ARG.
  */
 ti_status_t val_dict_set(dict_t *dict, const char *key, value_t *val);
 

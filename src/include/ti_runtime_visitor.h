@@ -183,6 +183,15 @@ value_t *eval_float_literal(context_t *ctx, ast_t *node);
  */
 value_t *eval_boolean_literal(context_t *ctx, ast_t *node);
 
+/**
+ * @brief Evaluate a null literal node.
+ * @param rt Pointer to active runtime instance.
+ * @param ctx Pointer to active execution context scope.
+ * @param node Null literal AST node.
+ * @return Newly allocated VAL_NULL value_t (heap, never the TI_VAL_OK sentinel), or NULL after ti_raise() when out of memory.
+ */
+value_t *eval_null_literal(ti_runtime_t *rt, context_t *ctx, ast_t *node);
+
 value_t *eval_dict_literal(ti_runtime_t *rt, context_t *ctx, ast_t *node);
 
 /**

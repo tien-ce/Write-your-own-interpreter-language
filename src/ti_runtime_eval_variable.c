@@ -213,8 +213,8 @@ value_t *eval_variable_definition(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         goto out;
     }
 
-    /* Enforce declared type matches evaluated value type */
-    if (node->value.variable_definition.variable_type != value->type) {
+    /* Enforce declared type matches evaluated value type (null fits any declared type) */
+    if (!val_can_replace(node->value.variable_definition.variable_type, value->type)) {
         ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line,
                  "Type mismatch in definition of '%s'. Expected %s, but got %s",
                  variable_name,
@@ -396,8 +396,13 @@ value_t *eval_assignment(ti_runtime_t *rt, context_t *ctx, ast_t *node)
             goto out;
         }
 
-        /* Verify type compatibility with existing variable */
-        if (variable->value->type != val->type) {
+        /* Verify type compatibility with existing variable: a null variable takes nothing, null replaces anything */
+        if (!val_can_replace(variable->value->type, val->type)) {
+            if (variable->value->type == VAL_NULL) {
+                ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line, "Variable '%s' is null and cannot be assigned",
+                         target_node->value.identifier);
+                goto out;
+            }
             ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line,
                      "Type mismatch in assignment to '%s'. Expected %s, but got %s",
                      target_node->value.identifier,

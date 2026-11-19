@@ -30,6 +30,7 @@ const char *token_type_to_str(int type)
     case TOKEN_KW_RETURN: return "TOKEN_KW_RETURN";
     case TOKEN_KW_BREAK:  return "TOKEN_KW_BREAK";
     case TOKEN_KW_CONTINUE: return "TOKEN_KW_CONTINUE";
+    case TOKEN_KW_NULL:   return "TOKEN_KW_NULL";
     case TOKEN_EQUALS:    return "TOKEN_EQUALS";
     case TOKEN_DEQUALS:   return "TOKEN_DEQUALS";
     case TOKEN_NOT:       return "TOKEN_NOT";
@@ -77,6 +78,7 @@ const char *ast_type_to_str(int type)
     case AST_FLOAT_LITERAL:       return "AST_FLOAT_LITERAL";
     case AST_STRING_LITERAL:      return "AST_STRING_LITERAL";
     case AST_BOOLEAN:             return "AST_BOOLEAN";
+    case AST_NULL:                return "AST_NULL";
     case AST_LIST_LITERAL:        return "AST_LIST_LITERAL";
     case AST_IDENTIFIER:          return "AST_IDENTIFIER";
     case AST_BINARY_EXPR:         return "AST_BINARY_EXPR";

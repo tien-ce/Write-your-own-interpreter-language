@@ -57,6 +57,7 @@ const char *token_to_str(int token_type)
     case TOKEN_KW_BREAK:    return "'break'";
     case TOKEN_KW_CONTINUE: return "'continue'";
     case TOKEN_KW_IMPORT:   return "'import'";
+    case TOKEN_KW_NULL:     return "'null'";
     case TOKEN_EQUALS:      return "'='";
     case TOKEN_DEQUALS:     return "'=='";
     case TOKEN_NOT:         return "'!'";

@@ -195,6 +195,17 @@ value_t *val_copy(const value_t *val);
 
 #define TI_MAX_CONTAINER_DEPTH 4
 value_t *val_deep_copy(const value_t *val, uint8_t max_depth);
+
+/**
+ * @brief Check whether a value of type incoming may replace one of type current.
+ * Shared rule of variable definition and assignment, list element set and dict entry overwrite:
+ * null replaces any value, a held null cannot be replaced, otherwise the types must be equal.
+ * @param current Type held now (the declared type for a new variable, never VAL_NULL there).
+ * @param incoming Type of the new value.
+ * @return true when the replacement is allowed.
+ */
+bool val_can_replace(val_type_t current, val_type_t incoming);
+
 /* -------------------- Dictionary Functions -------------------- */
 
 /**

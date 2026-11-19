@@ -58,6 +58,17 @@ value_t *eval_boolean_literal(context_t *ctx, ast_t *node)
     return val_new_bool(node->value.bool_value);
 }
 
+/* Evaluate a null literal node into a new VAL_NULL value_t */
+value_t *eval_null_literal(ti_runtime_t *rt, context_t *ctx, ast_t *node)
+{
+    (void)ctx;
+    value_t *value = val_new_null();
+    if (value == NULL) {
+        ti_raise(rt, TI_ERR_NO_MEMORY, node->line, "Cannot allocate null value");
+    }
+    return value;
+}
+
 value_t *eval_dict_literal(ti_runtime_t *rt, context_t *ctx, ast_t *node)
 {
     (void) ctx;
@@ -123,6 +134,11 @@ value_t *eval_list_literal(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         /* First element fixes the element type when the declaration did not */
         if (list_val == NULL) {
             if (element_type == VAL_NULL) {
+                /* A null first element has no type to give the list */
+                if (elem_val->type == VAL_NULL) {
+                    ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line, "List element 0 is null: cannot infer the list element type");
+                    goto out;
+                }
                 element_type = elem_val->type;
             }
             list_val = val_new_list(element_type);

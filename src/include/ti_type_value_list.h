@@ -61,7 +61,7 @@ ti_status_t val_list_push(list_t *list, value_t *val);
  * @brief Append a value to the end of the list directly without deep copying containers.
  * Ownership of val is always transferred: on failure the value is freed.
  * @param list List reference object.
- * @param val Value to append (must match the list element type).
+ * @param val Value to append (the list element type, or null: it copies lists whose elements were set to null).
  * @return TI_OK, TI_ERR_TYPE_MISMATCH, TI_ERR_NO_MEMORY or TI_ERR_INVALID_ARG.
  */
 ti_status_t val_list_push_raw(list_t *list, value_t *val);
@@ -88,7 +88,7 @@ ti_status_t val_list_get(list_t *list, int index, value_t **out);
  * Ownership of val is always transferred: on failure the value is freed.
  * @param list List reference object.
  * @param index Zero-based element index.
- * @param val New value (must match the list element type).
+ * @param val New value: the type of the element held now, or null (see val_can_replace; a null element cannot be set again).
  * @return TI_OK, TI_ERR_INDEX_OUT_OF_RANGE, TI_ERR_TYPE_MISMATCH or TI_ERR_INVALID_ARG.
  */
 ti_status_t val_list_set(list_t *list, int index, value_t *val);

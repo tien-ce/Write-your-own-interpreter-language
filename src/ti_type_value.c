@@ -179,6 +179,18 @@ value_t *val_new_list(val_type_t elem_type)
     }
     return val;
 }
+/* Check whether a value of type incoming may replace one of type current */
+bool val_can_replace(val_type_t current, val_type_t incoming)
+{
+    /* A held null has lost its type: nothing may replace it */
+    if (current == VAL_NULL) {
+        return false;
+    }
+
+    /* null replaces any value; anything else must keep the type */
+    return incoming == VAL_NULL || incoming == current;
+}
+
 /**
  * @brief Create an independent deep copy of a value_t structure.
  */

@@ -18,6 +18,7 @@ typedef struct AST_STRUCT {
     AST_LIST_LITERAL,         // [1, 2, 3]
     AST_IDENTIFIER,           // x, my_var (variable/function reference)
     AST_BYTES_LITERAL,        // x"0x10, 0x20"
+    AST_NULL,                 // null (no payload)
 
     /* EXPRESSIONS */
     AST_BINARY_EXPR,          // x + y, a == b

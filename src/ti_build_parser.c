@@ -618,6 +618,12 @@ static ast_t *parser_parse_primary(parser_t *parser)
         parser_eat(parser, TOKEN_BOOL);
         return bool_node;
     }
+    case TOKEN_KW_NULL: {
+        /* Parse null literal: a leaf with no payload */
+        ast_t *null_node = ast_init(parser->alloc_list, AST_NULL, parser->lexer->line_num);
+        parser_eat(parser, TOKEN_KW_NULL);
+        return null_node;
+    }
     case TOKEN_NOT:
     case TOKEN_TILDE:
     case TOKEN_PLUS:

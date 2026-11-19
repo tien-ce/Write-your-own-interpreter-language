@@ -65,9 +65,9 @@ ti_status_t val_dict_set(dict_t *dict, const char *key, value_t *val)
         return TI_ERR_INVALID_ARG;
     }
 
-    /* Overwriting an existing key must keep its type */
+    /* Overwriting an existing key must keep its type (val_can_replace: null rules included) */
     value_t *cur_val = (value_t *)chashmap_get(dict->map, key);
-    if (cur_val != NULL && cur_val->type != val->type) {
+    if (cur_val != NULL && !val_can_replace(cur_val->type, val->type)) {
         val_free(val);
         return TI_ERR_TYPE_MISMATCH;
     }
@@ -103,9 +103,9 @@ ti_status_t val_dict_set_raw(dict_t *dict, const char *key, value_t *val)
         return TI_ERR_INVALID_ARG;
     }
 
-    /* Overwriting an existing key must keep its type */
+    /* Overwriting an existing key must keep its type (val_can_replace: null rules included) */
     value_t *cur_val = (value_t *)chashmap_get(dict->map, key);
-    if (cur_val != NULL && cur_val->type != val->type) {
+    if (cur_val != NULL && !val_can_replace(cur_val->type, val->type)) {
         val_free(val);
         return TI_ERR_TYPE_MISMATCH;
     }

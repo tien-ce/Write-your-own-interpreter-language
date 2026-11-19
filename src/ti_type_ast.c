@@ -181,6 +181,7 @@ void ast_free(ast_t *ast)
     case AST_INT_LITERAL:
     case AST_FLOAT_LITERAL:
     case AST_BOOLEAN:
+    case AST_NULL:
     case AST_NOOP:
     case AST_PROGRAM:
     case AST_BREAK_STATEMENT:
@@ -213,7 +214,8 @@ ast_t *ast_clone(alloc_hdr_t **list, const ast_t *ast)
     case AST_INT_LITERAL:
     case AST_FLOAT_LITERAL:
     case AST_BOOLEAN:
-        /* Plain scalar payloads copy by value */
+    case AST_NULL:
+        /* Plain scalar payloads copy by value (null has none) */
         copy->value = ast->value;
         return copy;
 
