@@ -25,7 +25,7 @@ static value_t *native_sleepy(ti_handle_t handle, value_t **argv, int argc)
     uint32_t start = ti_millis();
     ti_wait(handle, (uint32_t)argv[0]->int_val);
     g_sleep_elapsed = ti_millis() - start;
-    return val_new_null();
+    return val_new_void();
 }
 
 /* Native used by the script: hands a value to the test (the runtime is gone once ti_execute returns) */
@@ -34,7 +34,7 @@ static value_t *native_report(ti_handle_t handle, value_t **argv, int argc)
     (void)handle;
     (void)argc;
     g_reported = argv[0]->int_val;
-    return val_new_null();
+    return val_new_void();
 }
 
 static void *script_thread(void *arg)
