@@ -2,6 +2,7 @@
 #include "include/tracked_memory.h"
 #include "include/debug.h"
 #include "TienInterpreter.h"
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -63,8 +64,12 @@ static value_t *binary_add(ti_runtime_t *rt, value_t *left, value_t *right, int 
     value_t *value = val_init(left->type);
     switch (left->type) {
     case VAL_INT:
-        /* Evaluate integer addition */
-        value->int_val = left->int_val + right->int_val;
+        /* Evaluate integer addition; a result outside int is an error, never a silent wrap */
+        if (__builtin_add_overflow(left->int_val, right->int_val, &value->int_val)) {
+            ti_raise(rt, TI_ERR_VALUE_OUT_OF_RANGE, line, "Integer overflow in '+': %d + %d", left->int_val, right->int_val);
+            val_free(value);
+            return NULL;
+        }
         break;
     case VAL_FLOAT:
         /* Evaluate floating-point addition */
@@ -120,8 +125,12 @@ static value_t *binary_sub(ti_runtime_t *rt, value_t *left, value_t *right, int 
     value_t *value = val_init(left->type);
     switch (left->type) {
     case VAL_INT:
-        /* Evaluate integer subtraction */
-        value->int_val = left->int_val - right->int_val;
+        /* Evaluate integer subtraction; a result outside int is an error, never a silent wrap */
+        if (__builtin_sub_overflow(left->int_val, right->int_val, &value->int_val)) {
+            ti_raise(rt, TI_ERR_VALUE_OUT_OF_RANGE, line, "Integer overflow in '-': %d - %d", left->int_val, right->int_val);
+            val_free(value);
+            return NULL;
+        }
         break;
     case VAL_FLOAT:
         /* Evaluate floating-point subtraction */
@@ -156,8 +165,12 @@ static value_t *binary_mul(ti_runtime_t *rt, value_t *left, value_t *right, int 
     value_t *value = val_init(left->type);
     switch (left->type) {
     case VAL_INT:
-        /* Evaluate integer multiplication */
-        value->int_val = left->int_val * right->int_val;
+        /* Evaluate integer multiplication; a result outside int is an error, never a silent wrap */
+        if (__builtin_mul_overflow(left->int_val, right->int_val, &value->int_val)) {
+            ti_raise(rt, TI_ERR_VALUE_OUT_OF_RANGE, line, "Integer overflow in '*': %d * %d", left->int_val, right->int_val);
+            val_free(value);
+            return NULL;
+        }
         break;
     case VAL_FLOAT:
         /* Evaluate floating-point multiplication */
@@ -195,6 +208,12 @@ static value_t *binary_div(ti_runtime_t *rt, value_t *left, value_t *right, int 
         /* Guard against integer division by zero */
         if (right->int_val == 0) {
             ti_raise(rt, TI_ERR_DIV_ZERO, line, "Division by zero error");
+            val_free(value);
+            return NULL;
+        }
+        /* INT_MIN / -1 is the only quotient outside int; the CPU's divide instruction traps on it (SIGFPE) */
+        if (left->int_val == INT_MIN && right->int_val == -1) {
+            ti_raise(rt, TI_ERR_VALUE_OUT_OF_RANGE, line, "Integer overflow in '/': %d / -1", left->int_val);
             val_free(value);
             return NULL;
         }
@@ -784,8 +803,10 @@ value_t *eval_unary_expr(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         break;
 
     case OP_NEG:
-        /* Unary minus: negate integer or float value */
-        if (operand->type == VAL_INT) {
+        /* Unary minus: negate integer or float value; -INT_MIN does not fit an int */
+        if (operand->type == VAL_INT && operand->int_val == INT_MIN) {
+            ti_raise(rt, TI_ERR_VALUE_OUT_OF_RANGE, node->line, "Integer overflow in '-': -(%d)", operand->int_val);
+        } else if (operand->type == VAL_INT) {
             result = val_new_int(-operand->int_val);
         } else if (operand->type == VAL_FLOAT) {
             result = val_new_float(-operand->float_val);

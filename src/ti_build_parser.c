@@ -4,6 +4,7 @@
 #include "include/ti_build_token.h"
 #include "include/tracked_memory.h"
 #include "TienInterpreter.h"
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -588,7 +589,16 @@ static ast_t *parser_parse_primary(parser_t *parser)
             /* Hex literal (lexer limits it to 8 digits): wraps like C, so 0xFFFFFFFF is -1 */
             int_node->value.int_value = (int)(uint32_t)strtoul(text + 2, NULL, 16);
         } else {
-            int_node->value.int_value = atoi(text);
+            /* Decimal literal: always positive here (a '-' before it is a unary operator applied later),
+             * so it must fit 0..INT_MAX; strtoll saturates instead of wrapping, so a huge literal fails too */
+            long long value = strtoll(text, NULL, 10);
+            if (value > INT_MAX) {
+                ti_log("[Parser Error] Integer literal %s does not fit an int (max %d) at " TI_BUILD_AT_FMT "\n",
+                       text, INT_MAX, TI_BUILD_AT_ARGS(parser->lexer, parser->lexer->line_num));
+                ti_log_line(parser->lexer->line);
+                lexer_abort(parser->lexer);
+            }
+            int_node->value.int_value = (int)value;
         }
         parser_eat(parser, TOKEN_INT);
         return int_node;
