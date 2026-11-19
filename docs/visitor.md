@@ -67,6 +67,12 @@ ti_runtime_eval_binary.c  ti_runtime_eval_control.c  ti_runtime_eval_func.c  ti_
   - Float: `if (right->float_val == 0.0f)` &rarr; raises `TI_ERR_DIV_ZERO` (`Division by zero error`) and returns `NULL`.
   Guarantees that script errors never trigger an unhandled CPU `SIGFPE` exception.
 
+#### `binary_mod(ti_runtime_t *rt, value_t *left, value_t *right, int line)` (`%`, `OP_MOD`)
+- `int` only (the caller already checked both operands share a type): anything else raises `TI_ERR_TYPE_MISMATCH` (`Operator '%' only supports int operands, ...`).
+- `right == 0` raises `TI_ERR_DIV_ZERO` (`Modulo by zero error`).
+- `right == -1` returns `0` without dividing: C's `INT_MIN % -1` overflows inside the CPU's divide instruction (`idiv` on x86 traps: SIGFPE kills the host), and every other `x % -1` is `0` anyway.
+- Otherwise C's `%`: the sign follows the left operand (`-7 % 3` is `-1`).
+
 #### `binary_logical_and` & `binary_logical_or`
 - Strictly checks `left->type == VAL_BOOL && right->type == VAL_BOOL`.
 - Returns a newly initialized boolean `value_t` holding `(left->bool_val && right->bool_val)`.

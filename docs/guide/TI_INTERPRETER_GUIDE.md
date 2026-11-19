@@ -67,7 +67,18 @@ bool is_active = true;
   ```
   Details: [Types & Values](TYPES_AND_VALUES.md), section 2.9.
 
-### 1.3 Bitwise Operators (`int` only)
+### 1.3 Arithmetic Operators
+
+| Operator | Operands | Notes |
+|---|---|---|
+| `a + b`, `a - b`, `a * b` | `int`, `float` (`+` also joins `string`) | Both operands must have the same type: `1 + 2.0` is a type error |
+| `a / b` | `int`, `float` | `int` division truncates toward zero (`7 / 2` is `3`); dividing by `0` is `TI_ERR_DIV_ZERO` |
+| `a % b` | `int` only | Remainder; its sign follows `a` like C (`-7 % 3` is `-1`, `7 % -3` is `1`); `% 0` is `TI_ERR_DIV_ZERO`; `float` is `TI_ERR_TYPE_MISMATCH` |
+
+* `%` has the precedence of `*` and `/` (`2 + 7 % 4 * 3` is `11`) and groups left to right (`17 % 5 % 3` is `2`).
+* Compound assignment: `+=`, `-=`, `*=`, `/=`, `%=` (`x %= 5;`), also on list elements, dict entries and attributes. `++` / `--` add or subtract 1.
+
+### 1.4 Bitwise Operators (`int` only)
 
 | Operator | Meaning |
 |---|---|
@@ -76,7 +87,7 @@ bool is_active = true;
 | `a << n`, `a >> n` | Shift left; shift right (arithmetic: the sign is kept) |
 
 * Operands must be `int` (32-bit signed). `bool`, `float`, `string` and `bytes` are a type error; use `&&` / `||` for `bool`.
-* **Precedence** (high to low): `~ ! + -` (unary), `* /`, `+ -`, `<< >>`, `&`, `^`, `\|`, comparisons, `&& \|\|`. Unlike C, bitwise operators bind tighter than comparisons, so `x & 0x80 == 0x80` means `(x & 0x80) == 0x80`.
+* **Precedence** (high to low): `~ ! + -` (unary), `* / %`, `+ -`, `<< >>`, `&`, `^`, `\|`, comparisons, `&& \|\|`. Unlike C, bitwise operators bind tighter than comparisons, so `x & 0x80 == 0x80` means `(x & 0x80) == 0x80`.
 * A shift count must be `0..31`, otherwise `TI_ERR_VALUE_OUT_OF_RANGE`. Bits shifted past the sign bit wrap (`1 << 31` is `-2147483648`).
 * Hexadecimal literals: `0x1F`, `0xFF`, up to 8 digits. A hex literal is an ordinary 32-bit `int` (not limited to one byte): `0xFFF` is `4095`, and `0xFFFFFFFF` wraps to `-1`. Decimal literals are unchanged (`010` is still `10`).
 * Shift operators bind tighter than `&`, so `a & b << 1` means `a & (b << 1)`.

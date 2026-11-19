@@ -204,6 +204,7 @@ For operators that can be either single-character or compound:
 - **`^`** returns `TOKEN_XOR` and **`~`** returns `TOKEN_TILDE` (single-character tokens, no lookahead).
 - **`&`:** Advances. If next is `&`, returns `TOKEN_LOGIC_AND` (`&&`). Else calls `lexer_go_back` and returns `TOKEN_AND` (`&`).
 - **`|`:** Advances. If next is `|`, returns `TOKEN_LOGIC_OR` (`||`). Else calls `lexer_go_back` and returns `TOKEN_OR` (`|`).
+- **`*`, `%`:** Advance. If next is `=`, return `TOKEN_STAR_EQUALS` (`*=`) / `TOKEN_PERCENT_EQUALS` (`%=`). Else call `lexer_go_back` and return `TOKEN_STAR` / `TOKEN_PERCENT`.
 
 ---
 

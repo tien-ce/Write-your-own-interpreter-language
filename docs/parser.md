@@ -109,7 +109,7 @@ parser_parse_shift()       [Precedence 6: Shift (<<, >>)]
 parser_parse_additive()    [Precedence 7: Addition (+), Subtraction (-)]
        │
        ▼
-parser_parse_term()        [Precedence 8: Multiplication (*), Division (/)]
+parser_parse_term()        [Precedence 8: Multiplication (*), Division (/), Remainder (%)]
        │
        ▼
 parser_parse_primary()     [Precedence 9: Unary (!, ~, -, +), Grouping (expr), Literals, Identifiers, Calls]
@@ -139,9 +139,10 @@ Bitwise levels sit **above** comparisons (as in Python, unlike C), so `x & 0x80 
 - Converts token type to `OP_ADD` or `OP_SUB` via `token_type_to_op()`.
 
 #### Level 8: `parser_parse_term(parser_t *parser)`
-- Evaluates `*` and `/`.
+- Evaluates `*`, `/` and `%` (`TOKEN_PERCENT`), left-associative.
 - Calls `parser_parse_primary()`.
-- Converts token type to `OP_MUL` or `OP_DIV`.
+- Converts token type to `OP_MUL`, `OP_DIV` or `OP_MOD`.
+- **Compound assignment** (`parser_parse_assignment_expr`): `+=`, `-=`, `*=`, `/=`, `%=` (`TOKEN_PERCENT_EQUALS` &rarr; `OP_MOD`) and `++` / `--` become `target = target <op> rhs` (the target is cloned with `ast_clone`). `parser_is_update_token` lists the same tokens, so a statement or a `for` step starting with them is an assignment.
 
 #### Level 9: `parser_parse_primary(parser_t *parser)` (Leaves & Unary)
 - **Parenthesized Expressions:** If `current_token == TOKEN_LPAREN`, eats `(`, calls root `parser_parse_expr()`, and eats `)`.
