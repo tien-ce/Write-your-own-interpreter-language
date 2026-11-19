@@ -1,5 +1,6 @@
 /*
- * Integer arithmetic: the remainder operator (%, %=).
+ * Integer arithmetic: the remainder operator (%, %=), int overflow (a TI error, never a wrap or a
+ * crashed host) and decimal literals that do not fit an int (a syntax error).
  * A valid case checks its own result: a wrong result assigns a string to an int (TI_ERR_TYPE_MISMATCH).
  *
  * Build and run (from the repository root); AddressSanitizer reports any leak at exit:
@@ -45,6 +46,36 @@ int main(void)
         { "remainder assignment",
           "int x = 17;\nx %= 5;\nlist int l = [10, 20];\nl[1] %= 6;\n"
           "if (x != 2 || l[1] != 2) { int bad = \"x\"; }\n" },
+        { "results at the int limits",
+          "int max = 2147483647;\nint min = -2147483647 - 1;\n"
+          "if (max - 1 + 1 != max || min + 1 - 1 != min || -max != min + 1 || min / 1 != min || max * -1 != min + 1) { int bad = \"x\"; }\n"
+          "if (46340 * 46340 != 2147395600 || min / 2 != -1073741824) { int bad = \"x\"; }\n" },
+        { "largest literal and hex wrap",
+          "int a = 2147483647;\nint b = -2147483647;\nint c = 0xFFFFFFFF;\n"
+          "if (a + b != 0 || c != -1) { int bad = \"x\"; }\n" },
+        { "float arithmetic is unchanged",
+          "float f = 3000000000.0 * 2.0;\nif (f < 5999999999.0) { int bad = \"x\"; }\n" },
+    };
+
+    /* Scripts that must stop with TI_ERR_VALUE_OUT_OF_RANGE (the host keeps running) */
+    static const struct { const char *name; const char *script; } overflow_cases[] = {
+        { "add overflow",                "int a = 2147483647;\nint b = a + 1;\n" },
+        { "subtract overflow",           "int a = -2147483647 - 2;\n" },
+        { "multiply overflow",           "int a = 65536 * 65536;\n" },
+        { "multiply negative overflow",  "int a = -65536 * 65536 * 2;\n" },
+        { "divide INT_MIN by -1",        "int min = -2147483647 - 1;\nint b = min / -1;\n" },
+        { "negate INT_MIN",              "int min = -2147483647 - 1;\nint b = -min;\n" },
+        { "compound add overflow",       "int a = 2147483647;\na += 1;\n" },
+        { "increment overflow",          "int a = 2147483647;\na++;\n" },
+        { "decrement overflow",          "int a = -2147483647 - 1;\na--;\n" },
+        { "compound divide overflow",    "int a = -2147483647 - 1;\na /= -1;\n" },
+    };
+
+    /* Decimal literals that do not fit an int: TI_ERR_SYNTAX at compile time */
+    static const struct { const char *name; const char *script; } literal_cases[] = {
+        { "literal above INT_MAX",       "int a = 2147483648;\n" },
+        { "negative literal below min",  "int a = -2147483648;\n" },
+        { "huge literal",                "int a = 99999999999999999999999;\n" },
     };
 
     ti_register_log(on_log);
@@ -52,6 +83,12 @@ int main(void)
     int failed = 0;
     for (size_t i = 0; i < sizeof(ok_cases) / sizeof(ok_cases[0]); i++) {
         failed += run_case(ok_cases[i].name, ok_cases[i].script, TI_OK);
+    }
+    for (size_t i = 0; i < sizeof(overflow_cases) / sizeof(overflow_cases[0]); i++) {
+        failed += run_case(overflow_cases[i].name, overflow_cases[i].script, TI_ERR_VALUE_OUT_OF_RANGE);
+    }
+    for (size_t i = 0; i < sizeof(literal_cases) / sizeof(literal_cases[0]); i++) {
+        failed += run_case(literal_cases[i].name, literal_cases[i].script, TI_ERR_SYNTAX);
     }
 
     /* Errors */
