@@ -152,7 +152,8 @@ Bitwise levels sit **above** comparisons (as in Python, unlike C), so `x & 0x80 
   - Saves the identifier name.
   - Eats `TOKEN_ID`.
   - If next token is `TOKEN_LPAREN`, delegates to `parser_parse_function_call(parser, func_name)`.
-  - Otherwise, returns `AST_IDENTIFIER`.
+  - Otherwise, builds `AST_IDENTIFIER`.
+  - Then, while the next token is `[`, wraps the node so far into `AST_ARRAY_ACCESS { object = node, index_expr }` (`s[0]["k"]`, `f()[1]`): the container of a subscript is an expression (`ast_t *object`), like the receiver of `method_call` / `attribute`. Then `.member` chains are parsed by `parser_parse_member_access`.
 
 ---
 

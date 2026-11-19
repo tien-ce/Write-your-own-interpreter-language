@@ -33,13 +33,13 @@ bool is_active = true;
   string host = config["host"];
   config["timeout"] = 5000;
   ```
-* **Nesting and JSON**: lists and dicts can hold each other (`list dict`, `list list`, a dict value that is a list), up to 4 levels. Inserting a container stores a copy; a variable, an argument or `x[i]` shares it. `to_string` turns them into JSON:
+* **Nesting and JSON**: lists and dicts can hold each other (`list dict`, `list list`, a dict value that is a list), up to 4 levels. Subscripts chain for reading and writing: `stations[0]["name"]`, `grid[1][0] = 5;`. **Putting a container into another one stores a copy**; a variable, an assignment, an argument, a return value or `x[i]` **shares** it, so `stations[0]["name"] = "x";` changes `stations`. `to_string` turns them into JSON:
   ```c
   list dict stations = [{"name": "tien"}];
   dict payload = {"stations": stations, "count": 1};
   print(to_string(payload));   // {"count":1,"stations":[{"name":"tien"}]}
   ```
-  Details: [Types & Values](TYPES_AND_VALUES.md), sections 2.4 to 2.6.
+  Details: [Types & Values](TYPES_AND_VALUES.md), sections 2.4 to 2.6 (2.5 has the full copy-or-share table).
 * **Native objects (`handle`)**: an opaque C object (driver config, socket) returned by a native. Use it with functions, methods (`dev.read()`) and attributes (`dev.baud`) of its type. Copies share the same object; `handle h;` starts empty.
   ```c
   handle dev = device_open("/dev/ttyUSB0", 9600);

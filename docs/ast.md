@@ -107,6 +107,7 @@ Because an AST is an arbitrarily deep recursive hierarchy, deallocation must str
   - **`AST_UNARY_EXPR`:** Calls `ast_free(unary_expr.operand)`.
   - **`AST_VARIABLE_DEFINITION`:** Frees `variable_name` string, then calls `ast_free(value)` and `ast_free(size)` (`size` is the element count of `list <type> name[size];`, NULL otherwise).
   - **`AST_ASSIGNMENT`:** Calls `ast_free(target)` and `ast_free(value)`.
+  - **`AST_ARRAY_ACCESS`:** Calls `ast_free(object)` (the container expression: identifier, call or another access) and `ast_free(index_expr)`; `ast_clone` clones both.
   - **`AST_RETURN_STATEMENT`:** Calls `ast_free(return_statement.value)` (safe if `NULL`).
   - **`AST_IF_STATEMENT`:** Calls `ast_free` on `condition`, `body`, and `else_body` (if non-NULL).
   - **`AST_WHILE_STATEMENT`:** Calls `ast_free` on `condition` and `body`.

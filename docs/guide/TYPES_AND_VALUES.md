@@ -106,9 +106,32 @@ list int row = grid[1];                               // [3,4]
   dict l4 = {"l": l3};     // 4 levels: OK
   dict l5 = {"l": l4};     // 5 levels: runtime error, limit exceeded
   ```
-* Subscripts cannot be chained: `b["cfg"]["a"] = 5;` and `ld[0]["k"]` are parser errors. Take the inner container out first (see 2.5).
+* **Subscripts chain**, for reading and for writing. Each `[...]` applies to the result of what is on its left, so the left side can be a variable, another subscript or a call:
+  ```c
+  list dict ld = [{"k": 1, "l": [10, 20]}];
+  int v = ld[0]["k"];             // 1
+  int w = ld[0]["l"][1];          // 20
+  ld[0]["k"] = 5;                 // changes the dict inside ld (see 2.5 for why)
+  payload["config"]["retry"] = 3; // also +=, -=, ++, ...
+  int first = make_pair()[0];     // subscript of a call's result
+  ```
+  A level that is not a list, dict or bytes is `TI_ERR_TYPE_MISMATCH` (`l[0][0]` on a `list int`), a missing index or key is the same error as for one level.
 
-### 2.5 Copy Rules: Insert Copies, Variables Share
+### 2.5 Copy Rules: Insert Copies, Everything Else Shares
+Scalars (`int`, `float`, `bool`) and `string` are **always copied**: changing one variable never changes another. The rules below are about **containers**: `list`, `dict` and `bytes` (a `handle` is always shared, 2.7).
+
+| Operation | Container is | Example |
+| :--- | :--- | :--- |
+| Store into a container: list or dict literal, `l[i] = v`, `d["k"] = v`, `s[0]["k"] = v` | **copied** (deep, the whole tree) | `l[0] = cfg;` then changing `cfg` does not change `l[0]` |
+| Declare from another: `dict q = p;` | **shared** | `q["n"] = 2;` changes `p` too |
+| Plain assignment: `q = p;` | **shared** | same as above |
+| Pass as an argument: `f(p)` | **shared** | the function can change the caller's container |
+| Return from a function | **shared** | the caller gets the same container |
+| Read with a subscript: `l[i]`, `d["k"]`, `s[0]["k"]` | **shared** | `dict item = l[0]; item["k"] = 1;` changes `l[0]` |
+| Write through a chained subscript: `s[0]["k"] = v` | writes into the **shared** inner container | `s` itself changes; `v` is still copied in (first row) |
+
+So the rule is: **putting a container *into* another one copies it; every other way of handing it around shares it.** A write always lands in the container you reached, never in a copy, and what you write in is a copy.
+
 **Putting a container into another container stores a deep copy** (a snapshot of the whole tree). This happens in a list or dict literal, in `list[i] = value` and in `dict[key] = value`. Changing the original afterwards does not change the copy:
 ```c
 dict a = {"key": "vala"};
@@ -138,12 +161,22 @@ list dict ld = [{"key": "v"}];
 dict item = ld[0];         // item is the element inside ld
 item["key"] = "x";         // ld is now [{"key":"x"}]
 ```
-Use this to edit a nested element in place (chained subscripts are not supported):
+Both ways edit a nested element in place:
 ```c
-dict cfg = payload["config"];   // shared with payload
-cfg["retry"] = 3;               // payload["config"]["retry"] is now 3
+payload["config"]["retry"] = 3;  // chained: payload["config"] is reached by reference, then written
+
+dict cfg = payload["config"];    // or through a variable that shares the inner dict
+cfg["retry"] = 3;                // payload["config"]["retry"] is now 3
+```
+And both copy what you put in:
+```c
+dict extra = {"v": 1};
+payload["config"]["extra"] = extra;   // a copy of extra goes in
+extra["v"] = 2;                        // payload["config"]["extra"]["v"] is still 1
 ```
 To get an independent copy of a container, put it through a literal: `dict copy = {"v": p};` then use `copy["v"]`.
+
+**C side.** `val_list_get` and `val_dict_get` return `val_copy` of the element: a new `value_t` the caller owns, whose list, dict, bytes or handle is the **same** object (reference count + 1). `val_list_set`, `val_dict_set`, `val_list_push` deep-copy a list or dict value (`val_deep_copy`). `eval_array_access` and the `arr[i] = v` branch of `eval_assignment` evaluate the left side with `visitor_visit` (a shared reference, freed after use) and read or write through it.
 
 ### 2.6 Building JSON with `to_string`
 `to_string` of a list gives a **JSON array**, `to_string` of a dict gives a **JSON object**, and nested containers give nested JSON. Scalars on their own are written plainly (`to_string("hi")` is `hi`, `to_string(3.0)` is `3.00`); inside a container they follow JSON rules.
