@@ -46,7 +46,7 @@ static value_t *builtin_autonics_tk_set_slave_address(ti_handle_t handle, value_
     if (argc >= 1 && argv[0]->type == VAL_INT) {
         s_autonics_slave_addr = argv[0]->int_val;
     }
-    return val_new_null();
+    return val_new_void();
 }
 
 /**

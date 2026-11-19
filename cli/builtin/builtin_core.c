@@ -37,6 +37,10 @@ static value_t *builtin_print(ti_handle_t handle, value_t **argv, int argc)
         case VAL_BOOL:
             printf("%s", argv[i]->bool_val ? "true" : "false");
             break;
+        case VAL_NULL:
+            /* Same text as to_string(null) */
+            printf("null");
+            break;
         case VAL_FUNC:
             /* A function value prints as its name in angle brackets; an empty one ('func f;') as "none" */
             printf("<func %s>", argv[i]->func_name != NULL ? argv[i]->func_name : "none");
@@ -65,7 +69,7 @@ static value_t *builtin_print(ti_handle_t handle, value_t **argv, int argc)
         }
     }
     printf("\n");
-    return val_new_null();
+    return val_new_void();
 }
 
 /**
@@ -97,7 +101,7 @@ static value_t *builtin_delay(ti_handle_t handle, value_t **argv, int argc)
      * the delay continues for the remaining time. A stop ends it early (the script unwinds next). */
     ti_wait(handle, ms > 0 ? (uint32_t)ms : 0);
 
-    return val_new_null();
+    return val_new_void();
 }
 
 /* -------------------- Public Functions -------------------- */

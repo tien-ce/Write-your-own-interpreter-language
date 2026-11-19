@@ -39,7 +39,7 @@ static value_t *builtin_relay_set_state(ti_handle_t handle, value_t **argv, int 
     if (argc >= 2 && argv[1]->type == VAL_INT) {
         s_relay_state = argv[1]->int_val;
     }
-    return val_new_null();
+    return val_new_void();
 }
 
 /* -------------------- Public Functions -------------------- */

@@ -74,7 +74,7 @@ static value_t *builtin_register_callback(ti_handle_t handle, value_t **argv, in
         ti_raise_error(handle, TI_ERR_NO_MEMORY, "register_callback() out of memory");
         return NULL;
     }
-    return val_new_null();
+    return val_new_void();
 }
 
 /* -------------------- Public Functions -------------------- */

@@ -39,14 +39,14 @@ static value_t *builtin_register_event(ti_handle_t handle, value_t **argv, int a
     const char *func_name = argv[0]->func_name;
     if (func_name == NULL || func_name[0] == '\0') {
         ti_log("[ERROR]: register_event() expects a non-empty function name\n");
-        return val_new_null();
+        return val_new_void();
     }
 
     /* Copy the name before taking the lock to keep the critical section short */
     char *name_copy = ti_raw_strdup(func_name);
     if (name_copy == NULL) {
         ti_log("[ERROR]: register_event() out of memory\n");
-        return val_new_null();
+        return val_new_void();
     }
 
     pthread_mutex_lock(&s_listener_mutex);
@@ -71,7 +71,7 @@ static value_t *builtin_register_event(ti_handle_t handle, value_t **argv, int a
         ti_raw_free(name_copy);
         ti_log("[ERROR]: register_event() out of memory\n");
     }
-    return val_new_null();
+    return val_new_void();
 }
 
 /* -------------------- Public Functions -------------------- */
