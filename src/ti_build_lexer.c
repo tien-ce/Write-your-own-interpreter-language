@@ -432,6 +432,15 @@ token_t *lexer_get_next_token(lexer_t *lexer)
             lexer_go_back(lexer);
             return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_STAR, NULL));
         }
+        case '%': {
+            /* '%=' versus plain '%' */
+            lexer_advance(lexer);
+            if (lexer->c == '=') {
+                return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_PERCENT_EQUALS, NULL));
+            }
+            lexer_go_back(lexer);
+            return lexer_advance_with_token(lexer, token_init(lexer->alloc_list, TOKEN_PERCENT, NULL));
+        }
         case '/': {
             /* Check for single-line (//) or multi-line comments vs division operator (/) */
             lexer_advance(lexer);

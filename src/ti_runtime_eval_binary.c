@@ -12,6 +12,7 @@ static value_t *binary_add(ti_runtime_t *rt, value_t *left, value_t *right, int 
 static value_t *binary_sub(ti_runtime_t *rt, value_t *left, value_t *right, int line);
 static value_t *binary_mul(ti_runtime_t *rt, value_t *left, value_t *right, int line);
 static value_t *binary_div(ti_runtime_t *rt, value_t *left, value_t *right, int line);
+static value_t *binary_mod(ti_runtime_t *rt, value_t *left, value_t *right, int line);
 static value_t *binary_equal(ti_runtime_t *rt, value_t *left, value_t *right, int line);
 static value_t *binary_not_equal(ti_runtime_t *rt, value_t *left, value_t *right, int line);
 static value_t *binary_greater(ti_runtime_t *rt, value_t *left, value_t *right, int line);
@@ -217,6 +218,41 @@ static value_t *binary_div(ti_runtime_t *rt, value_t *left, value_t *right, int 
         return NULL;
     }
     return value;
+}
+
+/**
+ * @brief Evaluate the integer remainder (%), with the sign of the left operand as in C (-7 % 3 is -1).
+ * @param rt Pointer to active runtime instance.
+ * @param left Left operand value.
+ * @param right Right operand value (same type as left: checked by the caller).
+ * @param line Source line number for error reporting.
+ * @return Newly allocated int value_t, or NULL after ti_raise().
+ */
+static value_t *binary_mod(ti_runtime_t *rt, value_t *left, value_t *right, int line)
+{
+    if (left == NULL || right == NULL) {
+        ti_raise(rt, TI_ERR_INTERNAL, line, "Invalid operands in binary mod");
+        return NULL;
+    }
+
+    /* The remainder is defined for int only */
+    if (left->type != VAL_INT) {
+        ti_raise(rt, TI_ERR_TYPE_MISMATCH, line, "Operator '%%' only supports int operands, got %s and %s",
+                 val_type_to_str(left->type), val_type_to_str(right->type));
+        return NULL;
+    }
+
+    /* Same guard as division: a zero divisor would trap the CPU */
+    if (right->int_val == 0) {
+        ti_raise(rt, TI_ERR_DIV_ZERO, line, "Modulo by zero error");
+        return NULL;
+    }
+
+    /* INT_MIN % -1 overflows in C (it traps on some CPUs); any x % -1 is 0 */
+    if (right->int_val == -1) {
+        return val_new_int(0);
+    }
+    return val_new_int(left->int_val % right->int_val);
 }
 
 /**
@@ -675,6 +711,9 @@ value_t *eval_binary_expr(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         break;
     case OP_DIV:
         result = binary_div(rt, left, right, node->line);
+        break;
+    case OP_MOD:
+        result = binary_mod(rt, left, right, node->line);
         break;
     case OP_DEQ:
         result = binary_equal(rt, left, right, node->line);

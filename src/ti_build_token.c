@@ -73,11 +73,13 @@ const char *token_to_str(int token_type)
     case TOKEN_PLUS:        return "'+'";
     case TOKEN_MINUS:       return "'-'";
     case TOKEN_STAR:        return "'*'";
+    case TOKEN_PERCENT:     return "'%'";
     case TOKEN_SLASH:       return "'/'";
     case TOKEN_PLUS_EQUALS: return "'+='";
     case TOKEN_MINUS_EQUALS: return "'-='";
     case TOKEN_STAR_EQUALS: return "'*='";
     case TOKEN_SLASH_EQUALS: return "'/='";
+    case TOKEN_PERCENT_EQUALS: return "'%='";
     case TOKEN_PLUS_PLUS:   return "'++'";
     case TOKEN_MINUS_MINUS: return "'--'";
     case TOKEN_SEMI:        return "';'";

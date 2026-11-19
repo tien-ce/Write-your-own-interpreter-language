@@ -62,6 +62,7 @@ static int token_type_to_op(parser_t *parser, int token_type)
     case TOKEN_PLUS:        return OP_ADD;
     case TOKEN_MINUS:       return OP_SUB;
     case TOKEN_STAR:        return OP_MUL;
+    case TOKEN_PERCENT:     return OP_MOD;
     case TOKEN_SLASH:       return OP_DIV;
     case TOKEN_DEQUALS:     return OP_DEQ;
     case TOKEN_NOT_EQUALS:  return OP_NEQ;
@@ -546,7 +547,7 @@ static ast_t *parser_parse_additive(parser_t *parser)
 }
 
 /**
- * @brief Parse multiplicative expressions (*, /).
+ * @brief Parse multiplicative expressions (*, /, %).
  * @param parser Pointer to parser.
  * @return AST expression node.
  */
@@ -555,9 +556,10 @@ static ast_t *parser_parse_term(parser_t *parser)
     /* Parse highest precedence primary atom first */
     ast_t *left = parser_parse_primary(parser);
 
-    /* Left-associatively chain multiplication and division operations */
+    /* Left-associatively chain multiplication, division and remainder operations (same precedence, as in C) */
     while (parser->current_token->type == TOKEN_STAR ||
-           parser->current_token->type == TOKEN_SLASH) {
+           parser->current_token->type == TOKEN_SLASH ||
+           parser->current_token->type == TOKEN_PERCENT) {
         int op = parser->current_token->type;
         parser_eat(parser, op);
         ast_t *right = parser_parse_primary(parser);
@@ -1100,7 +1102,7 @@ static ast_t *parser_parse_member_access(parser_t *parser, ast_t *node)
  * @param target Target AST node already parsed (identifier or array access).
  * @return AST assignment node.
  */
-/* <target> (= | += | -= | *= | /=) <expr>   |   <target> (++ | --) */
+/* <target> (= | += | -= | *= | /= | %=) <expr>   |   <target> (++ | --) */
 static ast_t *parser_parse_assignment_expr(parser_t *parser, ast_t *target)
 {
     int token_type = parser->current_token->type;
@@ -1128,6 +1130,9 @@ static ast_t *parser_parse_assignment_expr(parser_t *parser, ast_t *target)
             break;
         case TOKEN_SLASH_EQUALS:
             op = OP_DIV;
+            break;
+        case TOKEN_PERCENT_EQUALS:
+            op = OP_MOD;
             break;
         default:
             ti_log("[Parser Error] Unexpected token %s in assignment at " TI_BUILD_AT_FMT "\n",
@@ -1333,7 +1338,7 @@ static bool parser_is_update_token(int token_type)
 {
     return token_type == TOKEN_EQUALS || token_type == TOKEN_PLUS_EQUALS ||
            token_type == TOKEN_MINUS_EQUALS || token_type == TOKEN_STAR_EQUALS ||
-           token_type == TOKEN_SLASH_EQUALS || token_type == TOKEN_PLUS_PLUS ||
+           token_type == TOKEN_SLASH_EQUALS || token_type == TOKEN_PERCENT_EQUALS || token_type == TOKEN_PLUS_PLUS ||
            token_type == TOKEN_MINUS_MINUS;
 }
 

@@ -52,10 +52,12 @@ typedef enum token_type {
     TOKEN_MINUS,        // -
     TOKEN_STAR,         // *
     TOKEN_SLASH,        // /
+    TOKEN_PERCENT,      // %
     TOKEN_PLUS_EQUALS,  // +=
     TOKEN_MINUS_EQUALS, // -=
     TOKEN_STAR_EQUALS,  // *=
     TOKEN_SLASH_EQUALS, // /=
+    TOKEN_PERCENT_EQUALS, // %=
     TOKEN_PLUS_PLUS,    // ++
     TOKEN_MINUS_MINUS,  // --
     TOKEN_SEMI,         // ;

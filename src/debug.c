@@ -46,11 +46,13 @@ const char *token_type_to_str(int type)
     case TOKEN_PLUS:      return "TOKEN_PLUS";
     case TOKEN_MINUS:     return "TOKEN_MINUS";
     case TOKEN_STAR:      return "TOKEN_STAR";
+    case TOKEN_PERCENT:   return "TOKEN_PERCENT";
     case TOKEN_SLASH:     return "TOKEN_SLASH";
     case TOKEN_PLUS_EQUALS:  return "TOKEN_PLUS_EQUALS";
     case TOKEN_MINUS_EQUALS: return "TOKEN_MINUS_EQUALS";
     case TOKEN_STAR_EQUALS:  return "TOKEN_STAR_EQUALS";
     case TOKEN_SLASH_EQUALS: return "TOKEN_SLASH_EQUALS";
+    case TOKEN_PERCENT_EQUALS: return "TOKEN_PERCENT_EQUALS";
     case TOKEN_PLUS_PLUS:    return "TOKEN_PLUS_PLUS";
     case TOKEN_MINUS_MINUS:  return "TOKEN_MINUS_MINUS";
     case TOKEN_SEMI:      return "TOKEN_SEMI";
