@@ -141,6 +141,7 @@ The `lexer_t` struct encapsulates the complete traversal state of the tokenizer.
   3. **Keyword resolution:** Compares `value` against known keywords:
      - Types: `"int"` (`TOKEN_KW_INT`), `"float"` (`TOKEN_KW_FLOAT`), `"string"` (`TOKEN_KW_STRING`), `"bool"` (`TOKEN_KW_BOOL`), `"dict"` (`TOKEN_KW_DICT`), `"void"` (`TOKEN_KW_VOID`).
      - Control flow: `"if"` (`TOKEN_KW_IF`), `"else"` (`TOKEN_KW_ELSE`), `"while"` (`TOKEN_KW_WHILE`), `"return"` (`TOKEN_KW_RETURN`), `"break"` (`TOKEN_KW_BREAK`), `"continue"` (`TOKEN_KW_CONTINUE`).
+     - The null literal: `"null"` (`TOKEN_KW_NULL`, no value, like the keywords). It is reserved: `int null = 1;` is a parser error.
      - **Why Keywords Free `value` and Pass `NULL`:**
        ```c
        // src/ti_build_lexer.c:

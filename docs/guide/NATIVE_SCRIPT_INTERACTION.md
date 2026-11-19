@@ -76,13 +76,15 @@ Return a freshly allocated `value_t *`; the interpreter owns it from then on:
 
 ```c
 return val_new_int(42);            // script: int x = my_func();
-return val_new_void();             // void function
+return val_new_void();             // void function (never val_new_null())
 return val_new_string("ok");
+return val_new_null();             // "no value" (declared type stays the real one, e.g. VAL_INT)
 ```
 
 Rules:
 
-* Return the type you declared as `return_type`. The runtime does **not** re-check a native's return type, so a mismatch will surface later as a confusing error in the script.
+* Return the type you declared as `return_type`, or `null`. The runtime does **not** re-check a native's return type, so a mismatch will surface later as a confusing error in the script.
+* `null` or an error? Return `null` when the script can go on without the value and should decide (`if (t == null) ...`, e.g. one sensor of several did not answer). Raise an error (section 4) when continuing would be wrong. Script rules for `null`: [Types & Values](TYPES_AND_VALUES.md), section 2.9.
 * Never `val_free` what you return. Never return a pointer you got from `args`.
 * To return several fields use a `dict`, a `list` or `bytes`. Do **not** use this to report failure (no `{"ok": false, "code": 3}`): use an error (section 4) so the script cannot forget to check.
 * Returning `NULL` means **"I failed"**, and only after `ti_raise_error` (section 4.1). Never return `NULL` without raising: the runtime has no error to report.

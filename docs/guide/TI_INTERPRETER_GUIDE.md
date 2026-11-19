@@ -60,6 +60,13 @@ bool is_active = true;
   ```
   Details: [Types & Values](TYPES_AND_VALUES.md), section 2.8; writing a native module: [Functions & Native C Extension API](FUNCTIONS_AND_NATIVE_API.md), section 4.6; writing a module loader: section 4.7.
 
+* **`null`**: "no value", typically from a native that had nothing to return. Test it with `==` / `!=` (works against any type); every other operator on `null` is a type error. Any variable, list element or dict entry can be set to `null`, but once it holds `null` it cannot be assigned again.
+  ```c
+  int t = sensor_read();    // int, or null when the sensor did not answer
+  if (t != null) { total = total + t; }
+  ```
+  Details: [Types & Values](TYPES_AND_VALUES.md), section 2.9.
+
 ### 1.3 Bitwise Operators (`int` only)
 
 | Operator | Meaning |

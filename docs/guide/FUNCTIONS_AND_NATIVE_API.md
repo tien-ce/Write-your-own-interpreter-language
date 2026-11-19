@@ -47,7 +47,7 @@ typedef value_t *(*native_fn_t)(ti_handle_t handle, value_t **args, int argc);
 * **`handle` (`ti_handle_t`)**: An opaque, generation-checked reference representing the calling runtime instance. Native functions must never access `ti_runtime_t *` directly; all runtime interactions must go through this handle.
 * **`args` (`value_t **`)**: Array of pointers to evaluated arguments.
 * **`argc` (`int`)**: Number of arguments passed by the script.
-* **Return Value (`value_t *`)**: Must return a dynamically allocated `value_t *` (e.g. via `val_new_void()`, `val_new_int()`, etc.). The interpreter takes ownership and frees it automatically.
+* **Return Value (`value_t *`)**: Must return a dynamically allocated `value_t *` (e.g. via `val_new_void()`, `val_new_int()`, etc.). The interpreter takes ownership and frees it automatically. A `VAL_VOID` native returns `val_new_void()`; any other native may return `val_new_null()` instead of its declared type for "no value" (script side: [Types & Values](TYPES_AND_VALUES.md), section 2.9).
 
 ---
 
@@ -453,5 +453,5 @@ The loader decides what a name means; the library only needs one path per file b
 ## 5. Summary of Best Practices for Native C Code
 
 1. **Avoid Pointer Retaining:** Never store raw `value_t *` pointers from `args` across function calls. If you need to keep data, copy it using standard C functions (e.g. `strdup`) or `val_copy()`.
-2. **Never Panic:** Do not call `exit()` or abort from native functions. Return `val_new_null()` or `val_new_void()`.
+2. **Never Panic:** Do not call `exit()` or abort from native functions. Report a failure with `ti_raise_error(handle, status, ...)` and return `NULL`. A native declared `VAL_VOID` returns `val_new_void()`, never `val_new_null()` (`null` is a script value, not "no result").
 3. **Keep Execution Short:** A native runs while holding the runtime's execution lock, so a long C loop blocks events and `ti_call` callers. To wait for time, call `ti_wait(handle, ms)`; to wait for another thread's I/O, call `ti_wait_flag(handle, &done, timeout_ms)` and have that thread call `ti_give(handle)` (both release the lock while sleeping and service events and callbacks; see [Native C and TI Scripts](NATIVE_SCRIPT_INTERACTION.md), section 6.1). Never sleep with `sleep()`/`usleep()` or wait on a lock another thread may hold while it calls `ti_call`.

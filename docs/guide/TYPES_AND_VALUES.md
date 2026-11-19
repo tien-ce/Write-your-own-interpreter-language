@@ -15,7 +15,7 @@ Defined in `src/include/ti_type.h`:
 * `VAL_STRING`: Null-terminated dynamically allocated string (`char *`).
 * `VAL_BOOL`: Boolean (`bool`: `true` or `false`).
 * `VAL_VOID`: Void sentinel, returned by void functions.
-* `VAL_NULL`: Null sentinel, indicates no payload or uninitialized value.
+* `VAL_NULL`: The script's `null` ("no value", e.g. a native that could not read its sensor); see 2.9. Internally it also marks "no type" (an unset `element_type`) and is the type of the `TI_VAL_OK` statement sentinel, which never reaches a script.
 * `VAL_LIST`: Homogeneous, reference-counted array of elements (`list_t *`).
 * `VAL_DICT`: String-keyed hash map (`dict_t *`).
 * `VAL_HANDLE`: Opaque, reference-counted wrapper around a native C object (`handle_t *`). Scripts hold it and use the methods and attributes of its type; see 2.7.
@@ -44,7 +44,7 @@ list string names = ["Alice", "Bob"];
 list int empty = [];
 
 int first = numbers[0];  // Index access (0-based)
-numbers[1] = 25;         // Subscript assignment (same type only)
+numbers[1] = 25;         // Subscript assignment (same type only, or null: see 2.9)
 ```
 > **Note:** An element of the wrong type (`list int l = [1, "a"];`) is caught at runtime with `TI_ERR_TYPE_MISMATCH`, reported with the element index and the line.
 
@@ -84,7 +84,7 @@ dict device = {
 string dev_name = device["name"];
 device["status"] = "OK";
 ```
-Overwriting an existing key must keep its type (`device["id"] = "x";` is `TI_ERR_TYPE_MISMATCH`).
+Overwriting an existing key must keep its type (`device["id"] = "x";` is `TI_ERR_TYPE_MISMATCH`), except that any key may be set to `null`, after which it cannot be set again (2.9).
 
 ### 2.4 Nesting Containers
 A list can hold dictionaries or lists, and a dictionary value can be a list or a dictionary:
@@ -268,6 +268,44 @@ The library does not read files. The host registers a **module loader** callback
 
 Writing a native module in C: [Functions & Native C Extension API](FUNCTIONS_AND_NATIVE_API.md), section 4.6.
 
+### 2.9 `null`
+`null` is a value meaning "no value". Its main use is a native that returns its declared type, or `null` when it has nothing to give (a sensor that did not answer), so the script decides what to do instead of stopping on an error:
+```c
+int t = sensor_read();        // int, or null
+if (t == null) {
+    print("sensor offline");
+} else {
+    total = total + t;
+}
+```
+
+**Comparing.** `==` and `!=` accept `null` on either side with **any** type, and `null` is equal only to `null`: `5 == null` is `false`, `5 != null` is `true`, `null == null` is `true`. An empty handle (`handle h;`), `0`, `""`, `[]` and `{}` are **not** `null`.
+
+**Every other operator rejects it** with `TI_ERR_TYPE_MISMATCH`: `5 + null`, `null < null`, `null && true`, `x & null`, `!null`, `-null`. There is no truthiness: test `x == null`, never `!x`. A condition (`if`, `while`) must still be a `bool`.
+
+**Storing it: one rule for variables, list elements and dict entries.** A slot that holds a value of type T accepts a value of type T or `null`; a slot that holds `null` accepts **nothing** more:
+
+| Script | Result |
+| :--- | :--- |
+| `int a = null;` | ok: any declared type accepts `null` |
+| `int a = 5;  a = null;` | ok: the `5` is freed, `a` holds `null` |
+| `a = 7;` or `a = null;` while `a` holds `null` | `TI_ERR_TYPE_MISMATCH` (`Variable 'a' is null and cannot be assigned`) |
+| `a += 1;` while `a` holds `null` | `TI_ERR_TYPE_MISMATCH` (from `a + 1`) |
+| `l[0] = null;` (`list int l`) | ok; `l[0] = 2;` afterwards is `TI_ERR_TYPE_MISMATCH` |
+| `d["k"] = null;` | ok for a new or an existing key; `d["k"] = 2;` afterwards is `TI_ERR_TYPE_MISMATCH` |
+| `list int l = [1, null];`, `to_string([null, 1])` | `TI_ERR_TYPE_MISMATCH`: a literal (and a push) never takes `null`; a literal without a declared type cannot take its element type from a `null` first element |
+| `int x = some_void_native();` | `TI_ERR_TYPE_MISMATCH` (`void` is not `null`) |
+
+A list whose elements were set to `null` is copied with them (`[[null,2]]` when inserted into another container).
+
+**Text.** `to_string(null)`, `print(null)` and JSON give `null`: `[null,2,30]`, `{"k":null}`.
+
+**Function parameters and returns of script functions** do not accept `null` (`void f(int x)` called with `null` is a type error; an `int` function cannot `return null;`).
+
+**C side.**
+* A native returns `val_new_null()` for "no value"; declare the real return type (`VAL_INT`, ...), not `VAL_ANY`: the runtime does not check a native's return type, and the table then tells the reader what the function gives. Use `ti_raise_error` instead when the script must not continue. A `VAL_VOID` native returns `val_new_void()`, never `val_new_null()`.
+* The storing rule is `val_can_replace(current, incoming)` (`ti_type_value.h`): `false` when `current` is `VAL_NULL`, otherwise `incoming == VAL_NULL || incoming == current`. `eval_variable_definition` (with the declared type as `current`), `eval_assignment`, `val_list_set` (with the element held now) and `val_dict_set` / `val_dict_set_raw` (existing key) all use it. `val_list_push_raw` also takes `null`, because `val_deep_copy` uses it to copy lists that hold `null`; `val_list_push` does not.
+
 ---
 
 ## 3. C Native API: Interacting with Values
@@ -301,8 +339,8 @@ Always use the dedicated constructors in `src/include/ti_type_value.h`:
 | `float` | `val_new_float(float v)` | Allocates `VAL_FLOAT` |
 | `string` | `val_new_string(const char *s)` | Allocates `VAL_STRING` (duplicates string internally) |
 | `bool` | `val_new_bool(bool b)` | Allocates `VAL_BOOL` |
-| `void` | `val_new_void()` | Allocates `VAL_VOID` (used for void builtins) |
-| `null` | `val_new_null()` | Allocates `VAL_NULL` |
+| `void` | `val_new_void()` | Allocates `VAL_VOID`: what every native declared `VAL_VOID` returns |
+| `null` | `val_new_null()` | Allocates `VAL_NULL`: the script's `null` (never the result of a void native) |
 | `dict` | `val_new_dict()` | Allocates empty `VAL_DICT` with refcount = 1 |
 | `list` | `val_new_list(val_type_t elem_type)` | Allocates empty `VAL_LIST` of specified element type |
 | `handle` | `val_new_handle(void *ptr, const ti_handle_type_t *type)` | Wraps a native object (`src/include/ti_type_value_handle.h`); see [Functions & Native C Extension API](FUNCTIONS_AND_NATIVE_API.md), section 4.5 |

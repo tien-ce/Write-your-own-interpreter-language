@@ -33,7 +33,8 @@ ti_runtime_eval_binary.c  ti_runtime_eval_control.c  ti_runtime_eval_func.c  ti_
   value_t *left = visitor_visit(rt, ctx, node->value.binary_expr.left);
   value_t *right = visitor_visit(rt, ctx, node->value.binary_expr.right);
   ```
-- **Type Checking:** Strictly enforces operand compatibility (`left->type == right->type`). Disallows implicit type coercions.
+- **null comparison (before the type check):** when the operator is `OP_DEQ` / `OP_NEQ` and either operand is `VAL_NULL`, the result is computed right there: `both_null = (left->type == right->type)`, `==` gives `both_null`, `!=` gives `!both_null`, then it jumps to the cleanup. So `x == null` works for every type of `x`. It must run before the type check and must not reach `binary_equal`: there `5 == null` would compare `5` with the null's unused `int_val`. `binary_equal` / `binary_not_equal` therefore have no `VAL_NULL` case.
+- **Type Checking:** Strictly enforces operand compatibility (`left->type == right->type`). Disallows implicit type coercions. Every other operator with `null` fails here (`int and null`) or, for `null` with `null`, in the `default` branch of each `binary_*` handler (`Unexpected operands null, null in binary add`); `binary_logical_*` and `binary_bitwise` reject it by their own type checks.
 - **Critical Memory Cleanup:** Once the operation produces `result`, `left` and `right` are temporary intermediate values that **must be immediately destroyed**:
   ```c
   val_free_internal(&rt->alloc_list, left);
@@ -77,7 +78,7 @@ ti_runtime_eval_binary.c  ti_runtime_eval_control.c  ti_runtime_eval_func.c  ti_
 
 #### `eval_unary_expr`
 - Dispatches `OP_POS` (+), `OP_NEG` (-), `OP_NOT` (!), and `OP_BNOT` (~).
-- Validates that unary plus/minus only operate on numbers, unary not (`!`) only on `VAL_BOOL`, and complement (`~`) only on `VAL_INT`.
+- Validates that unary plus/minus only operate on numbers, unary not (`!`) only on `VAL_BOOL`, and complement (`~`) only on `VAL_INT`. There is no separate null check: `null` is rejected by each operator's own check (`Unary '!' only supports bool, got type null`), on purpose, so `!x` is never a null test.
 - Frees the single `operand` intermediate value before returning `result`.
 
 ---
@@ -134,12 +135,13 @@ ti_runtime_eval_binary.c  ti_runtime_eval_control.c  ti_runtime_eval_func.c  ti_
 
 ## 4. Variable Evaluation (`src/ti_runtime_eval_variable.c`)
 
-- **`eval_variable_definition`:** Creates the value in one of three ways: `size != NULL` (`list int l[n];`) → `eval_sized_list` (evaluates `n`, checks `int` and `0..TI_MAX_LIST_ITEMS`, rejects a `list` element type, `val_list_reserve(n)` once, then pushes `n` values from `eval_default_value` with `val_list_push_raw`); `value == NULL` (`int x;`) → `eval_default_value(rt, node, type, element_type)`; otherwise evaluates the initializer expression via `visitor_visit(rt, ctx, node->value.variable_definition.value)`. Then it verifies type compatibility between declared variable type and value type (halting with an error via `val_type_to_str` if mismatched), duplicates the variable name string onto `&rt->alloc_list`, and adds to current scope via `context_add_variable(&rt->alloc_list, ctx, name, value)`.
+- **`eval_variable_definition`:** Creates the value in one of three ways: `size != NULL` (`list int l[n];`) → `eval_sized_list` (evaluates `n`, checks `int` and `0..TI_MAX_LIST_ITEMS`, rejects a `list` element type, `val_list_reserve(n)` once, then pushes `n` values from `eval_default_value` with `val_list_push_raw`); `value == NULL` (`int x;`) → `eval_default_value(rt, node, type, element_type)`; otherwise evaluates the initializer expression via `visitor_visit(rt, ctx, node->value.variable_definition.value)`. Then it verifies type compatibility with `val_can_replace(declared_type, value->type)` (so `null` fits any declared type; halting with an error via `val_type_to_str` if mismatched), duplicates the variable name string onto `&rt->alloc_list`, and adds to current scope via `context_add_variable(&rt->alloc_list, ctx, name, value)`.
 - **`eval_assignment`:**
   1. Looks up variable via `context_find_variable(ctx, id)`.
   2. Evaluates new value: `visitor_visit(rt, ctx, node->value.assignment.value)`.
-  3. **Type Safety:** Verifies `variable->value->type == val->type`. If type differs, halts with type mismatch error.
+  3. **Type Safety:** `val_can_replace(variable->value->type, val->type)`: the same type or `null` is accepted; a variable holding `null` accepts nothing (`Variable 'x' is null and cannot be assigned`), any other difference is `Type mismatch in assignment`. Subscript targets get the same rule from `val_list_set` (against the element held now) and `val_dict_set` (existing key).
   4. Deallocates previous value (`val_free_internal(&rt->alloc_list, variable->value)`) and assigns the new `value_t *`.
+- **`eval_null_literal`** (`ti_runtime_eval_literal.c`, `AST_NULL`): returns a new heap `val_new_null()` (never the static `TI_VAL_OK`, which also has type `VAL_NULL`), or raises `TI_ERR_NO_MEMORY`. `eval_list_literal` raises `TI_ERR_TYPE_MISMATCH` (`List element 0 is null: cannot infer the list element type`) when it must infer the element type from a `null` first element, and the usual element mismatch for a later `null`.
 - **`eval_identifier`:** Locates variable and returns an isolated copy via `context_copy_value(ctx ? ctx->alloc_list : NULL, variable)`.
 
 ---

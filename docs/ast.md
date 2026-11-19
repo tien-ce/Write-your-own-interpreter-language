@@ -15,6 +15,7 @@ typedef struct AST_STRUCT {
         AST_FLOAT_LITERAL,
         AST_STRING_LITERAL,
         AST_BOOLEAN,
+        AST_NULL,
         AST_IDENTIFIER,
         AST_BINARY_EXPR,
         AST_UNARY_EXPR,
@@ -109,7 +110,7 @@ Because an AST is an arbitrarily deep recursive hierarchy, deallocation must str
   - **`AST_RETURN_STATEMENT`:** Calls `ast_free(return_statement.value)` (safe if `NULL`).
   - **`AST_IF_STATEMENT`:** Calls `ast_free` on `condition`, `body`, and `else_body` (if non-NULL).
   - **`AST_WHILE_STATEMENT`:** Calls `ast_free` on `condition` and `body`.
-  - **Leaves:** Frees string payloads (`string_value`, `identifier`). `AST_BREAK_STATEMENT`, `AST_CONTINUE_STATEMENT`, `AST_INT_LITERAL`, `AST_FLOAT_LITERAL`, `AST_BOOLEAN`, and `AST_NOOP` have no child pointers or heap buffers.
+  - **Leaves:** Frees string payloads (`string_value`, `identifier`). `AST_BREAK_STATEMENT`, `AST_CONTINUE_STATEMENT`, `AST_INT_LITERAL`, `AST_FLOAT_LITERAL`, `AST_BOOLEAN`, `AST_NULL` and `AST_NOOP` have no child pointers or heap buffers (`ast_clone` copies `AST_NULL` like the scalar literals).
 - **Node Destruction:** Finally, frees the root node `ast` via `tracked_free(ast)`.
 
 > **Maintainer Warning:** Whenever adding a new node type to `AST.h`, you **must** implement its corresponding cleanup branch in `src/AST.c:ast_free`. Failing to free child pointers in `ast_free` causes memory leaks across the entire AST sub-tree.

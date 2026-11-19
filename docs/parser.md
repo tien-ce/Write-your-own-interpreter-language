@@ -146,7 +146,7 @@ Bitwise levels sit **above** comparisons (as in Python, unlike C), so `x & 0x80 
 #### Level 9: `parser_parse_primary(parser_t *parser)` (Leaves & Unary)
 - **Parenthesized Expressions:** If `current_token == TOKEN_LPAREN`, eats `(`, calls root `parser_parse_expr()`, and eats `)`.
 - **Unary Operators:** If `current_token` is `!`, `~`, `-`, or `+`, eats the operator, recursively calls `parser_parse_primary()`, and wraps into an `AST_UNARY_EXPR` (`OP_NOT`, `OP_BNOT`, `OP_NEG`, `OP_POS`).
-- **Literals:** Directly constructs `AST_INT_LITERAL`, `AST_FLOAT_LITERAL`, `AST_STRING_LITERAL`, or `AST_BOOLEAN`. An integer token starting with `0x`/`0X` is converted with `strtoul(..., 16)` (wraps to 32-bit like C); every other integer uses `atoi`.
+- **Literals:** Directly constructs `AST_INT_LITERAL`, `AST_FLOAT_LITERAL`, `AST_STRING_LITERAL`, `AST_BOOLEAN`, or `AST_NULL` (`TOKEN_KW_NULL`, a leaf with no payload). An integer token starting with `0x`/`0X` is converted with `strtoul(..., 16)` (wraps to 32-bit like C); every other integer uses `atoi`.
 - **Identifiers vs Calls:** If `TOKEN_ID`:
   - Saves the identifier name.
   - Eats `TOKEN_ID`.
