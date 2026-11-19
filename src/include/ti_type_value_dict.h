@@ -47,10 +47,11 @@ ti_status_t val_dict_set(dict_t *dict, const char *key, value_t *val);
 ti_status_t val_dict_set_raw(dict_t *dict, const char *key, value_t *val);
 
 /**
- * @brief Retrieve a deep copy of the value associated with the key.
+ * @brief Retrieve the value associated with the key (val_copy: a container value is shared, not cloned).
  * @param dict Dictionary reference object.
  * @param key String identifier for the entry.
- * @param out Receives the newly allocated copy (caller owns it) on success.
+ * @param out Receives a new value_t (caller owns it) on success; a list, dict, bytes or handle in it
+ *            refers to the same object as the entry, so writing through it changes the entry.
  * @return TI_OK, TI_ERR_KEY_NOT_FOUND, TI_ERR_NO_MEMORY or TI_ERR_INVALID_ARG.
  */
 ti_status_t val_dict_get(dict_t *dict, const char *key, value_t **out);

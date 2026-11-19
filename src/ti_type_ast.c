@@ -140,10 +140,8 @@ void ast_free(ast_t *ast)
         break;
 
     case AST_ARRAY_ACCESS:
-        /* Free array identifier name string and index expression */
-        if (ast->value.array_access.id) {
-            tracked_free(NULL, ast->value.array_access.id);
-        }
+        /* Free the container expression and the index expression */
+        ast_free(ast->value.array_access.object);
         ast_free(ast->value.array_access.index_expr);
         break;
 
@@ -234,9 +232,9 @@ ast_t *ast_clone(alloc_hdr_t **list, const ast_t *ast)
         return copy;
 
     case AST_ARRAY_ACCESS:
-        copy->value.array_access.id = tracked_strdup(list, ast->value.array_access.id);
+        copy->value.array_access.object = ast_clone(list, ast->value.array_access.object);
         copy->value.array_access.index_expr = ast_clone(list, ast->value.array_access.index_expr);
-        if (!copy->value.array_access.id || !copy->value.array_access.index_expr) {
+        if (!copy->value.array_access.object || !copy->value.array_access.index_expr) {
             break;
         }
         return copy;

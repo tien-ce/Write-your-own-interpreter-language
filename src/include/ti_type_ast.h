@@ -93,9 +93,10 @@ typedef struct AST_STRUCT {
       struct AST_STRUCT *operand;
     } unary_expr;
 
+    /* Subscript access: object[index], read (expression) or written (assignment target) */
     struct {
-      char *id;
-      struct AST_STRUCT *index_expr;
+      struct AST_STRUCT *object;     // Container expression: everything parsed left of the '[' (s, s[0], f())
+      struct AST_STRUCT *index_expr; // Index (list, bytes) or key (dict) expression
     } array_access;
 
     /* Dictionary Literal */

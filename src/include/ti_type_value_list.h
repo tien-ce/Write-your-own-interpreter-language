@@ -75,10 +75,11 @@ ti_status_t val_list_push_raw(list_t *list, value_t *val);
 ti_status_t val_list_pop(list_t *list, value_t **out);
 
 /**
- * @brief Retrieve a deep copy of the element at the given index.
+ * @brief Retrieve the element at the given index (val_copy: a container element is shared, not cloned).
  * @param list List reference object.
  * @param index Zero-based element index.
- * @param out Receives the newly allocated copy (caller owns it) on success.
+ * @param out Receives a new value_t (caller owns it) on success; a list, dict, bytes or handle in it
+ *            refers to the same object as the element, so writing through it changes the element.
  * @return TI_OK, TI_ERR_INDEX_OUT_OF_RANGE, TI_ERR_NO_MEMORY or TI_ERR_INVALID_ARG.
  */
 ti_status_t val_list_get(list_t *list, int index, value_t **out);

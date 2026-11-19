@@ -244,7 +244,8 @@ ti_status_t val_list_get(list_t *list, int index, value_t **out)
         return TI_ERR_INDEX_OUT_OF_RANGE;
     }
 
-    /* Return a deep copy to strictly maintain Caller-Owns memory semantics */
+    /* The caller owns the returned value_t: scalars and strings are copied, a list, dict, bytes or
+     * handle element is shared by reference count (writing through it changes the element) */
     value_t *copy = val_copy(&list->items[index]);
     if (copy == NULL) {
         return TI_ERR_NO_MEMORY;

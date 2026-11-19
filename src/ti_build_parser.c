@@ -668,18 +668,21 @@ static ast_t *parser_parse_primary(parser_t *parser)
         if (parser->current_token->type == TOKEN_LPAREN) {
             /* Function call: id(...) */
             node = parser_parse_function_call(parser, id_name);
-        } else if (parser->current_token->type == TOKEN_LBRACKET) {
-            /* Array index: id[expr] */
-            parser_eat(parser, TOKEN_LBRACKET);
-            ast_t *index_expr = parser_parse_expr(parser);
-            parser_eat(parser, TOKEN_RBRACKET);
-            node = ast_init(parser->alloc_list, AST_ARRAY_ACCESS, parser->lexer->line_num);
-            node->value.array_access.id = id_name;
-            node->value.array_access.index_expr = index_expr;
         } else {
             /* Simple identifier variable reference */
             node = ast_init(parser->alloc_list, AST_IDENTIFIER, parser->lexer->line_num);
             node->value.identifier = id_name;
+        }
+
+        /* Subscripts of the node just parsed, each applied to the result of the previous: s[0], s[0]["k"], f()[1] */
+        while (parser->current_token->type == TOKEN_LBRACKET) {
+            parser_eat(parser, TOKEN_LBRACKET);
+            ast_t *index_expr = parser_parse_expr(parser);
+            parser_eat(parser, TOKEN_RBRACKET);
+            ast_t *access = ast_init(parser->alloc_list, AST_ARRAY_ACCESS, parser->lexer->line_num);
+            access->value.array_access.object = node;
+            access->value.array_access.index_expr = index_expr;
+            node = access;
         }
 
         /* Members of the node just parsed: dev.read(), f().info(), arr[0].baud */

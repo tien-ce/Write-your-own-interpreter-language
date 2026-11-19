@@ -379,6 +379,7 @@ value_t *eval_assignment(ti_runtime_t *rt, context_t *ctx, ast_t *node)
     value_t *result = NULL;
     value_t *val = NULL;        /* right-hand side, owned until a container or variable takes it */
     value_t *key_val = NULL;    /* temporary dict key, list index or attribute receiver */
+    value_t *container = NULL;  /* shared reference to the list, dict or bytes written by arr[i] = rhs */
     variable_t *variable = NULL;
     ti_status_t status = TI_OK;
     ast_t *target_node = node->value.assignment.target;
@@ -417,23 +418,28 @@ value_t *eval_assignment(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         val = NULL;
         break;
 
-    case AST_ARRAY_ACCESS: { /* arr[0] = rhs or arr["key"] = rhs */
-        const char *container_name = target_node->value.array_access.id;
+    case AST_ARRAY_ACCESS: { /* arr[0] = rhs, arr["key"] = rhs, s[0]["key"] = rhs */
+        ast_t *object_node = target_node->value.array_access.object;
+        /* Name used in error messages: the variable for 'l[i]', a generic word for 's[0][i]' or 'f()[i]' */
+        const char *container_name = (object_node->type == AST_IDENTIFIER) ? object_node->value.identifier : "value";
 
-        /* Evaluate the key or index expression first: it may run script code that changes variables,
-         * so the container is looked up only afterwards and used with no evaluation in between */
+        /* Evaluate the container like any expression. A list, dict or bytes value shares its object by
+         * reference count (reading 'l' or 's[0]' never copies the container), so writing into this
+         * reference writes into the variable's container, or into the element held by the outer one.
+         * The reference also keeps the container alive while the key below runs script code. */
+        container = visitor_visit(rt, ctx, object_node);
+        if (container == NULL) {
+            goto out;
+        }
+
+        /* Evaluate the key or index expression */
         key_val = visitor_visit(rt, ctx, target_node->value.array_access.index_expr);
         if (key_val == NULL) {
             goto out;
         }
 
-        variable = eval_lookup_variable(rt, ctx, container_name, node->line);
-        if (variable == NULL) {
-            goto out;
-        }
-
         /* Only dict, list and bytes support subscript assignment */
-        val_type_t container_type = variable->value->type;
+        val_type_t container_type = container->type;
         if (container_type != VAL_DICT && container_type != VAL_LIST && container_type != VAL_BYTES) {
             ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line,
                      "Type '%s' does not support subscript assignment", val_type_to_str(container_type));
@@ -446,8 +452,8 @@ value_t *eval_assignment(ti_runtime_t *rt, context_t *ctx, ast_t *node)
                          "Dictionary keys must be strings for variable '%s'", container_name);
                 goto out;
             }
-            /* val_dict_set takes ownership of val even on failure */
-            status = val_dict_set(variable->value->dict_val, key_val->string_val, val);
+            /* val_dict_set takes ownership of val even on failure (a list or dict val is deep-copied in) */
+            status = val_dict_set(container->dict_val, key_val->string_val, val);
             val = NULL;
             if (status != TI_OK) {
                 ti_raise(rt, status, node->line, "Cannot assign dictionary key '%s' of '%s': %s",
@@ -460,8 +466,8 @@ value_t *eval_assignment(ti_runtime_t *rt, context_t *ctx, ast_t *node)
                          "List index must be an integer for variable '%s'", container_name);
                 goto out;
             }
-            /* val_list_set takes ownership of val even on failure */
-            status = val_list_set(variable->value->list_val, key_val->int_val, val);
+            /* val_list_set takes ownership of val even on failure (a list or dict val is deep-copied in) */
+            status = val_list_set(container->list_val, key_val->int_val, val);
             val = NULL;
             if (status != TI_OK) {
                 ti_raise(rt, status, node->line, "Cannot assign list index %d of '%s': %s",
@@ -475,7 +481,7 @@ value_t *eval_assignment(ti_runtime_t *rt, context_t *ctx, ast_t *node)
                          "Bytes index and value must be integers for variable '%s'", container_name);
                 goto out;
             }
-            status = val_bytes_set(variable->value->bytes_val, key_val->int_val, val->int_val);
+            status = val_bytes_set(container->bytes_val, key_val->int_val, val->int_val);
             if (status != TI_OK) {
                 ti_raise(rt, status, node->line, "Cannot assign bytes index %d of '%s': %s",
                          key_val->int_val, container_name, ti_err_to_str(status));
@@ -552,6 +558,7 @@ value_t *eval_assignment(ti_runtime_t *rt, context_t *ctx, ast_t *node)
 out:
     /* Single cleanup point: temporaries and an rhs that nobody took */
     val_free(key_val);
+    val_free(container);
     val_free(val);
     return result;
 }
@@ -605,34 +612,37 @@ value_t *eval_identifier(ti_runtime_t *rt, context_t *ctx, ast_t *node)
  */
 value_t *eval_array_access(ti_runtime_t *rt, context_t *ctx, ast_t *node)
 {
-    const char *container_name = node->value.array_access.id;
+    ast_t *object_node = node->value.array_access.object;
+    /* Name used in error messages: the variable for 'l[i]', a generic word for 's[0][i]' or 'f()[i]' */
+    const char *container_name = (object_node->type == AST_IDENTIFIER) ? object_node->value.identifier : "value";
     value_t *result_val = NULL;
+    value_t *container = NULL;
     value_t *key_val = NULL;
     ti_status_t status = TI_OK;
 
-    /* Evaluate the index/key expression first; NULL means it already failed or was cancelled.
-     * It may run script code (a call, a delay) that changes variables, so the container must not
-     * be looked up before it: a pointer taken earlier could point at a value that no longer exists. */
+    /* Evaluate the container first (left to right); NULL means it already failed or was cancelled.
+     * A list, dict or bytes value shares its object by reference count, so it stays alive even if
+     * the key expression below runs script code (a call, a delay) that reassigns the variable. */
+    container = visitor_visit(rt, ctx, object_node);
+    if (container == NULL) {
+        goto out;
+    }
+
+    /* Evaluate the index/key expression */
     key_val = visitor_visit(rt, ctx, node->value.array_access.index_expr);
     if (key_val == NULL) {
         goto out;
     }
 
-    /* Only now resolve the container and use it, with no evaluation in between */
-    variable_t *container_var = eval_lookup_variable(rt, ctx, container_name, node->line);
-    if (container_var == NULL) {
-        goto out;
-    }
-
     /* Dispatch based on container type; result_val stays NULL unless a getter succeeds */
-    switch ((int)container_var->value->type) {
+    switch ((int)container->type) {
     case VAL_DICT:
         if (key_val->type != VAL_STRING) {
             ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line,
                      "Dictionary keys must be strings for variable '%s'", container_name);
             goto out;
         }
-        status = val_dict_get(container_var->value->dict_val, key_val->string_val, &result_val);
+        status = val_dict_get(container->dict_val, key_val->string_val, &result_val);
         if (status != TI_OK) {
             ti_raise(rt, status, node->line, "Cannot read key '%s' of dictionary '%s': %s",
                      key_val->string_val, container_name, ti_err_to_str(status));
@@ -645,11 +655,11 @@ value_t *eval_array_access(ti_runtime_t *rt, context_t *ctx, ast_t *node)
                      "List index must be an integer for variable '%s'", container_name);
             goto out;
         }
-        status = val_list_get(container_var->value->list_val, key_val->int_val, &result_val);
+        status = val_list_get(container->list_val, key_val->int_val, &result_val);
         if (status != TI_OK) {
             ti_raise(rt, status, node->line, "Cannot read list index %d of '%s' (size %d): %s",
                      key_val->int_val, container_name,
-                     val_list_count(container_var->value->list_val), ti_err_to_str(status));
+                     val_list_count(container->list_val), ti_err_to_str(status));
         }
         break;
 
@@ -662,11 +672,11 @@ value_t *eval_array_access(ti_runtime_t *rt, context_t *ctx, ast_t *node)
 
         /* Read the byte, then wrap it as an int value (scripts see 0..255) */
         int byte_val = 0;
-        status = val_bytes_get(container_var->value->bytes_val, key_val->int_val, &byte_val);
+        status = val_bytes_get(container->bytes_val, key_val->int_val, &byte_val);
         if (status != TI_OK) {
             ti_raise(rt, status, node->line, "Cannot read bytes index %d of '%s' (size %d): %s",
                      key_val->int_val, container_name,
-                     container_var->value->bytes_val->length, ti_err_to_str(status));
+                     container->bytes_val->length, ti_err_to_str(status));
             break;
         }
         result_val = val_new_int(byte_val);
@@ -679,13 +689,14 @@ value_t *eval_array_access(ti_runtime_t *rt, context_t *ctx, ast_t *node)
     default:
         ti_raise(rt, TI_ERR_TYPE_MISMATCH, node->line,
                  "Type '%s' does not support subscript access",
-                 val_type_to_str(container_var->value->type));
+                 val_type_to_str(container->type));
         break;
     }
 
 out:
-    /* Single cleanup point for the temporary key */
+    /* Single cleanup point for the temporary container reference and key */
     val_free(key_val);
+    val_free(container);
     return result_val;
 }
 

@@ -130,7 +130,8 @@ ti_status_t val_dict_get(dict_t *dict, const char *key, value_t **out)
         return TI_ERR_KEY_NOT_FOUND;
     }
 
-    /* Return a deep copy to strictly maintain Caller-Owns memory semantics */
+    /* The caller owns the returned value_t: scalars and strings are copied, a list, dict, bytes or
+     * handle value is shared by reference count (writing through it changes the entry) */
     value_t *copy = val_copy(cur_val);
     if (copy == NULL) {
         return TI_ERR_NO_MEMORY;
