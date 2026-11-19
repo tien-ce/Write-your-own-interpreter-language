@@ -61,6 +61,14 @@ ti_runtime_eval_binary.c  ti_runtime_eval_control.c  ti_runtime_eval_func.c  ti_
   ```
   Allocates exact memory for the concatenated string on the tracked heap.
 
+#### `int` overflow (`binary_add`, `binary_sub`, `binary_mul`, `binary_div`, `OP_NEG` in `eval_unary_expr`)
+- An `int` result outside 32 bits raises `TI_ERR_VALUE_OUT_OF_RANGE` (`Integer overflow in '+': %d + %d`); it never wraps (signed overflow is undefined behavior in C) and never reaches a trapping CPU instruction.
+- `+`, `-`, `*` use `__builtin_add_overflow` / `__builtin_sub_overflow` / `__builtin_mul_overflow` (GCC/Clang, also ESP-IDF), which compute into `value->int_val` and report the overflow.
+- `/`: the only overflowing quotient is `INT_MIN / -1`, checked explicitly after the zero check. Without it x86's `idiv` raises SIGFPE and kills the host process.
+- Unary `-`: only `-INT_MIN`. `%` cannot overflow (`binary_mod` returns 0 for `% -1`).
+- Compound assignment and `++`/`--` are binary nodes after parsing, so they are covered. Shifts and hex literals wrap by design; `float` is not checked.
+- Decimal literals are range-checked by the parser instead (see [parser.md](parser.md), level 9), so no out-of-range `int` enters through a literal.
+
 #### `binary_div(ti_runtime_t *rt, value_t *left, value_t *right, int line)` (Division by Zero Prevention)
 - **Zero Divisor Check:**
   - Integer: `if (right->int_val == 0)` &rarr; raises `TI_ERR_DIV_ZERO` (`Division by zero error`) and returns `NULL`.

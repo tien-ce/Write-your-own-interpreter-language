@@ -76,6 +76,9 @@ bool is_active = true;
 | `a % b` | `int` only | Remainder; its sign follows `a` like C (`-7 % 3` is `-1`, `7 % -3` is `1`); `% 0` is `TI_ERR_DIV_ZERO`; `float` is `TI_ERR_TYPE_MISMATCH` |
 
 * `%` has the precedence of `*` and `/` (`2 + 7 % 4 * 3` is `11`) and groups left to right (`17 % 5 % 3` is `2`).
+* **`int` overflow is an error, never a wrap.** `int` is 32-bit (`-2147483648..2147483647`). An `int` result outside that range raises `TI_ERR_VALUE_OUT_OF_RANGE` (`Integer overflow in '+': 2147483647 + 1`): `+`, `-`, `*`, `/` (only `-2147483648 / -1`), unary `-` (only `-(-2147483648)`), and through them `+=`, `-=`, `*=`, `/=`, `++`, `--`. The script stops; the host keeps running. `x % -1` is always `0`. Bitwise operators and hex literals still wrap on purpose (1.4).
+* **A decimal literal must fit `0..2147483647`**, otherwise the script does not compile (`TI_ERR_SYNTAX`, `Integer literal 2147483648 does not fit an int`). A literal is always read as a positive number and a `-` before it is applied afterwards, so `-2147483648` is rejected too; write the smallest `int` as `-2147483647 - 1`.
+* `float` arithmetic is not range-checked.
 * Compound assignment: `+=`, `-=`, `*=`, `/=`, `%=` (`x %= 5;`), also on list elements, dict entries and attributes. `++` / `--` add or subtract 1.
 
 ### 1.4 Bitwise Operators (`int` only)
