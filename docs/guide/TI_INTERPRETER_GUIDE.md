@@ -180,8 +180,8 @@ The interpreter comes with several standard built-in functions:
   A result that is not a finite number (`sqrt(-1)`, `log(0)`, `pow(0, -1)`, an overflow) raises `TI_ERR_VALUE_OUT_OF_RANGE`, so a script never holds NaN or infinity. `floor`/`ceil`/`round` raise the same error when the value does not fit an `int`. Math runs in 32-bit `float`, so an `int` above 2^24 can lose low digits when mixed into a float function. These names are reserved: a script cannot define its own function called `min`, `max`, `abs`, `round`, ...
 * `bytes_to_string(bytes)`, `string_to_bytes(string)`: Raw conversion for binary links such as a serial port, so a native only has to return `bytes`. `bytes_to_string` copies the bytes into a string as characters (the bytes are not changed, only read differently); a `0x00` stays in the buffer, but string functions such as `print` and `==` stop at it, so `bytes_to_string(x"48 49 00 5A")` reads as `"HI"`. Copying that string into a variable also keeps only the text before the `0x00`. `string_to_bytes` copies the characters without the terminator (at most 4096). Note that `to_string(bytes)` is different: it gives the **hex** text (`"4142"`) for logging.
 * `delay(ms)`: Pauses execution for `ms` milliseconds. Queued events and synchronous callbacks run immediately during the pause, then the delay continues for the remaining time; only a stop request ends it early.
-* `register_event(func_name)`: Registers a script function as an asynchronous event handler (fire and forget).
-* `register_callback(func_name)`: Registers a script function as a synchronous handler that a native driver calls and gets an answer from.
+* `register_event(handler)`: Registers a script function as an asynchronous event handler (fire and forget).
+* `register_callback(handler)`: Registers a script function as a synchronous handler that a native driver calls and gets an answer from.
 
 See [Asynchronous Events & Synchronous Callbacks](ASYNC_EVENTS_AND_CALLBACKS.md) for when to use which.
 

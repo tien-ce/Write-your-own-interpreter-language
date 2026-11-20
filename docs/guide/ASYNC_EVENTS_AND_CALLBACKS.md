@@ -6,7 +6,7 @@ A driver can reach a script function in two ways:
 
 | | **Asynchronous event** | **Synchronous callback** |
 |---|---|---|
-| API | `ti_post_event(handle, name, args, argc)` | `ti_call(handle, name, args, argc, &result, timeout_ms)` |
+| API | `ti_post_event(handle, func, args, argc)` | `ti_call(handle, func, args, argc, &result, timeout_ms)` |
 | Caller waits? | No. Returns as soon as the event is queued | Yes. Returns after the script function finished |
 | Gets a return value? | No | Yes (`value_t *result`) |
 | Gets the script's error? | No (logged by the runtime) | Yes (the error kind is the return status) |
@@ -133,25 +133,34 @@ Full file: [`examples/ti/async_event.ti`](../../examples/ti/async_event.ti).
 
 ### 3.2 Native side: remember the handle, then post
 
-The registration function stores the handle and the function name. Post from any thread:
+The script hands the handler over as a **function value** (`register_event(on_message)` passes a `VAL_FUNC`). The registration native keeps the handle and its own copy of that value, then posts from any thread:
+
+```c
+/* In the register native: argv is freed after the call, so keep a copy (val_copy only copies the
+ * function pointer, no allocation inside it) */
+if (val_func_name(argv[0]) == NULL) { /* empty function value ('func f;'): nothing to call */ }
+s_handle = handle;
+s_func = val_copy(argv[0]);   /* free with val_free when the listener is dropped */
+```
 
 ```c
 /* Ownership of every value in args passes to ti_post_event, success or not */
 value_t *args[1] = { val_new_string(text) };
-ti_status_t status = ti_post_event(handle, func_name, args, 1);
+ti_status_t status = ti_post_event(handle, s_func, args, 1);
 
 if (status == TI_ERR_STALE_HANDLE) {
-    /* The script runtime is gone: forget this listener */
+    /* The script runtime is gone: forget this listener (val_free(s_func) is safe: freeing a
+     * function value never touches the freed function) */
 } else if (status == TI_ERR_QUEUE_FULL) {
     /* Too many pending events: drop or retry later */
 }
 ```
 
-The reference implementation is [`cli/builtin/builtin_event.c`](../../cli/builtin/builtin_event.c) (`register_event` and `cli_simulate_event`).
+The reference implementation is [`cli/builtin/builtin_func_event.c`](../../cli/builtin/builtin_func_event.c) (`register_event` and `cli_simulate_event`).
 
 ### 3.3 What happens to errors
 
-The callback's error is **consumed by the runtime**: it is logged as `[Event Error] ... at line N`, the event is dropped and the main script and the other queued events keep running. A function that is not defined is also logged and dropped. Argument count and type are checked first (`TI_ERR_TYPE_MISMATCH`).
+The callback's error is **consumed by the runtime**: it is logged as `[Event Error] ... at line N`, the event is dropped and the main script and the other queued events keep running. A function value of another runtime (a stale copy after a restart, or the wrong handle) is logged as `Callback function is not defined in this runtime` and dropped, never run: the runtime checks the pointer against its own function tables by address before touching it. Argument count and type are checked first (`TI_ERR_TYPE_MISMATCH`).
 
 ---
 
@@ -175,7 +184,7 @@ while (true) {
 }
 ```
 
-Full file: [`examples/ti/sync_callback.ti`](../../examples/ti/sync_callback.ti). Handlers may take arguments and return any type; define them at **file scope**.
+Full file: [`examples/ti/sync_callback.ti`](../../examples/ti/sync_callback.ti). Handlers may take arguments and return any type; define them at **file scope**. A script module may register one of its own functions: the value points to that module's function, so the handler runs with the module's globals.
 
 ### 4.2 Native side: call and wait
 
@@ -185,7 +194,7 @@ value_t *args[1] = { arg };
 value_t *result = NULL;
 
 /* Wait at most one second for the script to reach a safe point */
-ti_status_t status = ti_call(handle, func_name, args, 1, &result, 1000);
+ti_status_t status = ti_call(handle, s_func, args, 1, &result, 1000);   /* s_func: kept like in 3.2 */
 
 val_free(arg);
 if (status == TI_OK && result != NULL && result->type == VAL_STRING) {
@@ -204,7 +213,8 @@ Reference implementation: [`cli/builtin/builtin_callback.c`](../../cli/builtin/b
 | `TI_ERR_TIMEOUT` | The lock was not free within `timeout_ms` (script busy in a long native). Nothing ran |
 | `TI_ERR_STALE_HANDLE` | The runtime was destroyed. Drop the listener |
 | `TI_ERR_INTERRUPTED` | The runtime was stopped with `ti_stop` |
-| `TI_ERR_UNDEFINED` | No script function with that name |
+| `TI_ERR_INVALID_ARG` (before running) | `func` is NULL, not a `VAL_FUNC`, or the empty function (`func f;`) |
+| `TI_ERR_UNDEFINED` | `func` is not a function of this runtime (e.g. a copy kept from a destroyed runtime) |
 | `TI_ERR_INVALID_ARG` / `TI_ERR_TYPE_MISMATCH` | Wrong argument count or types |
 | any other `TI_ERR_*` | The handler raised this error while running (division by zero, bad index, ...) |
 
@@ -222,7 +232,7 @@ If a native that the script called itself calls `ti_call` on the same handle, th
 
 ## 5. Rules for drivers
 
-1. **Never hold a module mutex while calling `ti_call`.** The handler may run a native that takes the same mutex. Copy the handle and name out under your mutex, release it, then call (see `cli_simulate_call`).
+1. **Never hold a module mutex while calling `ti_call`.** The handler may run a native that takes the same mutex. Copy the handle and the function value (`val_copy`) out under your mutex, release it, then call (see `cli_simulate_call`).
 2. **Natives that wait must not hold the lock while blocked.** Use `ti_wait(handle, ms)` to sleep, or `ti_wait_flag(handle, &done, timeout_ms)` + `ti_give(handle)` to wait for another thread's I/O. Both release the lock and service events and calls. Do not use `sleep()`/`usleep()` or block on a lock another thread holds while it calls `ti_call`.
 3. **Not from an ISR.** `ti_post_event` and `ti_call` allocate, and every handle function (`ti_stop` and `ti_give` included) takes the registry mutex. From an ISR, notify a task and let the task post, call or stop.
 4. **Dispatcher stack size.** A `ti_call` handler runs on the *caller's* stack. Size the dispatcher task for the interpreter's recursion (`max_call_depth`, 64 by default, deep call chains use a lot) and test the deepest handler.

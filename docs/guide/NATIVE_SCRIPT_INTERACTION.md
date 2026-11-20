@@ -14,7 +14,7 @@ Two sides talk to each other. Every channel is one of the rows below; pick the r
 | Send data into C | script → native | Arguments (`value_t **args`) | 2 |
 | Get data back from C | native → script | Return value (`value_t *`) | 3 |
 | Tell the script "this call failed" | native → script | `ti_raise_error` + `return NULL` | 4 |
-| Let a native run a script function | native → script | Function-name argument + `ti_call` / `ti_post_event` | 5 |
+| Let a native run a script function | native → script | Function-value argument (`PARAM_FUNC`) + `ti_call` / `ti_post_event` | 5 |
 | Push an external event into the script (fire and forget) | native → script | `ti_post_event` | 5.1 |
 | Ask the script a question and wait for the answer | native → script | `ti_call` | 5.2 |
 | Wait inside a native without freezing the script's events | native | `ti_wait` | 6 |
@@ -179,11 +179,11 @@ Script: `log_value("n", 5);` prints `n = 5`; `log_value("f", 1.5);` stops the sc
 
 ## 5. Native Runs a Script Function (Events and Callbacks)
 
-A native reaches back into the script by **function name**. The script hands over the name by registering it (`register_event(on_msg)` / `register_callback(on_query)`), and the native stores the name and the runtime handle. Two ways to call, chosen by whether you need the answer:
+A native reaches back into the script through a **function value**. The script hands the function over by registering it (`register_event(on_msg)` / `register_callback(on_query)`, a `PARAM_FUNC` parameter), and the native stores the runtime handle and its own copy of the value (`val_copy(argv[0])`: only the function pointer is copied). Both are needed: the handle proves the runtime is still alive, and only then is the function touched. `val_func_name(value)` gives the name (NULL for the empty function `func f;`, which the native should reject). Freeing the copy with `val_free` is always safe, also after the runtime is destroyed. Two ways to call, chosen by whether you need the answer:
 
 | | Async event | Sync callback |
 | :--- | :--- | :--- |
-| Native API | `ti_post_event(handle, name, args, argc)` | `ti_call(handle, name, args, argc, &result, timeout_ms)` |
+| Native API | `ti_post_event(handle, func, args, argc)` | `ti_call(handle, func, args, argc, &result, timeout_ms)` |
 | Caller waits? | No (queued) | Yes (until the function returns) |
 | Gets a return value? | No | Yes, in `*result` |
 | Typical caller | MQTT/HTTP handler, timer task, driver task | Driver that needs a decision (auth check, config query) |
@@ -217,9 +217,10 @@ So a native using `ti_call` must **test the return code**:
 
 ```c
 value_t *answer = NULL;
-ti_status_t st = ti_call(handle, "on_auth", args, 1, &answer, 500);
+ti_status_t st = ti_call(handle, s_on_auth, args, 1, &answer, 500);   /* s_on_auth: kept VAL_FUNC copy */
 if (st != TI_OK) {
-    /* TI_ERR_TIMEOUT, TI_ERR_UNDEFINED, TI_ERR_STALE_HANDLE, TI_ERR_INTERRUPTED,
+    /* TI_ERR_TIMEOUT, TI_ERR_INVALID_ARG (not a usable function value), TI_ERR_UNDEFINED (function of
+     * another runtime), TI_ERR_STALE_HANDLE, TI_ERR_INTERRUPTED,
      * or the error kind the script function raised */
 }
 ```
@@ -316,7 +317,7 @@ Inside an event or callback handler the wait cannot release the lock, so it only
 A driver that reads a sensor, asks the script whether to alert, and reports bad configuration:
 
 ```c
-/* script: register_callback(should_alert);  alert_on(80); */
+/* script: alert_on(80, should_alert);   params: PARAM_INT("threshold"), PARAM_FUNC("handler") */
 static value_t *native_alert_on(ti_handle_t handle, value_t **args, int argc)
 {
     (void)argc;
@@ -326,8 +327,15 @@ static value_t *native_alert_on(ti_handle_t handle, value_t **args, int argc)
                        "alert_on: threshold must be 0..100, got %d", threshold);
         return NULL;
     }
+    value_t *handler = val_copy(args[1]);                     /* 5: remember how to reach back */
+    if (handler == NULL) {
+        ti_raise_error(handle, TI_ERR_NO_MEMORY, "alert_on: out of memory");
+        return NULL;
+    }
+    val_free(s_handler);                                       /* replace an earlier registration */
+    s_handler = handler;
     s_threshold = threshold;
-    s_handle = handle;                                         /* 5: remember how to reach back */
+    s_handle = handle;
     return val_new_void();
 }
 
@@ -337,7 +345,7 @@ void on_reading(int value)
     value_t *arg = val_new_int(value);   /* ti_call borrows it, so we free it below */
     value_t *answer = NULL;
     if (arg != NULL &&
-        ti_call(s_handle, "should_alert", &arg, 1, &answer, 200) == TI_OK &&   /* 5.2: sync question */
+        ti_call(s_handle, s_handler, &arg, 1, &answer, 200) == TI_OK &&   /* 5.2: sync question */
         answer != NULL && answer->type == VAL_BOOL && answer->bool_val) {
         trigger_alarm();
     }
