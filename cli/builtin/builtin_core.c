@@ -43,7 +43,7 @@ static value_t *builtin_print(ti_handle_t handle, value_t **argv, int argc)
             break;
         case VAL_FUNC:
             /* A function value prints as its name in angle brackets; an empty one ('func f;') as "none" */
-            printf("<func %s>", argv[i]->func_name != NULL ? argv[i]->func_name : "none");
+            printf("<func %s>", val_func_name(argv[i]) != NULL ? val_func_name(argv[i]) : "none");
             break;
         case VAL_HANDLE: {
             /* Same form as to_string: the type name and whether it is still open, never the native object */

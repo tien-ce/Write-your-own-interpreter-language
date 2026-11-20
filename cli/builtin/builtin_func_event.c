@@ -7,8 +7,8 @@
  * @brief Script callback registered for simulated input events.
  */
 typedef struct {
-    ti_handle_t handle;    /* Runtime that registered the callback */
-    char       *func_name; /* TI callback function name (owned) */
+    ti_handle_t handle; /* Runtime that registered the callback */
+    value_t    *func;   /* TI callback function value (owned copy) */
 } event_listener_t;
 
 /* -------------------- Static Variables -------------------- */
@@ -28,23 +28,24 @@ static value_t *builtin_register_event(ti_handle_t handle, value_t **argv, int a
 /**
  * @brief Built-in native register_event function: bind simulated input events to a TI callback.
  * @param handle Calling runtime handle, stored so events can be posted to it later.
- * @param argv Array of argument values (callback function name).
+ * @param argv Array of argument values (callback function value).
  * @param argc Number of arguments passed.
- * @return Null value_t.
+ * @return Void value_t.
  */
 static value_t *builtin_register_event(ti_handle_t handle, value_t **argv, int argc)
 {
     (void)argc;
 
-    const char *func_name = argv[0]->func_name;
-    if (func_name == NULL || func_name[0] == '\0') {
-        ti_log("[ERROR]: register_event() expects a non-empty function name\n");
+    /* An empty function value ('func f;') has nothing to call */
+    if (val_func_name(argv[0]) == NULL) {
+        ti_log("[ERROR]: register_event() expects a defined function\n");
         return val_new_void();
     }
 
-    /* Copy the name before taking the lock to keep the critical section short */
-    char *name_copy = ti_raw_strdup(func_name);
-    if (name_copy == NULL) {
+    /* Keep an own copy of the function value (argv is freed after this call); copy it before taking
+     * the lock to keep the critical section short */
+    value_t *func_copy = val_copy(argv[0]);
+    if (func_copy == NULL) {
         ti_log("[ERROR]: register_event() out of memory\n");
         return val_new_void();
     }
@@ -58,17 +59,17 @@ static value_t *builtin_register_event(ti_handle_t handle, value_t **argv, int a
 
     /* Replace any previous registration (possibly from an already destroyed runtime) */
     if (s_listener != NULL) {
-        ti_raw_free(s_listener->func_name);
-        s_listener->func_name = name_copy;
+        val_free(s_listener->func);
+        s_listener->func = func_copy;
         s_listener->handle = handle;
-        name_copy = NULL;
+        func_copy = NULL;
     }
 
     pthread_mutex_unlock(&s_listener_mutex);
 
     /* Listener allocation failed: the copy was not handed over */
-    if (name_copy != NULL) {
-        ti_raw_free(name_copy);
+    if (func_copy != NULL) {
+        val_free(func_copy);
         ti_log("[ERROR]: register_event() out of memory\n");
     }
     return val_new_void();
@@ -79,7 +80,7 @@ static value_t *builtin_register_event(ti_handle_t handle, value_t **argv, int a
 /* Register register_event() */
 void builtin_event_register(void)
 {
-    static const param_t register_event_params[] = { { VAL_FUNC, "func_name", VAL_NULL, NULL } };
+    static const param_t register_event_params[] = { PARAM_FUNC("callback") };
 
     register_builtin_function("register_event", VAL_VOID, register_event_params, 1, builtin_register_event);
 }
@@ -93,11 +94,12 @@ ti_status_t cli_simulate_event(const char *text)
     if (s_listener != NULL) {
         /* Ownership of the argument value passes to ti_post_event in every case */
         value_t *args[1] = { val_new_string(text != NULL ? text : "") };
-        status = ti_post_event(s_listener->handle, s_listener->func_name, args, 1);
+        status = ti_post_event(s_listener->handle, s_listener->func, args, 1);
 
-        /* Lazy deregistration: the runtime is gone, so drop the listener */
+        /* Lazy deregistration: the runtime is gone, so drop the listener (freeing a function value
+         * never touches the function, so this is safe after the runtime was destroyed) */
         if (status == TI_ERR_STALE_HANDLE) {
-            ti_raw_free(s_listener->func_name);
+            val_free(s_listener->func);
             ti_raw_free(s_listener);
             s_listener = NULL;
         }

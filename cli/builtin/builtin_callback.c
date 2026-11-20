@@ -8,8 +8,8 @@
  * @brief Script function registered to answer synchronous calls from a native dispatcher.
  */
 typedef struct {
-    ti_handle_t handle;    /* Runtime that registered the handler */
-    char       *func_name; /* TI handler function name (owned) */
+    ti_handle_t handle; /* Runtime that registered the handler */
+    value_t    *func;   /* TI handler function value (owned copy) */
 } callback_record_t;
 
 /* -------------------- Static Variables -------------------- */
@@ -32,21 +32,22 @@ static value_t *builtin_register_callback(ti_handle_t handle, value_t **argv, in
  * @param handle Calling runtime handle, stored so ti_call can target it later.
  * @param argv Array of argument values (handler function value).
  * @param argc Number of arguments passed.
- * @return Null value_t.
+ * @return Void value_t, or NULL after raising an error.
  */
 static value_t *builtin_register_callback(ti_handle_t handle, value_t **argv, int argc)
 {
     (void)argc;
 
-    const char *func_name = argv[0]->func_name;
-    if (func_name == NULL || func_name[0] == '\0') {
-        ti_raise_error(handle, TI_ERR_INVALID_ARG, "register_callback() expects a non-empty function name");
+    /* An empty function value ('func f;') has nothing to call */
+    if (val_func_name(argv[0]) == NULL) {
+        ti_raise_error(handle, TI_ERR_INVALID_ARG, "register_callback() expects a defined function");
         return NULL;
     }
 
-    /* Copy the name before taking the lock to keep the critical section short */
-    char *name_copy = ti_raw_strdup(func_name);
-    if (name_copy == NULL) {
+    /* Keep an own copy of the function value (argv is freed after this call); copy it before taking
+     * the lock to keep the critical section short */
+    value_t *func_copy = val_copy(argv[0]);
+    if (func_copy == NULL) {
         ti_raise_error(handle, TI_ERR_NO_MEMORY, "register_callback() out of memory");
         return NULL;
     }
@@ -60,17 +61,17 @@ static value_t *builtin_register_callback(ti_handle_t handle, value_t **argv, in
 
     /* Replace any previous registration (possibly from an already destroyed runtime) */
     if (s_callback != NULL) {
-        ti_raw_free(s_callback->func_name);
-        s_callback->func_name = name_copy;
+        val_free(s_callback->func);
+        s_callback->func = func_copy;
         s_callback->handle = handle;
-        name_copy = NULL;
+        func_copy = NULL;
     }
 
     pthread_mutex_unlock(&s_callback_mutex);
 
     /* Record allocation failed: the copy was not handed over */
-    if (name_copy != NULL) {
-        ti_raw_free(name_copy);
+    if (func_copy != NULL) {
+        val_free(func_copy);
         ti_raise_error(handle, TI_ERR_NO_MEMORY, "register_callback() out of memory");
         return NULL;
     }
@@ -82,7 +83,7 @@ static value_t *builtin_register_callback(ti_handle_t handle, value_t **argv, in
 /* Register register_callback() */
 void builtin_callback_register(void)
 {
-    static const param_t register_callback_params[] = { { VAL_FUNC, "func_name", VAL_NULL, NULL } };
+    static const param_t register_callback_params[] = { PARAM_FUNC("handler") };
 
     register_builtin_function("register_callback", VAL_VOID, register_callback_params, 1, builtin_register_callback);
 }
@@ -97,27 +98,31 @@ ti_status_t cli_simulate_call(const char *text, char *answer, size_t answer_size
     /* Copy the target out of the record, then drop the mutex before ti_call:
      * the handler may run natives that take the same mutex. */
     ti_handle_t handle = TI_INVALID_HANDLE;
-    char name[64] = {0};
+    value_t *func = NULL;
 
     pthread_mutex_lock(&s_callback_mutex);
     if (s_callback != NULL) {
         handle = s_callback->handle;
-        strncpy(name, s_callback->func_name, sizeof(name) - 1);
+        func = val_copy(s_callback->func);
     }
     pthread_mutex_unlock(&s_callback_mutex);
 
     if (handle == TI_INVALID_HANDLE) {
         return TI_ERR_STALE_HANDLE;
     }
+    if (func == NULL) {
+        return TI_ERR_NO_MEMORY;
+    }
 
-    /* Arguments are borrowed by ti_call, so this side frees them afterwards */
+    /* Arguments and the function value are borrowed by ti_call, so this side frees them afterwards */
     value_t *arg = val_new_string(text != NULL ? text : "");
     value_t *args[1] = { arg };
     value_t *result = NULL;
 
     /* Wait at most one second for the script to reach a safe point */
-    ti_status_t status = ti_call(handle, name, args, 1, &result, 1000);
+    ti_status_t status = ti_call(handle, func, args, 1, &result, 1000);
     val_free(arg);
+    val_free(func);
 
     /* A string result is the handler's answer to the dispatcher */
     if (status == TI_OK && result != NULL && result->type == VAL_STRING && answer != NULL) {
@@ -130,7 +135,7 @@ ti_status_t cli_simulate_call(const char *text, char *answer, size_t answer_size
     if (status == TI_ERR_STALE_HANDLE) {
         pthread_mutex_lock(&s_callback_mutex);
         if (s_callback != NULL && s_callback->handle == handle) {
-            ti_raw_free(s_callback->func_name);
+            val_free(s_callback->func);
             ti_raw_free(s_callback);
             s_callback = NULL;
         }
