@@ -12,6 +12,8 @@
 static ti_handle_t g_handle;
 static ti_program_t *g_prog;
 static int g_failures;
+static value_t *g_bump;     /* Own copy of the script's bump function value (handed out by keep) */
+static value_t *g_on_event; /* Own copy of the script's on_event function value */
 
 /* Shared with the I/O thread: static storage, so it outlives any wait */
 static bool g_done;
@@ -67,6 +69,17 @@ static value_t *native_report(ti_handle_t handle, value_t **argv, int argc)
     return val_new_void();
 }
 
+/* Native used by the script: keeps a copy of a function value, like a driver's register function */
+static value_t *native_keep(ti_handle_t handle, value_t **argv, int argc)
+{
+    (void)handle;
+    (void)argc;
+    /* The first call hands out bump, the second on_event */
+    value_t **slot = (__atomic_load_n(&g_bump, __ATOMIC_ACQUIRE) == NULL) ? &g_bump : &g_on_event;
+    __atomic_store_n(slot, val_copy(argv[0]), __ATOMIC_RELEASE);
+    return val_new_void();
+}
+
 static void *script_thread(void *arg)
 {
     (void)arg;
@@ -100,7 +113,9 @@ int main(void)
     static const param_t params[] = { { VAL_INT, "timeout_ms", VAL_NULL, NULL } };
     static const param_t report_params[] = { PARAM_INT("value") };
     register_builtin_function("wait_io", VAL_VOID, params, 1, native_wait_io);
+    static const param_t keep_params[] = { PARAM_FUNC("func") };
     register_builtin_function("report", VAL_VOID, report_params, 1, native_report);
+    register_builtin_function("keep", VAL_VOID, keep_params, 1, native_keep);
 
     pthread_t th, io;
 
@@ -108,6 +123,8 @@ int main(void)
     start_script("int counter = 0;\n"
                  "void bump() { counter += 1; }\n"
                  "void on_event() { counter += 100; }\n"
+                 "keep(bump);\n"
+                 "keep(on_event);\n"
                  "wait_io(5000);\n"
                  "report(counter);\n");
     g_io_delay_ms = 400;
@@ -115,9 +132,9 @@ int main(void)
     pthread_create(&io, NULL, io_thread, NULL);
     sleep_ms(50);
     for (int i = 0; i < 10; i++) {
-        CHECK(ti_call(g_handle, "bump", NULL, 0, NULL, 1000) == TI_OK, "bump during wait");
+        CHECK(ti_call(g_handle, __atomic_load_n(&g_bump, __ATOMIC_ACQUIRE), NULL, 0, NULL, 1000) == TI_OK, "bump during wait");
     }
-    CHECK(ti_post_event(g_handle, "on_event", NULL, 0) == TI_OK, "post event");
+    CHECK(ti_post_event(g_handle, __atomic_load_n(&g_on_event, __ATOMIC_ACQUIRE), NULL, 0) == TI_OK, "post event");
     pthread_join(io, NULL);
     pthread_join(th, NULL);
     CHECK(g_wait_status == TI_OK, "wait returns TI_OK");
@@ -163,6 +180,10 @@ int main(void)
 
     /* F: ti_give on a destroyed runtime is rejected safely */
     CHECK(ti_give(g_handle) == TI_ERR_STALE_HANDLE, "stale handle");
+
+    /* Freeing a function value never touches its function, so it is safe after the runtime is gone */
+    val_free(g_bump);
+    val_free(g_on_event);
 
     printf(g_failures == 0 ? "ALL PASSED\n" : "FAILURES: %d\n", g_failures);
     return g_failures != 0;
