@@ -179,14 +179,17 @@ ti_status_t ti_stop(ti_handle_t handle);
  * @brief Queue an event that invokes a TI callback function at the next safe point.
  * Ownership of every value in args is always transferred, whether or not the call succeeds.
  * Safe to call from any task/thread, but not from ISR (allocates memory).
+ * The callback is a function value the script handed to a native (e.g. register_event(on_rx)); the
+ * native keeps its own copy (val_copy) together with the handle. A function of another runtime is
+ * dropped at dispatch (logged as undefined), never run.
  * @param handle Target runtime handle (typically stored by a native registration function).
- * @param func_name Name of the TI callback function (copied).
+ * @param func VAL_FUNC value of the TI callback (borrowed: the caller keeps and frees it).
  * @param args Array of argument values (array is copied, values are owned by the call).
  * @param arg_count Number of arguments.
  * @return TI_OK, TI_ERR_STALE_HANDLE (runtime gone: drop the listener), TI_ERR_QUEUE_FULL,
- *         TI_ERR_NO_MEMORY or TI_ERR_INVALID_ARG.
+ *         TI_ERR_NO_MEMORY or TI_ERR_INVALID_ARG (func NULL, not VAL_FUNC or the empty function).
  */
-ti_status_t ti_post_event(ti_handle_t handle, const char *func_name, value_t **args, int arg_count);
+ti_status_t ti_post_event(ti_handle_t handle, const value_t *func, value_t **args, int arg_count);
 
 /**
  * @brief Execute the pending events of a runtime immediately.
@@ -239,16 +242,19 @@ ti_status_t ti_give(ti_handle_t handle);
  * An error raised by the callback is consumed here: it is returned as the status and the script
  * keeps running. Arguments are borrowed (the caller keeps ownership); *result is owned by the
  * caller. Never call from an ISR, and never while holding a lock a native may wait for.
+ * The function is a function value the script handed to a native (e.g. register_callback(on_ask)),
+ * kept by the native as its own copy (val_copy) together with the handle.
  * @param handle Runtime handle.
- * @param func_name Name of a script-defined function.
+ * @param func VAL_FUNC value of a script-defined function (borrowed).
  * @param args Argument values (may be NULL if argc is 0).
  * @param argc Number of arguments.
  * @param result Receives the return value, or NULL; may be NULL to discard it.
  * @param timeout_ms Maximum wait for the execution lock (TI_PORT_WAIT_FOREVER for no limit).
- * @return TI_OK, TI_ERR_TIMEOUT, TI_ERR_STALE_HANDLE, TI_ERR_INVALID_ARG, TI_ERR_UNDEFINED,
- *         TI_ERR_INTERRUPTED (runtime stopped) or the error kind the callback raised.
+ * @return TI_OK, TI_ERR_TIMEOUT, TI_ERR_STALE_HANDLE, TI_ERR_INVALID_ARG (func NULL, not VAL_FUNC or
+ *         the empty function), TI_ERR_UNDEFINED (func belongs to another runtime), TI_ERR_INTERRUPTED
+ *         (runtime stopped) or the error kind the callback raised.
  */
-ti_status_t ti_call(ti_handle_t handle, const char *func_name, value_t **args, int argc,
+ti_status_t ti_call(ti_handle_t handle, const value_t *func, value_t **args, int argc,
                     value_t **result, uint32_t timeout_ms);
 
 /**

@@ -6,7 +6,7 @@
 /* -------------------- Static Function Prototypes -------------------- */
 
 static void args_free(value_t **args, int arg_count);
-static ti_task_t *task_create(const char *func_name, value_t **args, int arg_count);
+static ti_task_t *task_create(function_t *func, value_t **args, int arg_count);
 
 /* -------------------- Static Functions -------------------- */
 
@@ -28,47 +28,47 @@ static void args_free(value_t **args, int arg_count)
 }
 
 /**
- * @brief Allocate a task holding a copy of func_name and of the args pointer array.
- * @param func_name Callback function name.
+ * @brief Allocate a task holding the callback pointer and a copy of the args pointer array.
+ * @param func Callback function (borrowed, not dereferenced here).
  * @param args Argument array whose values the task takes over.
  * @param arg_count Number of arguments.
  * @return New task, or NULL on allocation failure (args are left untouched).
  */
-static ti_task_t *task_create(const char *func_name, value_t **args, int arg_count)
+static ti_task_t *task_create(function_t *func, value_t **args, int arg_count)
 {
-    size_t name_size = strlen(func_name) + 1;
     size_t args_size = (size_t)arg_count * sizeof(value_t *);
 
-    /* Single block keeps heap fragmentation low: [ti_task_t][args][func_name] */
-    ti_task_t *task = (ti_task_t *)ti_raw_malloc(sizeof(ti_task_t) + args_size + name_size);
+    /* Single block keeps heap fragmentation low: [ti_task_t][args] */
+    ti_task_t *task = (ti_task_t *)ti_raw_malloc(sizeof(ti_task_t) + args_size);
     if (task == NULL) {
         return NULL;
     }
 
     task->next = NULL;
+    task->func = func;
     task->args = (value_t **)(task + 1);
-    task->func_name = (char *)task->args + args_size;
     task->arg_count = arg_count;
 
     if (arg_count > 0) {
         memcpy(task->args, args, args_size);
     }
-    memcpy(task->func_name, func_name, name_size);
     return task;
 }
 
 /* -------------------- Event Queue Operations -------------------- */
 
 /* Queue an event for a TI callback function on the runtime referenced by handle */
-ti_status_t ti_runtime_post_event(ti_handle_t handle, const char *func_name, value_t **args, int arg_count)
+ti_status_t ti_runtime_post_event(ti_handle_t handle, const value_t *func, value_t **args, int arg_count)
 {
     /* Malformed array: values cannot be enumerated, so nothing can be released */
     if (arg_count < 0 || (arg_count > 0 && args == NULL)) {
         return TI_ERR_INVALID_ARG;
     }
 
-    /* Rejected input still consumes the argument values (ownership is always taken) */
-    bool args_valid = (func_name != NULL && func_name[0] != '\0');
+    /* Rejected input still consumes the argument values (ownership is always taken). Only the value
+     * is read: the function it points to may belong to a destroyed runtime, so ti_runtime_invoke
+     * checks it at dispatch before touching it */
+    bool args_valid = (func != NULL && func->type == VAL_FUNC && func->func_val != NULL);
     for (int i = 0; args_valid && i < arg_count; i++) {
         args_valid = (args[i] != NULL);
     }
@@ -78,7 +78,7 @@ ti_status_t ti_runtime_post_event(ti_handle_t handle, const char *func_name, val
     }
 
     /* Allocate before taking the registry: keeps the hold short */
-    ti_task_t *task = task_create(func_name, args, arg_count);
+    ti_task_t *task = task_create(func->func_val, args, arg_count);
     if (task == NULL) {
         args_free(args, arg_count);
         return TI_ERR_NO_MEMORY;

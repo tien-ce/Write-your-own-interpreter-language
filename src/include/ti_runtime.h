@@ -22,11 +22,12 @@ extern "C" {
 
 /**
  * @brief Event queued by native code, waiting to be dispatched to a TI callback.
- * Allocated as a single raw block: [ti_task_t][args array][func_name string].
+ * Allocated as a single raw block: [ti_task_t][args array].
  */
 typedef struct TI_TASK_STRUCT {
     struct TI_TASK_STRUCT *next;      /* Next pending task in FIFO order */
-    char                  *func_name; /* Target TI callback name (owned copy) */
+    function_t            *func;      /* Target TI callback (borrowed; never dereferenced before
+                                         ti_runtime_invoke has checked that the runtime owns it) */
     value_t              **args;      /* Argument values (owned) */
     int                    arg_count; /* Number of arguments */
 } ti_task_t;
@@ -227,12 +228,13 @@ ti_module_instance_t *ti_module_instance_find_script(ti_runtime_t *rt, const cha
  * Ownership of every value in args is always transferred, whether or not the call succeeds.
  * Safe to call from any task/thread, but not from ISR (allocates memory).
  * @param handle Target runtime handle.
- * @param func_name Name of the TI callback function (copied).
+ * @param func VAL_FUNC value of the TI callback (borrowed: only its function pointer is kept).
  * @param args Array of argument values (array is copied, values are owned by the call).
  * @param arg_count Number of arguments.
- * @return TI_OK, TI_ERR_STALE_HANDLE, TI_ERR_QUEUE_FULL, TI_ERR_NO_MEMORY or TI_ERR_INVALID_ARG.
+ * @return TI_OK, TI_ERR_STALE_HANDLE, TI_ERR_QUEUE_FULL, TI_ERR_NO_MEMORY or TI_ERR_INVALID_ARG
+ *         (func NULL, not VAL_FUNC or the empty function).
  */
-ti_status_t ti_runtime_post_event(ti_handle_t handle, const char *func_name, value_t **args, int arg_count);
+ti_status_t ti_runtime_post_event(ti_handle_t handle, const value_t *func, value_t **args, int arg_count);
 
 /**
  * @brief Remove the oldest pending task from the runtime event queue.
@@ -321,14 +323,16 @@ ti_status_t ti_runtime_give(ti_handle_t handle);
  * script that was running is unaffected. Cancellation is reported but never cleared.
  * The caller must hold the execution lock and the runtime must not be unwinding.
  * @param rt Pointer to runtime instance.
- * @param func_name Name of the script function.
+ * @param func Script function to run. It may come from another (possibly destroyed) runtime, so it
+ *             is only dereferenced after it was found in one of rt's function tables.
  * @param args Borrowed argument values (copied into the callback scope).
  * @param argc Number of arguments.
  * @param result Receives the return value (owned by the caller) or NULL; may be NULL to discard it.
  * @param err Receives the error description on failure; may be NULL.
- * @return TI_OK, TI_ERR_UNDEFINED, TI_ERR_INTERRUPTED or the kind of the error the callback raised.
+ * @return TI_OK, TI_ERR_UNDEFINED (func is not a function of rt), TI_ERR_INTERRUPTED or the kind of
+ *         the error the callback raised.
  */
-ti_status_t ti_runtime_invoke(ti_runtime_t *rt, const char *func_name, value_t **args, int argc,
+ti_status_t ti_runtime_invoke(ti_runtime_t *rt, function_t *func, value_t **args, int argc,
                               value_t **result, ti_error_t *err);
 
 /**

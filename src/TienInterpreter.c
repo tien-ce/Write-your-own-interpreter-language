@@ -164,9 +164,9 @@ ti_status_t ti_stop(ti_handle_t handle)
 /* -------------------- Event Bridge Functions -------------------- */
 
 /* Queue an event that invokes a TI callback function at the next safe point */
-ti_status_t ti_post_event(ti_handle_t handle, const char *func_name, value_t **args, int arg_count)
+ti_status_t ti_post_event(ti_handle_t handle, const value_t *func, value_t **args, int arg_count)
 {
-    return ti_runtime_post_event(handle, func_name, args, arg_count);
+    return ti_runtime_post_event(handle, func, args, arg_count);
 }
 
 /* Execute the pending events of a runtime immediately */
@@ -213,13 +213,15 @@ ti_status_t ti_give(ti_handle_t handle)
 }
 
 /* Call a script function synchronously from outside the script's execution context */
-ti_status_t ti_call(ti_handle_t handle, const char *func_name, value_t **args, int argc,
+ti_status_t ti_call(ti_handle_t handle, const value_t *func, value_t **args, int argc,
                     value_t **result, uint32_t timeout_ms)
 {
     if (result != NULL) {
         *result = NULL;
     }
-    if (func_name == NULL || func_name[0] == '\0' || argc < 0 || (argc > 0 && args == NULL)) {
+    /* Only the value is read here; the function it points to is checked by ti_runtime_invoke */
+    if (func == NULL || func->type != VAL_FUNC || func->func_val == NULL ||
+        argc < 0 || (argc > 0 && args == NULL)) {
         return TI_ERR_INVALID_ARG;
     }
     for (int i = 0; i < argc; i++) {
@@ -275,7 +277,7 @@ ti_status_t ti_call(ti_handle_t handle, const char *func_name, value_t **args, i
         status = TI_ERR_RUNTIME;
     } else {
         ti_error_t err;
-        status = ti_runtime_invoke(rt, func_name, args, argc, result, &err);
+        status = ti_runtime_invoke(rt, func->func_val, args, argc, result, &err);
         if (status != TI_OK && status != TI_ERR_INTERRUPTED && err.message[0] != '\0') {
             ti_log("[Call Error] %s at line %d\n", err.message, err.line);
         }

@@ -662,8 +662,38 @@ out:
 
 /* -------------------- Event Dispatcher -------------------- */
 
+/**
+ * @brief Check that a function is an entry of one of the runtime's function tables, by address only.
+ * A host may hold a function value of another (possibly destroyed) runtime, so func is never dereferenced.
+ * @param rt Pointer to runtime instance.
+ * @param func Function pointer to look for.
+ * @return true if func is a script function of rt (main script or a loaded script module).
+ */
+static bool runtime_owns_function(ti_runtime_t *rt, const function_t *func)
+{
+    ti_namespace_t *ns = &rt->main_ns;
+    ti_module_instance_t *instance = rt->modules;
+
+    while (ns != NULL) {
+        /* Compare addresses in this namespace's table */
+        for (int i = 0; i < ns->function_count; i++) {
+            if (ns->functions[i] == func) {
+                return true;
+            }
+        }
+
+        /* Move to the next script module (a native module has no namespace) */
+        ns = NULL;
+        while (instance != NULL && ns == NULL) {
+            ns = instance->ns;
+            instance = instance->next;
+        }
+    }
+    return false;
+}
+
 /* Run a script-defined function as a callback, isolating any error it raises */
-ti_status_t ti_runtime_invoke(ti_runtime_t *rt, const char *func_name, value_t **args, int argc,
+ti_status_t ti_runtime_invoke(ti_runtime_t *rt, function_t *func, value_t **args, int argc,
                               value_t **result, ti_error_t *err)
 {
     if (result != NULL) {
@@ -675,17 +705,17 @@ ti_status_t ti_runtime_invoke(ti_runtime_t *rt, const char *func_name, value_t *
         err->line = 0;
         err->message[0] = '\0';
     }
-    if (rt == NULL || func_name == NULL) {
+    if (rt == NULL || func == NULL) {
         return TI_ERR_INVALID_ARG;
     }
 
-    /* Callbacks must be script-defined functions */
-    function_t *func = user_find_function(rt, func_name);
-    if (func == NULL) {
+    /* Callbacks must be script functions of this runtime; the name cannot be printed, since a
+     * foreign function may already be freed */
+    if (!runtime_owns_function(rt, func)) {
         if (err != NULL) {
             err->kind = TI_ERR_UNDEFINED;
             err->line = 0;
-            snprintf(err->message, sizeof(err->message), "Callback function '%s' is not defined", func_name);
+            snprintf(err->message, sizeof(err->message), "Callback function is not defined in this runtime");
         }
         return TI_ERR_UNDEFINED;
     }
@@ -760,7 +790,7 @@ void ti_runtime_dispatch_pending_events(ti_runtime_t *rt)
         rt->active_task = task;
 
         ti_error_t err;
-        ti_status_t status = ti_runtime_invoke(rt, task->func_name, task->args, task->arg_count, NULL, &err);
+        ti_status_t status = ti_runtime_invoke(rt, task->func, task->args, task->arg_count, NULL, &err);
 
         /* Arguments were deep-copied into the callback scope, so the task can be released */
         rt->active_task = NULL;
