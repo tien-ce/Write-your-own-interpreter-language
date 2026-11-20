@@ -158,7 +158,8 @@ ti_runtime_eval_binary.c  ti_runtime_eval_control.c  ti_runtime_eval_func.c  ti_
 - **`eval_array_access`** (`object[index]`, read): evaluates `object` with `visitor_visit` first, then the index. The container value it gets is a `val_copy`: a list, dict or bytes is the same object (reference count + 1), so the read sees the real container and the reference keeps it alive while the index expression runs script code. Reads through `val_dict_get` / `val_list_get` (also `val_copy`, so `s[0]` returned to an outer subscript is the element itself) or `val_bytes_get`; frees the container reference at `out`. Error messages name the variable for `l[i]` and say `value` for a nested level.
 - **`eval_assignment`, `AST_ARRAY_ACCESS` target** (`object[index] = rhs`): same order (rhs, then `object`, then index) and the same shared reference, then `val_dict_set` / `val_list_set` / `val_bytes_set` on it, so `s[0]["k"] = v` writes into the dict held by `s`. No `variable_t` is used: only `x = rhs` (`AST_IDENTIFIER`) and definitions touch the variable itself. The rhs is deep-copied in by the set functions when it is a list or dict.
 - **`eval_null_literal`** (`ti_runtime_eval_literal.c`, `AST_NULL`): returns a new heap `val_new_null()` (never the static `TI_VAL_OK`, which also has type `VAL_NULL`), or raises `TI_ERR_NO_MEMORY`. `eval_list_literal` raises `TI_ERR_TYPE_MISMATCH` (`List element 0 is null: cannot infer the list element type`) when it must infer the element type from a `null` first element, and the usual element mismatch for a later `null`.
-- **`eval_identifier`:** Locates variable and returns an isolated copy via `context_copy_value(ctx ? ctx->alloc_list : NULL, variable)`.
+- **`eval_identifier`:** Locates variable and returns an isolated copy via `context_copy_value(ctx ? ctx->alloc_list : NULL, variable)`. With no variable of that name, `user_function_find(rt, name)` looks for a script function in the running namespace and `val_new_func(func)` wraps it in a `VAL_FUNC`.
+- **`VAL_FUNC` values:** `value->func_val` is a borrowed `function_t *` (entries of `ns->functions` never move and live until the runtime is destroyed). Copying copies the pointer, `val_free` frees nothing, `==` / `!=` compare identity (two empty `func f;` are equal), and `val_func_name(value)` gives `func_val->name` or NULL for the empty function. The value must not leave the runtime (same rule as `VAL_MODULE`).
 
 ---
 
@@ -221,7 +222,7 @@ A `FUNC_TI` borrows `name`, `def` and the parameter names from the AST. This is 
 ### 5.4. `eval_function_definition`
 - Takes `ti_runtime_t *rt`, `context_t *ctx`, and `AST_FUNCTION_DEFINITION` node.
 - **Redefinition Check:** If `name` is a builtin or already defined in the running namespace, raises `TI_ERR_RUNTIME` (`Redefinition of function '%s'`).
-- **Allocation:** Expands `rt->ns->functions` using `tracked_realloc(&rt->alloc_list, ...)` (raises `TI_ERR_NO_MEMORY` on failure). The array may move, so a `function_t *` into it is valid only until the next definition in that namespace.
+- **Allocation:** `rt->ns->functions` is a `function_t **`. The pointer array grows by one with `tracked_realloc`, and each entry is its own `tracked_calloc` block (both on `rt->alloc_list`; failures raise `TI_ERR_NO_MEMORY`, and a failed entry allocation frees the params it just built). Only the pointer array moves, so a `function_t *` stays valid until `ti_namespace_free` (which runs `function_free` on each entry, frees the entry, then the array).
 - **Parameter Table:** If `param_count > 0`, allocates the parameter array via `tracked_calloc(&rt->alloc_list, ...)` (raises `TI_ERR_NO_MEMORY` on failure), copies each type and borrows each name from its `AST_PARAM` node.
 - **Registration:** Populates `name`, `type = FUNC_TI`, `return_type`, `return_element_type`, `params`, `param_count`, `def = node` and `ns = rt->ns` (its home), then increments `rt->ns->function_count`. Returns `TI_VAL_OK`.
 
@@ -230,7 +231,7 @@ A `FUNC_TI` borrows `name`, `def` and the parameter names from the AST. This is 
 2. **Symbol Resolution Hierarchy:**
    - First the running namespace's script functions via `user_find_function(rt, func_name)`.
    - Then native functions via `builtin_find_function(func_name)`.
-   - Then a variable holding a function value (`func f = g;`), resolved by its stored name.
+   - Then a variable holding a function value (`func f = g;`): its `func_val` is the `function_t *` itself, called with no lookup. An empty one (`func f;`, `func_val` NULL) raises "Call to undefined function".
    - If nothing matches, raises `TI_ERR_UNDEFINED` (`Call to undefined function '%s'`).
 3. Delegates call execution to `run_function(rt, ctx, func, argv, argc, node)`.
 4. Single cleanup point: frees every evaluated argument with `val_free` and `argv` with `tracked_free(&rt->alloc_list, argv)`.
