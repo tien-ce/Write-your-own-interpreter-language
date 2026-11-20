@@ -44,12 +44,14 @@ void ti_namespace_free(ti_runtime_t *rt, ti_namespace_t *ns)
     /* Step 1: variables own heap values outside the alloc list (handles get destroyed), then the scope itself */
     context_free(&rt->alloc_list, ns->globals);
 
-    /* Step 2: each function owns only its parameter array; function_free keeps name, body and param names */
+    /* Step 2: each entry owns its parameter array (function_free keeps name, body and param names), then
+     * the entry block itself */
     for (int i = 0; i < ns->function_count; i++) {
-        function_free(&rt->alloc_list, &ns->functions[i]);
+        function_free(&rt->alloc_list, ns->functions[i]);
+        tracked_free(&rt->alloc_list, ns->functions[i]);
     }
 
-    /* Step 3: the entries live in one shared array, freed once here (never per entry) */
+    /* Step 3: the pointer array, freed once after its entries */
     tracked_free(&rt->alloc_list, ns->functions);
 
     /* Step 4: leave the struct empty; its storage belongs to whoever allocated it */
@@ -92,8 +94,8 @@ function_t *ti_namespace_find_function(ti_namespace_t *ns, const char *name)
 {
     /* Few functions per namespace: a linear scan needs no extra memory */
     for (int i = 0; i < ns->function_count; i++) {
-        if (strcmp(ns->functions[i].name, name) == 0) {
-            return &ns->functions[i];
+        if (strcmp(ns->functions[i]->name, name) == 0) {
+            return ns->functions[i];
         }
     }
     return NULL;

@@ -350,7 +350,7 @@ ti_status_t ti_text_append_value(ti_text_buffer_t *text, const value_t *value)
 
     case VAL_FUNC:
         /* An empty function value ('func f;') has no name: never pass NULL to %s */
-        return text_append(text, "<func %s>", value->func_name != NULL ? value->func_name : "none");
+        return text_append(text, "<func %s>", val_func_name(value) != NULL ? val_func_name(value) : "none");
 
     case VAL_HANDLE: {
         /* The native object is opaque: show only its type name and whether it is still open */

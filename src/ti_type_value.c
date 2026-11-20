@@ -4,6 +4,7 @@
 #include "include/ti_type_value_list.h"
 #include "include/ti_type_value_bytes.h"
 #include "include/ti_type_value_handle.h"
+#include "include/ti_type_func.h"
 #include "include/tracked_memory.h"
 #include "include/debug.h"
 #include "TienInterpreter.h"
@@ -120,11 +121,6 @@ void val_free_internal(value_t *value)
     else if (value->type == VAL_HANDLE && value->handle_val != NULL) {
         handle_release(value->handle_val);
         value->handle_val = NULL;
-    }
-    /* Release the function name string */
-    else if (value->type == VAL_FUNC && value->func_name != NULL) {
-        ti_raw_free(value->func_name);
-        value->func_name = NULL;
     }
     /* Release list reference and free its items if refcount reaches 0 */
     else if (value->type == VAL_LIST && value->list_val != NULL) {
@@ -250,17 +246,9 @@ value_t *val_copy(const value_t *val)
         copy->module_val = val->module_val;
         break;
     case VAL_FUNC:
-        if (val->func_name == NULL)
-        {
-            // Might be  default value
-            break;
-        }
-        /* Each value owns its own copy of the name, so it can outlive the original */
-        copy->func_name = ti_raw_strdup(val->func_name);
-        if (copy->func_name == NULL) {
-            ti_raw_free(copy);
-            return NULL;
-        }
+        /* The function is borrowed from its namespace (never moves, lives with the runtime): copy the
+         * pointer; NULL is the empty function ('func f;') */
+        copy->func_val = val->func_val;
         break;
     case VAL_VOID:
     case VAL_NULL:
@@ -359,11 +347,11 @@ value_t *val_deep_copy(const value_t *src, uint8_t max_depth)
     return result;
 }
 
-/* Create a function value referring to a script function by name */
-value_t *val_new_func(const char *name)
+/* Create a function value pointing to a script function */
+value_t *val_new_func(function_t *func)
 {
-    /* An empty or missing name can never be resolved */
-    if (name == NULL || name[0] == '\0') {
+    /* The empty function is made by val_init(VAL_FUNC) (declaration default), never here */
+    if (func == NULL) {
         return NULL;
     }
 
@@ -372,20 +360,16 @@ value_t *val_new_func(const char *name)
         return NULL;
     }
 
-    /* Keep the name, not a pointer: the function table may be reallocated later */
-    val->func_name = ti_raw_strdup(name);
-    if (val->func_name == NULL) {
-        ti_raw_free(val);
-        return NULL;
-    }
+    /* Borrow the pointer: a namespace entry never moves and lives until the runtime is destroyed */
+    val->func_val = func;
     return val;
 }
 
-/* Get the function name held by a VAL_FUNC value */
+/* Get the name of the function held by a VAL_FUNC value */
 const char *val_func_name(const value_t *value)
 {
-    if (value == NULL || value->type != VAL_FUNC) {
+    if (value == NULL || value->type != VAL_FUNC || value->func_val == NULL) {
         return NULL;
     }
-    return value->func_name;
+    return value->func_val->name;
 }

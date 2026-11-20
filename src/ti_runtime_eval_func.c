@@ -43,8 +43,8 @@ static function_t *user_find_function(ti_runtime_t *rt, const char *name)
     }
     /* Search only the running namespace (main script or module): each one has its own function names */
     for (int i = 0; i < rt->ns->function_count; i++) {
-        if (strcmp(name, rt->ns->functions[i].name) == 0) {
-            return &rt->ns->functions[i];
+        if (strcmp(name, rt->ns->functions[i]->name) == 0) {
+            return rt->ns->functions[i];
         }
     }
     return NULL;
@@ -272,8 +272,9 @@ value_t *eval_function_definition(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         return NULL;
     }
 
-    /* Grow the function table of the namespace whose code is running (main script or module) */
-    function_t *temp = tracked_realloc(&rt->alloc_list, rt->ns->functions, sizeof(function_t) * (rt->ns->function_count + 1));
+    /* Grow the pointer table of the namespace whose code is running (main script or module); only the
+     * pointers move, the entries already registered stay where they are */
+    function_t **temp = tracked_realloc(&rt->alloc_list, rt->ns->functions, sizeof(function_t *) * (rt->ns->function_count + 1));
     if (temp == NULL) {
         ti_raise(rt, TI_ERR_NO_MEMORY, node->line, "Cannot grow the function table");
         return NULL;
@@ -297,15 +298,24 @@ value_t *eval_function_definition(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         }
     }
 
-    /* Register the entry; the function remembers that namespace as its home (lexical scoping) */
-    rt->ns->functions[rt->ns->function_count].name = name;
-    rt->ns->functions[rt->ns->function_count].type = FUNC_TI;
-    rt->ns->functions[rt->ns->function_count].return_type = node->value.function_definition.return_type;
-    rt->ns->functions[rt->ns->function_count].return_element_type = node->value.function_definition.return_element_type;
-    rt->ns->functions[rt->ns->function_count].params = params;
-    rt->ns->functions[rt->ns->function_count].param_count = param_count;
-    rt->ns->functions[rt->ns->function_count].def = node;
-    rt->ns->functions[rt->ns->function_count].ns = rt->ns;
+    /* Allocate the entry in its own block, so a pointer to it survives later definitions */
+    function_t *func = tracked_calloc(&rt->alloc_list, 1, sizeof(function_t));
+    if (func == NULL) {
+        tracked_free(&rt->alloc_list, params);
+        ti_raise(rt, TI_ERR_NO_MEMORY, node->line, "Cannot allocate function '%s'", name);
+        return NULL;
+    }
+
+    /* Fill and register the entry; the function remembers that namespace as its home (lexical scoping) */
+    func->name = name;
+    func->type = FUNC_TI;
+    func->return_type = node->value.function_definition.return_type;
+    func->return_element_type = node->value.function_definition.return_element_type;
+    func->params = params;
+    func->param_count = param_count;
+    func->def = node;
+    func->ns = rt->ns;
+    rt->ns->functions[rt->ns->function_count] = func;
     rt->ns->function_count++;
     return TI_VAL_OK;
 }
@@ -421,11 +431,10 @@ value_t *eval_function_call(ti_runtime_t *rt, context_t *ctx, ast_t *node)
     /* Neither a script function nor a built-in: a variable holding a function value may be called */
     if (func == NULL) {
         variable_t *variable = context_find_variable(ctx, func_name);
-        /* An empty function value ('func f;', func_name NULL) names nothing: fall through to "undefined" */
-        if (variable != NULL && variable->value != NULL && variable->value->type == VAL_FUNC &&
-            variable->value->func_name != NULL) {
-            /* The value stores a name, so resolve it now (the function may have been defined since) */
-            func = user_find_function(rt, variable->value->func_name);
+        /* The value points straight to its function (no lookup); an empty one ('func f;', func_val NULL)
+         * leaves func NULL and falls through to "undefined" */
+        if (variable != NULL && variable->value != NULL && variable->value->type == VAL_FUNC) {
+            func = variable->value->func_val;
         }
     }
 
@@ -769,8 +778,8 @@ void ti_runtime_dispatch_pending_events(ti_runtime_t *rt)
     }
 }
 
-/* Check whether the script has defined a function with this name */
-bool user_function_exists(ti_runtime_t *rt, const char *name)
+/* Find a script function by name in the running namespace */
+function_t *user_function_find(ti_runtime_t *rt, const char *name)
 {
-    return user_find_function(rt, name) != NULL;
+    return user_find_function(rt, name);
 }

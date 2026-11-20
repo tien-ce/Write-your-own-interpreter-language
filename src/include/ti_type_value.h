@@ -29,6 +29,9 @@ typedef struct MODULE_STRUCT ti_module_t;
 /* Imported module of a runtime (opaque: defined inside the library) */
 typedef struct TI_MODULE_INSTANCE_STRUCT ti_module_instance_t;
 
+/* Function descriptor (script or native): defined in ti_type_func.h */
+typedef struct FUNCTION_STRUCT function_t;
+
 /**
  * @brief Encapsulates the state and structure of a hash table based dictionary.
  * Uses the external chashmap library for internal storage.
@@ -62,7 +65,8 @@ typedef struct VALUE_STRUCT {
         handle_t *handle_val;      /* VAL_HANDLE: opaque native object */
         ti_module_instance_t *module_val; /* VAL_MODULE: module instance of the runtime (not owned; lives until
                                              the runtime is destroyed, so it must not leave the runtime) */
-        char *func_name;          /* VAL_FUNC: name of a script function, resolved at call time */
+        function_t *func_val;     /* VAL_FUNC: script function (not owned; lives until the runtime is destroyed,
+                                     so it must not leave the runtime). NULL: empty function ('func f;') */
     };
 } value_t;
 
@@ -154,17 +158,18 @@ value_t *val_new_dict(void);
 value_t *val_new_list(val_type_t elem_type);
 
 /**
- * @brief Create a function value referring to a script function by name.
- * The name (not a pointer) is stored, so the reference stays valid when the function table grows.
- * @param name Function name (copied).
- * @return Newly allocated VAL_FUNC value_t, or NULL on invalid name or out of memory.
+ * @brief Create a function value pointing to a script function.
+ * The pointer is borrowed: a function_t of a namespace never moves and lives until the runtime is destroyed.
+ * @param func Script function (an entry of a namespace's function table).
+ * @return Newly allocated VAL_FUNC value_t, or NULL if func is NULL or out of memory.
  */
-value_t *val_new_func(const char *name);
+value_t *val_new_func(function_t *func);
 
 /**
- * @brief Get the function name held by a VAL_FUNC value.
+ * @brief Get the name of the function held by a VAL_FUNC value.
  * @param value A VAL_FUNC value.
- * @return The name (valid while the value is alive), or NULL if value is not VAL_FUNC.
+ * @return The name (borrowed from the function definition, valid while the runtime lives), or NULL if
+ *         value is not VAL_FUNC or is the empty function ('func f;').
  */
 const char *val_func_name(const value_t *value);
 

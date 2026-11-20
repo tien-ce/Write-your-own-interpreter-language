@@ -23,24 +23,6 @@ static value_t *binary_less_equal(ti_runtime_t *rt, value_t *left, value_t *righ
 static value_t *binary_logical_and(ti_runtime_t *rt, value_t *left, value_t *right, int line);
 static value_t *binary_logical_or(ti_runtime_t *rt, value_t *left, value_t *right, int line);
 static value_t *binary_bitwise(ti_runtime_t *rt, int op, value_t *left, value_t *right, int line);
-static bool func_names_equal(const char *left, const char *right);
-
-/* -------------------- Static Helper Functions -------------------- */
-
-/**
- * @brief Compare the names of two function values; a NULL name is the empty function ('func f;').
- * @param left Left function name (may be NULL).
- * @param right Right function name (may be NULL).
- * @return true if both are empty, or both name the same function.
- */
-static bool func_names_equal(const char *left, const char *right)
-{
-    /* Empty equals only empty; strcmp must never see NULL */
-    if (left == NULL || right == NULL) {
-        return left == right;
-    }
-    return strcmp(left, right) == 0;
-}
 
 /* -------------------- Static Operator Functions -------------------- */
 
@@ -313,8 +295,8 @@ static value_t *binary_equal(ti_runtime_t *rt, value_t *left, value_t *right, in
         value->bool_val = (left->bool_val == right->bool_val);
         break;
     case VAL_FUNC:
-        /* Function values are equal when they name the same function (or are both empty) */
-        value->bool_val = func_names_equal(left->func_name, right->func_name);
+        /* Identity: equal when both point to the same function, or are both empty ('func f;') */
+        value->bool_val = (left->func_val == right->func_val);
         break;
     case VAL_HANDLE:
         /* Identity: equal when both share the same native object wrapper, or are both empty ('handle h;') */
@@ -376,8 +358,8 @@ static value_t *binary_not_equal(ti_runtime_t *rt, value_t *left, value_t *right
         value->bool_val = (left->bool_val != right->bool_val);
         break;
     case VAL_FUNC:
-        /* Negation of equality, NULL-safe for empty function values */
-        value->bool_val = !func_names_equal(left->func_name, right->func_name);
+        /* Negation of identity equality */
+        value->bool_val = (left->func_val != right->func_val);
         break;
     case VAL_HANDLE:
         /* Negation of identity equality */

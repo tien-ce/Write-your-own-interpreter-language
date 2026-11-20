@@ -37,7 +37,7 @@ static value_t *eval_default_value(ti_runtime_t *rt, ast_t *node, val_type_t typ
     case VAL_FLOAT:  /* 0.0 */
     case VAL_BOOL:   /* false */
     case VAL_HANDLE: /* empty handle (handle_val NULL): natives see it as closed until the script assigns one */
-    case VAL_FUNC:   /* no function (func_name NULL): the script must assign one before calling it */
+    case VAL_FUNC:   /* no function (func_val NULL): the script must assign one before calling it */
         /* val_init zero-fills the payload, which is already the default for these types */
         value = val_init(type);
         break;
@@ -590,9 +590,10 @@ value_t *eval_identifier(ti_runtime_t *rt, context_t *ctx, ast_t *node)
         return value;
     }
 
-    /* No variable: a bare function name becomes a function value (resolved again when called) */
-    if (user_function_exists(rt, name)) {
-        value_t *func_val = val_new_func(name);
+    /* No variable: a bare function name becomes a function value pointing to that script function */
+    function_t *func = user_function_find(rt, name);
+    if (func != NULL) {
+        value_t *func_val = val_new_func(func);
         if (func_val == NULL) {
             ti_raise(rt, TI_ERR_NO_MEMORY, node->line, "Cannot create function value '%s'", name);
         }

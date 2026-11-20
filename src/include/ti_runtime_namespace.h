@@ -36,7 +36,8 @@ extern "C" {
  */
 typedef struct TI_NAMESPACE_STRUCT {
     context_t  *globals;        /* Top-level variable scope (parent of every call frame of its functions) */
-    function_t *functions;      /* FUNC_TI functions defined by this AST (array on the runtime alloc list) */
+    function_t **functions;     /* FUNC_TI functions defined by this AST: an array of pointers, each entry its own
+                                   block (both on the runtime alloc list), so an entry never moves when it grows */
     int         function_count; /* Number of entries in functions */
     ti_program_t *prog;         /* Program whose AST this namespace runs (its path: prog->path). Borrowed for
                                    main_ns (the host owns it); owned by a namespace from ti_namespace_load */
@@ -76,7 +77,7 @@ bool ti_namespace_run(ti_runtime_t *rt, ti_namespace_t *ns, ast_t *root);
 
 /**
  * @brief Find a FUNC_TI function defined at the top level of a namespace.
- * The pointer is into ns->functions: it stays valid until a new function is defined in that namespace.
+ * The pointer is one entry of ns->functions: it stays valid until the namespace is freed.
  * @param ns Namespace to search.
  * @param name Function name.
  * @return The function, or NULL if the namespace has no function with that name.
